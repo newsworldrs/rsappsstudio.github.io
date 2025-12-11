@@ -1,2 +1,14 @@
 # rsappsstudio.github.io
-Official website and apps-ads.txt hosting for RS APPS STUDIO
+📌 RS Apps Studio — Official Website & app-ads.txt Hosting
+
+Welcome to the official GitHub Pages repository for RS APPS STUDIO.
+This repository hosts:
+
+✔ Official company webpage
+✔ app-ads.txt for Google AdMob verification
+✔ Branding files (logo, screenshots)
+✔ Public documentation for RS Apps Studio apps
+
+🌐 Live Website:
+👉 https://rsappsstudio.github.io 
+
