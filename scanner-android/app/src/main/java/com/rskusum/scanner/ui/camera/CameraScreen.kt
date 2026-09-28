@@ -274,7 +274,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                     qrMode -> "Point at a QR code"
                     vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> "Processing…"
                     else -> when (state.phase) {
-                        CapturePhase.SEARCHING -> "Looking for document"
+                        CapturePhase.SEARCHING ->
+                            if (vm.autoCapture && state.progress > 0f) "Hold still to capture" else "Looking for document"
                         CapturePhase.TOO_SMALL -> "Move closer"
                         CapturePhase.HOLD_STEADY -> if (vm.autoCapture) "Hold steady" else "Tap the shutter to capture"
                         CapturePhase.CAPTURING -> "Capturing…"
@@ -283,6 +284,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 }
                 if (hint != null) HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
                 toast?.let { HintChip(it, Modifier.align(Alignment.Center)) }
+                if (granted) Diagnostics(analyzer, Modifier.align(Alignment.BottomStart).padding(8.dp))
 
                 Box(
                     Modifier
@@ -369,7 +371,9 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
                 .build()
 
             val analysis = ImageAnalysis.Builder()
-                .setResolutionSelector(selector(Size(640, 480), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                // Higher than needed on purpose: the detector area-downsamples it, which averages
+                // away sensor noise that otherwise hides faint paper edges.
+                .setResolutionSelector(selector(Size(1280, 960), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
             analysis.setAnalyzer(analysisExecutor, analyzer)
@@ -485,6 +489,45 @@ private fun HintChip(text: String, modifier: Modifier = Modifier) {
             .background(Color.Black.copy(alpha = 0.6f))
             .padding(horizontal = 16.dp, vertical = 8.dp),
     )
+}
+
+/**
+ * Small status line: analyzed frames per second and frame size, or the error that is stopping
+ * detection. Makes "nothing is detected" distinguishable from "the detector isn't running".
+ */
+@Composable
+private fun Diagnostics(analyzer: DocumentAnalyzer, modifier: Modifier = Modifier) {
+    var text by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+    LaunchedEffect(analyzer) {
+        var lastCount = analyzer.framesAnalyzed
+        var ticks = 0
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            ticks++
+            val count = analyzer.framesAnalyzed
+            val fps = count - lastCount
+            lastCount = count
+            val err = com.rskusum.scanner.ScannerApp.openCvError ?: analyzer.lastError
+            isError = err != null || (fps == 0L && ticks >= 3 && !analyzer.paused && !analyzer.qrMode)
+            text = when {
+                err != null -> "Detector error: $err"
+                isError -> "No camera frames reaching the detector"
+                else -> "$fps fps · ${analyzer.frameSize}"
+            }
+        }
+    }
+    if (text.isNotEmpty()) {
+        Text(
+            text,
+            color = if (isError) Color(0xFFFF6B6B) else Color.White.copy(alpha = 0.55f),
+            fontSize = if (isError) 13.sp else 10.sp,
+            modifier = modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = if (isError) 0.75f else 0.3f))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
 }
 
 @Composable

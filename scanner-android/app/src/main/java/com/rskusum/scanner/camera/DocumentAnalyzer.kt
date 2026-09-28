@@ -30,6 +30,14 @@ class DocumentAnalyzer(
     @Volatile var lastQuad: Quad? = null
         private set
 
+    /** Frames analyzed so far, and the last failure - surfaced on screen so problems are visible. */
+    @Volatile var framesAnalyzed = 0L
+        private set
+    @Volatile var lastError: String? = null
+        private set
+    @Volatile var frameSize: String = ""
+        private set
+
     private var buffer = ByteArray(0)
     private val qrDetector by lazy { QRCodeDetector() }
     private var frame = 0L
@@ -38,6 +46,7 @@ class DocumentAnalyzer(
         try {
             if (paused) return
             frame++
+            frameSize = "${image.width}x${image.height}"
             val gray = upright(image)
             try {
                 if (qrMode) {
@@ -47,17 +56,21 @@ class DocumentAnalyzer(
                     }
                     return
                 }
+                val scene = DocumentDetector.sceneSignature(gray)
                 val quad = DocumentDetector.detect(gray, prev = tracker.currentAnchor)
                 val sig = quad?.let { DocumentDetector.signature(gray, it) }
-                val (state, fire) = tracker.update(quad, sig, SystemClock.elapsedRealtime(), autoCapture)
+                val (state, fire) = tracker.update(quad, sig, SystemClock.elapsedRealtime(), autoCapture, scene)
                 lastQuad = state.quad
                 onState(state)
+                framesAnalyzed++
+                lastError = null
                 if (fire) onAutoCapture()
             } finally {
                 gray.release()
             }
         } catch (t: Throwable) {
             Log.w("DocumentAnalyzer", "analysis failed", t)
+            lastError = "${t.javaClass.simpleName}: ${t.message}"
         } finally {
             image.close()
         }

@@ -32,10 +32,16 @@ import kotlin.math.sqrt
 object DocumentDetector {
 
     private const val MIN_AREA_FRACTION = 0.08
-    private const val MIN_EDGE_SUPPORT = 0.6
+    private const val MAX_AREA_FRACTION = 0.97
+    private const val MAX_CANDIDATES_PER_MAP = 6
+
+    /** Optional trace of candidate scoring, for offline tuning. */
+    @Volatile var debugLog: ((String) -> Unit)? = null
 
     /**
      * @param gray 8-bit single channel image (upright).
+     * @param prev the outline found in the previous frame, if any; candidates close to it are
+     *   preferred so the overlay doesn't hop between similar-scoring shapes.
      * @return quad in normalized coordinates, or null when no document is visible.
      */
     fun detect(gray: Mat, maxDim: Int = 480, prev: Quad? = null): Quad? {
@@ -43,45 +49,83 @@ object DocumentDetector {
         val small = Mat()
         val closed = Mat()
         val blur = Mat()
+        val gx = Mat()
+        val gy = Mat()
+        val mag = Mat()
         val bin = Mat()
         val edges = Mat()
-        val support = Mat()
         try {
             Imgproc.resize(gray, small, Size(gray.cols() * scale, gray.rows() * scale), 0.0, 0.0, Imgproc.INTER_AREA)
-            Imgproc.morphologyEx(small, closed, Imgproc.MORPH_CLOSE, rect(9))
+            val k = max(5, (max(small.cols(), small.rows()) / 50) or 1)
+            Imgproc.morphologyEx(small, closed, Imgproc.MORPH_CLOSE, rect(k))
             Imgproc.GaussianBlur(closed, blur, Size(5.0, 5.0), 0.0)
-            val area = blur.rows().toDouble() * blur.cols()
+            val w = blur.cols()
+            val h = blur.rows()
+            val area = w.toDouble() * h
 
+            // Scene-adaptive thresholds: the median gradient is the noise/texture floor, so a
+            // faint paper edge on a white table and a book on a busy bedsheet are both handled.
+            Imgproc.Sobel(blur, gx, CvType.CV_32F, 1, 0, 3)
+            Imgproc.Sobel(blur, gy, CvType.CV_32F, 0, 1, 3)
+            Core.magnitude(gx, gy, mag)
+            val magArr = FloatArray(w * h)
+            mag.get(0, 0, magArr)
+            val med = percentile(magArr, 0.5)
+            val hi = max(3.5 * med, 10.0)
+            val lo = max(0.45 * hi, 1.5 * med)
+
+            val candidates = ArrayList<Array<Point>>()
             val otsu = Imgproc.threshold(blur, bin, 0.0, 255.0, Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU)
-            val candidates = ArrayList<Pair<Array<Point>, Double>>()
-            val thresholds = listOf(0.5 * otsu to otsu, 0.25 * otsu to 0.5 * otsu, 10.0 to 30.0)
+            val thresholds = listOf(lo to hi, 0.5 * otsu to otsu, 25.0 to 75.0)
             val k3 = rect(3)
-            for ((lo, hi) in thresholds) {
-                Imgproc.Canny(blur, edges, lo, hi)
+            for ((l, u) in thresholds) {
+                Imgproc.Canny(blur, edges, l, u, 3, true)
                 Imgproc.dilate(edges, edges, k3)
-                findQuad(edges, area)?.let { candidates += it }
+                // Close shapes against the frame so a page running off-screen still forms a region.
+                Imgproc.rectangle(edges, Point(0.0, 0.0), Point(w - 1.0, h - 1.0), Scalar(255.0), 1)
+                collectQuads(edges, area, candidates)
             }
-            findQuad(bin, area)?.let { candidates += it }
+            collectQuads(bin, area, candidates)
+            // Line-based candidates: bridges edges broken by shadows / glare / off-frame corners.
+            Imgproc.Canny(blur, edges, lo, hi, 3, true)
+            collectLineQuads(edges, w, h, candidates)
             if (candidates.isEmpty()) return null
 
-            Imgproc.Canny(blur, support, 15.0, 45.0)
-            Imgproc.dilate(support, support, rect(5))
+            // Support map: gradient magnitude, max-filtered so +-1px misalignment still counts.
+            Imgproc.dilate(mag, mag, k3)
+            mag.get(0, 0, magArr)
+            val supportThr = max(lo, 2.5 * med)
 
             var best: Array<Point>? = null
             var bestScore = 0.0
-            for ((q, a) in candidates) {
-                val s = edgeSupport(q, support)
-                if (s >= MIN_EDGE_SUPPORT && a * s > bestScore) {
-                    bestScore = a * s
-                    best = q
+            for (q0 in candidates) {
+                val q = orderPoints(q0)
+                val sides = sideSupport(q, magArr, w, h, supportThr)
+                debugLog?.invoke(
+                    "cand area=%.3f sides=%s pts=%s".format(
+                        polygonArea(q) / area, sides?.joinToString { "%.2f".format(it) } ?: "frame",
+                        q.joinToString { "(%.0f,%.0f)".format(it.x, it.y) },
+                    )
+                )
+                if (sides == null) continue
+                val mean = sides.average()
+                val weakest = sides.min()
+                if (weakest < 0.55 || mean < 0.7) continue
+                // The weakest side dominates: a side overshooting the real corner loses support.
+                var score = polygonArea(q) / area * mean * mean * weakest * weakest
+                if (prev != null) {
+                    val p = prev.points
+                    val d = q.indices.maxOf { i -> hypot(q[i].x / w - p[i].x, q[i].y / h - p[i].y) }
+                    if (d < 0.06) score *= 1.4
                 }
+                if (score > bestScore) { bestScore = score; best = q }
             }
             val q = best ?: return null
-            val w = blur.cols().toDouble()
-            val h = blur.rows().toDouble()
-            return orderToQuad(q, w, h)
+            fun n(pt: Point) = NPoint((pt.x / w).toFloat().coerceIn(0f, 1f), (pt.y / h).toFloat().coerceIn(0f, 1f))
+            return Quad(n(q[0]), n(q[1]), n(q[2]), n(q[3]))
         } finally {
-            small.release(); closed.release(); blur.release(); bin.release(); edges.release(); support.release()
+            small.release(); closed.release(); blur.release(); gx.release(); gy.release(); mag.release()
+            bin.release(); edges.release()
         }
     }
 
@@ -222,6 +266,16 @@ object DocumentDetector {
         return bytes
     }
 
+    /** Tiny thumbnail of the whole frame, for camera-steadiness and scene-change checks. */
+    fun sceneSignature(gray: Mat): ByteArray {
+        val out = Mat()
+        Imgproc.resize(gray, out, Size(24.0, 32.0), 0.0, 0.0, Imgproc.INTER_AREA)
+        val bytes = ByteArray(24 * 32)
+        out.get(0, 0, bytes)
+        out.release()
+        return bytes
+    }
+
     fun signatureDistance(a: ByteArray, b: ByteArray): Double {
         if (a.size != b.size) return Double.MAX_VALUE
         var s = 0L
@@ -233,22 +287,31 @@ object DocumentDetector {
 
     private fun rect(k: Int): Mat = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(k.toDouble(), k.toDouble()))
 
-    private fun findQuad(binary: Mat, imgArea: Double): Pair<Array<Point>, Double>? {
+    /** Adds up to [MAX_CANDIDATES_PER_MAP] convex 4-gons (largest first) found in [binary]. */
+    private fun collectQuads(binary: Mat, imgArea: Double, out: MutableList<Array<Point>>) {
         val contours = ArrayList<MatOfPoint>()
         val hierarchy = Mat()
         Imgproc.findContours(binary.clone(), contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
         hierarchy.release()
-        var best: Array<Point>? = null
-        var bestArea = 0.0
+        val hulls = ArrayList<Pair<MatOfPoint2f, Double>>()
         val hullIdx = MatOfInt()
         for (c in contours) {
-            if (Imgproc.contourArea(c) < imgArea * 0.02) { c.release(); continue }
+            // Open edge chains (a page outline broken by noise) have ~zero contour area, so filter
+            // on the convex hull instead of the contour itself.
+            if (c.rows() < 4) { c.release(); continue }
             Imgproc.convexHull(c, hullIdx)
             val cPts = c.toArray()
-            val hull = MatOfPoint2f(*hullIdx.toArray().map { cPts[it] }.toTypedArray())
             c.release()
+            val hull = MatOfPoint2f(*hullIdx.toArray().map { cPts[it] }.toTypedArray())
             val a = Imgproc.contourArea(hull)
-            if (a < MIN_AREA_FRACTION * imgArea || a <= bestArea) { hull.release(); continue }
+            if (a < MIN_AREA_FRACTION * imgArea || a > MAX_AREA_FRACTION * imgArea) { hull.release(); continue }
+            hulls += hull to a
+        }
+        hullIdx.release()
+        hulls.sortByDescending { it.second }
+        var added = 0
+        for ((hull, _) in hulls) {
+            if (added >= MAX_CANDIDATES_PER_MAP) { hull.release(); continue }
             val peri = Imgproc.arcLength(hull, true)
             var quad: Array<Point>? = null
             for (eps in doubleArrayOf(0.02, 0.03, 0.045, 0.06, 0.08)) {
@@ -263,36 +326,152 @@ object DocumentDetector {
             val qi = MatOfPoint(*quad)
             val convex = Imgproc.isContourConvex(qi)
             qi.release()
-            if (!convex) continue
-            val q2 = MatOfPoint2f(*quad)
-            val a4 = Imgproc.contourArea(q2)
-            q2.release()
-            if (a4 > bestArea) { bestArea = a4; best = quad }
+            if (!convex || polygonArea(quad) < MIN_AREA_FRACTION * imgArea) continue
+            out += quad
+            added++
         }
-        hullIdx.release()
-        return best?.let { it to bestArea }
     }
 
-    private fun edgeSupport(q: Array<Point>, edges: Mat): Double {
-        val m = Mat.zeros(edges.size(), CvType.CV_8UC1)
-        val poly = MatOfPoint(*q.map { Point(Math.round(it.x).toDouble(), Math.round(it.y).toDouble()) }.toTypedArray())
-        Imgproc.polylines(m, listOf(poly), true, Scalar(255.0), 2)
-        val total = Core.countNonZero(m)
-        Core.bitwise_and(m, edges, m)
-        val hit = Core.countNonZero(m)
-        m.release(); poly.release()
-        return hit.toDouble() / max(total, 1)
+    /** An infinite line n·p = c (unit normal n) with the total length of its supporting segments. */
+    private class Line(val nx: Double, val ny: Double, val c: Double, var weight: Double, val border: Boolean = false) {
+        /** Angle of the line direction in [0, 180). */
+        val angle: Double get() = (Math.toDegrees(kotlin.math.atan2(nx, -ny)) + 360.0) % 180.0
+        val horizontalish: Boolean get() = angle < 45 || angle > 135
+    }
+
+    private fun collectLineQuads(edges: Mat, w: Int, h: Int, out: MutableList<Array<Point>>) {
+        val segs = Mat()
+        val minLen = 0.12 * min(w, h)
+        Imgproc.HoughLinesP(edges, segs, 1.0, Math.PI / 180, 25, minLen, 12.0)
+        val lines = ArrayList<Line>()
+        for (i in 0 until segs.rows()) {
+            val s = segs.get(i, 0)
+            val dx = s[2] - s[0]
+            val dy = s[3] - s[1]
+            val len = hypot(dx, dy)
+            if (len < 1) continue
+            val nx = -dy / len
+            val ny = dx / len
+            val c = nx * s[0] + ny * s[1]
+            // merge with an existing near-identical line
+            val match = lines.firstOrNull { l ->
+                val dot = l.nx * nx + l.ny * ny
+                kotlin.math.abs(dot) > 0.995 && kotlin.math.abs(l.c - if (dot > 0) c else -c) < 6.0
+            }
+            if (match != null) match.weight += len else lines += Line(nx, ny, c, len)
+        }
+        segs.release()
+        if (lines.size < 2) return
+        val hs = lines.filter { it.horizontalish }.sortedByDescending { it.weight }.take(7).toMutableList()
+        val vs = lines.filter { !it.horizontalish }.sortedByDescending { it.weight }.take(7).toMutableList()
+        // Frame borders as fallback sides for pages extending off-screen.
+        hs += Line(0.0, 1.0, 0.0, 0.0, true); hs += Line(0.0, 1.0, h - 1.0, 0.0, true)
+        vs += Line(1.0, 0.0, 0.0, 0.0, true); vs += Line(1.0, 0.0, w - 1.0, 0.0, true)
+
+        fun mid(l: Line, isH: Boolean): Double =
+            // position of the line across the image centre: y for horizontals, x for verticals
+            if (isH) (l.c - l.nx * w / 2) / l.ny else (l.c - l.ny * h / 2) / l.nx
+
+        val area = w.toDouble() * h
+        val margin = 0.04 * max(w, h)
+        for (i in hs.indices) for (j in hs.indices) {
+            if (i == j) continue
+            val top = hs[i]; val bottom = hs[j]
+            if (mid(top, true) >= mid(bottom, true) - 0.2 * h) continue
+            for (a in vs.indices) for (b in vs.indices) {
+                if (a == b) continue
+                val left = vs[a]; val right = vs[b]
+                if (mid(left, false) >= mid(right, false) - 0.2 * w) continue
+                if (top.border && bottom.border || left.border && right.border) continue
+                if (listOf(top, bottom, left, right).count { it.border } > 1) continue
+                val tl = cross(top, left) ?: continue
+                val tr = cross(top, right) ?: continue
+                val br = cross(bottom, right) ?: continue
+                val bl = cross(bottom, left) ?: continue
+                val q = arrayOf(tl, tr, br, bl)
+                if (q.any { it.x < -margin || it.y < -margin || it.x > w + margin || it.y > h + margin }) continue
+                val qa = polygonArea(q)
+                if (qa < MIN_AREA_FRACTION * area || qa > MAX_AREA_FRACTION * area) continue
+                val qi = MatOfPoint(*q.map { Point(it.x, it.y) }.toTypedArray())
+                val convex = Imgproc.isContourConvex(qi)
+                qi.release()
+                if (!convex) continue
+                out += Array(4) { Point(q[it].x.coerceIn(0.0, w - 1.0), q[it].y.coerceIn(0.0, h - 1.0)) }
+            }
+        }
+    }
+
+    private fun cross(a: Line, b: Line): Point? {
+        val d = a.nx * b.ny - a.ny * b.nx
+        if (kotlin.math.abs(d) < 1e-6) return null
+        return Point((a.c * b.ny - a.ny * b.c) / d, (a.nx * b.c - a.c * b.nx) / d)
+    }
+
+    /**
+     * Fraction of each side backed by a real intensity edge. Stretches lying on the frame border
+     * count as supported (page extends off-screen), but a shape hugging the frame on 3+ sides is
+     * the frame itself and is rejected (returns null).
+     */
+    private fun sideSupport(q: Array<Point>, mag: FloatArray, w: Int, h: Int, thr: Double): DoubleArray? {
+        val out = DoubleArray(4)
+        var borderSides = 0
+        val onFrame = BooleanArray(4)
+        for (i in 0 until 4) {
+            val a = q[i]
+            val b = q[(i + 1) % 4]
+            val len = hypot(b.x - a.x, b.y - a.y)
+            val n = max(10, (len / 2).toInt())
+            var hit = 0
+            var onBorder = 0
+            for (j in 0 until n) {
+                val t = 0.06 + 0.88 * j / (n - 1)
+                val x = a.x + (b.x - a.x) * t
+                val y = a.y + (b.y - a.y) * t
+                if (x < 2.5 || y < 2.5 || x > w - 3.5 || y > h - 3.5) { onBorder++; hit++; continue }
+                val xi = x.toInt().coerceIn(0, w - 1)
+                val yi = y.toInt().coerceIn(0, h - 1)
+                if (mag[yi * w + xi] >= thr) hit++
+            }
+            if (onBorder > n * 0.7) { borderSides++; onFrame[i] = true }
+            out[i] = hit.toDouble() / n
+        }
+        if (borderSides >= 2) return null
+        // A side on the frame border is only plausible if the page really runs off-screen, i.e.
+        // all its real sides are solid edges. Otherwise it is a genuine page stretched to the frame.
+        if (borderSides == 1 && (0 until 4).any { !onFrame[it] && out[it] < 0.85 }) return null
+        return out
+    }
+
+    /** Histogram percentile (quarter-unit bins up to 1024): O(n), no sorting on the camera thread. */
+    private fun percentile(values: FloatArray, p: Double): Double {
+        val bins = IntArray(4096)
+        for (v in values) bins[(v * 4).toInt().coerceIn(0, 4095)]++
+        val target = (values.size * p).toLong()
+        var acc = 0L
+        for (i in bins.indices) {
+            acc += bins[i]
+            if (acc >= target) return i / 4.0
+        }
+        return 1024.0
+    }
+
+    private fun polygonArea(p: Array<Point>): Double {
+        var s = 0.0
+        for (i in p.indices) {
+            val a = p[i]
+            val b = p[(i + 1) % p.size]
+            s += a.x * b.y - b.x * a.y
+        }
+        return abs(s) / 2
     }
 
     /** Clockwise order starting at the corner closest to the image origin; robust to 45° rotation. */
-    private fun orderToQuad(p: Array<Point>, w: Double, h: Double): Quad {
+    private fun orderPoints(p: Array<Point>): Array<Point> {
         val cx = p.sumOf { it.x } / 4
         val cy = p.sumOf { it.y } / 4
         val sorted = p.sortedBy { kotlin.math.atan2(it.y - cy, it.x - cx) }
         val start = sorted.indices.minBy { sorted[it].x + sorted[it].y }
-        val o = List(4) { sorted[(start + it) % 4] }
-        fun n(pt: Point) = NPoint((pt.x / w).toFloat().coerceIn(0f, 1f), (pt.y / h).toFloat().coerceIn(0f, 1f))
-        return Quad(n(o[0]), n(o[1]), n(o[2]), n(o[3]))
+        return Array(4) { sorted[(start + it) % 4] }
     }
 
     private fun intersect(l1: DoubleArray, l2: DoubleArray): Point? {

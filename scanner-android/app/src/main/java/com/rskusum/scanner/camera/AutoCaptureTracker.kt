@@ -47,11 +47,45 @@ class AutoCaptureTracker(
     @get:Synchronized
     val currentAnchor: Quad? get() = anchor
 
+    // Fallback ("capture raw, crop later"): when the live preview can't find the page but the
+    // phone is held still, capture anyway; edges are then searched on the sharp full-res photo.
+    private var sceneSteadyMs = 0L
+    private var prevScene: ByteArray? = null
+    private var lastScene: ByteArray? = null
+    private var capturedScene: ByteArray? = null
+
+    /**
+     * @param scene tiny thumbnail of the whole frame (see [DocumentDetector.sceneSignature]),
+     *   used to measure camera steadiness independent of document detection.
+     */
     @Synchronized
-    fun update(quad: Quad?, sig: ByteArray?, now: Long, autoEnabled: Boolean): Pair<TrackerState, Boolean> {
+    fun update(quad: Quad?, sig: ByteArray?, now: Long, autoEnabled: Boolean, scene: ByteArray? = null): Pair<TrackerState, Boolean> {
         val dt = if (lastFrameAt == 0L) 0L else (now - lastFrameAt).coerceIn(0L, 200L)
         lastFrameAt = now
         if (capturingSince != 0L && now - capturingSince > 4000) capturingSince = 0L // capture failed/timed out
+
+        if (scene != null) {
+            val p = prevScene
+            if (p != null && DocumentDetector.signatureDistance(scene, p) < SCENE_STEADY) sceneSteadyMs += dt else sceneSteadyMs = 0L
+            prevScene = scene
+            lastScene = scene
+            val c = capturedScene
+            if (c != null && DocumentDetector.signatureDistance(scene, c) > SCENE_CHANGED) capturedScene = null
+        }
+
+        if (capturingSince == 0L && scene != null && capturedScene == null && capturedSig == null) {
+            val noDoc = quad == null && anchor == null
+            // Held still but no (stable) outline: capture anyway, crop on the full-res photo.
+            val needed = if (noDoc) FALLBACK_MILLIS else FALLBACK_MILLIS + 600
+            if (autoEnabled && sceneSteadyMs >= needed) {
+                capturingSince = now
+                return TrackerState(anchor, CapturePhase.CAPTURING, 1f) to true
+            }
+            if (noDoc && sceneSteadyMs > 300) {
+                val p = (sceneSteadyMs.toFloat() / needed).coerceIn(0f, 1f)
+                return TrackerState(null, CapturePhase.SEARCHING, if (autoEnabled) p else 0f) to false
+            }
+        }
 
         if (quad == null) {
             if (lostSince == 0L) lostSince = now
@@ -133,7 +167,11 @@ class AutoCaptureTracker(
     fun onCaptured(success: Boolean) {
         capturingSince = 0L
         progressMs = 0L
-        if (success) capturedSig = lastSig
+        sceneSteadyMs = 0L
+        if (success) {
+            capturedSig = if (anchor != null) lastSig else null
+            capturedScene = lastScene
+        }
     }
 
     @Synchronized
@@ -145,5 +183,14 @@ class AutoCaptureTracker(
     fun reset() {
         anchor = null; progressMs = 0L; lastFrameAt = 0L; lostSince = 0L; outliers = 0
         outlierQuad = null; capturingSince = 0L; capturedSig = null
+        sceneSteadyMs = 0L; prevScene = null; lastScene = null; capturedScene = null
+    }
+
+    private companion object {
+        /** Mean abs difference (0..255) of the scene thumbnail between frames that counts as still. */
+        const val SCENE_STEADY = 4.0
+        /** Scene difference vs. the last capture that re-arms the fallback. */
+        const val SCENE_CHANGED = 16.0
+        const val FALLBACK_MILLIS = 1800L
     }
 }

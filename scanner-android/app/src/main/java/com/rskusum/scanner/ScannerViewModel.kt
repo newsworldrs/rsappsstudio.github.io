@@ -117,7 +117,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         Images.saveJpeg(photo, file, 95)
         val gray = Images.toGrayMat(photo)
         val quad = try {
-            val detected = DocumentDetector.detect(gray, 640)
+            // The still is far sharper than preview frames: try two scales before giving up.
+            val detected = DocumentDetector.detect(gray, 640, prev = hint) ?: DocumentDetector.detect(gray, 1000, prev = hint)
             when {
                 detected != null -> DocumentDetector.refine(gray, detected)
                 hint != null -> DocumentDetector.refine(gray, hint)
