@@ -18,6 +18,7 @@ enum class ScanFilter(val label: String) {
     GRAYSCALE("Grayscale"),
     BW("B&W"),
     WHITEBOARD("Whiteboard"),
+    NO_SHADOW("No shadow"),
 }
 
 /**
@@ -38,6 +39,14 @@ object ImageEnhancer {
             n.release()
             saturate(s, 1.08)
             sharpen(s, 0.3)
+            s
+        }
+        ScanFilter.NO_SHADOW -> {
+            // Finer, deeper illumination model that follows hard shadow edges (phone/hand
+            // shadows) and lifts even dark shade to paper white; colours and contrast untouched.
+            val n = normalize(rgb, kernelDiv = 45, floor = 0.3)
+            val s = stretch(n, 0.002, 252.0)
+            n.release()
             s
         }
         ScanFilter.WHITEBOARD -> {
@@ -72,32 +81,41 @@ object ImageEnhancer {
     // ---------------------------------------------------------------------------------------
 
     /** Divide by estimated background illumination. */
-    private fun normalize(rgb: Mat): Mat {
+    private fun normalize(rgb: Mat, kernelDiv: Int = 25, floor: Double = 0.55): Mat {
+        val bgFull = estimateBackground(rgb, kernelDiv, floor)
+        val out = Mat()
+        Core.divide(rgb, bgFull, out, 255.0)
+        bgFull.release()
+        return out
+    }
+
+    /**
+     * Full-size estimate of the bare paper colour under the content (text removed by a large
+     * dilation + median). Large dark printed areas (photos, filled boxes, dark covers) must not be
+     * mistaken for shadow, so the estimate never drops below [floor] x the brightest paper level.
+     */
+    fun estimateBackground(rgb: Mat, kernelDiv: Int = 25, floor: Double = 0.55): Mat {
         val w = rgb.cols()
         val h = rgb.rows()
         val s = min(1.0, 800.0 / max(w, h))
         val small = Mat()
         Imgproc.resize(rgb, small, Size(w * s, h * s), 0.0, 0.0, Imgproc.INTER_AREA)
-        val k = max(5, (max(small.cols(), small.rows()) / 25) or 1)
+        val k = max(5, (max(small.cols(), small.rows()) / kernelDiv) or 1)
         val bg = Mat()
         Imgproc.dilate(small, bg, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble())))
         Imgproc.medianBlur(bg, bg, 21)
-        // Large dark printed areas (photos, filled boxes, dark covers) must not be mistaken for
-        // shadow: never assume the paper is darker than ~55% of the brightest paper level.
         val chans = ArrayList<Mat>()
         Core.split(bg, chans)
         for (c in chans) {
             val paper = percentile(c, 0.95)
-            Core.max(c, org.opencv.core.Scalar(paper * 0.55), c)
+            Core.max(c, org.opencv.core.Scalar(paper * floor), c)
         }
         Core.merge(chans, bg)
         chans.forEach { it.release() }
         val bgFull = Mat()
         Imgproc.resize(bg, bgFull, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
-        val out = Mat()
-        Core.divide(rgb, bgFull, out, 255.0)
-        small.release(); bg.release(); bgFull.release()
-        return out
+        small.release(); bg.release()
+        return bgFull
     }
 
     /** Linear levels: black point at [lowPercentile] of luminance, white point at [white]. */

@@ -34,6 +34,7 @@ import kotlinx.coroutines.withContext
 import org.opencv.core.Core
 import org.opencv.core.Mat
 import org.opencv.core.Rect
+import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -60,9 +61,30 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     var autoCapture by mutableStateOf(true)
 
     fun selectMode(m: ScanMode) {
+        if (m != mode) resetIdCard()
         mode = m
         if (orientation != com.rskusum.scanner.data.FrameOrientation.FREE) orientation = m.defaultOrientation
     }
+
+    // --- ID card: front, then back, both on one page ---------------------------------------
+    enum class IdStep { FRONT, BACK, DONE }
+
+    /** Front side captured in ID-card mode, waiting for the back. */
+    private var idFront: Page? = null
+    var idStep by mutableStateOf(IdStep.FRONT)
+        private set
+
+    private fun resetIdCard() {
+        idFront = null
+        idStep = IdStep.FRONT
+    }
+
+    /** False when the current mode must not take more photos (ID card already has both sides). */
+    val captureAllowed: Boolean get() = !(mode == ScanMode.ID_CARD && idStep == IdStep.DONE)
+
+    /** Fingerprints of all pages in this session, for live duplicate prevention in the camera. */
+    val sessionFingerprints: List<FloatArray>
+        get() = pages.mapNotNull { it.fingerprint } + listOfNotNull(idFront?.fingerprint)
 
     /** The on-screen guide frame (normalized), or null in free-detection mode. */
     val guideFrame: Quad?
@@ -99,12 +121,36 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * [hint] is the live-preview quad, used if the still photo is ambiguous.
      */
     fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null) {
+        if (!captureAllowed) {
+            photo.recycle()
+            _messages.tryEmit("ID card complete - open the scan to review it")
+            return
+        }
         processingCaptures++
         val mode = mode
         val smart = aiAssist
         viewModelScope.launch {
             try {
                 val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame) }
+                if (mode == ScanMode.ID_CARD && created.size == 1) {
+                    val front = idFront
+                    if (front == null) {
+                        idFront = created[0]
+                        idStep = IdStep.BACK
+                        pages.add(created[0])
+                        launchRender(created[0])
+                        _messages.tryEmit("Front captured - now flip the card and scan the BACK side")
+                    } else {
+                        val combined = withContext(Dispatchers.Default) { combineIdCard(front, created[0]) }
+                        pages.remove(front)
+                        pages.add(combined)
+                        launchRender(combined)
+                        idFront = null
+                        idStep = IdStep.DONE
+                        _messages.tryEmit("ID card complete - front and back on one page")
+                    }
+                    return@launch
+                }
                 pages.addAll(created)
                 created.forEach { p -> launchRender(p, pickSmartFilter = smart) }
             } catch (r: Rejected) {
@@ -169,12 +215,13 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
             // Duplicate / empty-surface check against the most recent page.
             val fp = DocumentDetector.fingerprint(gray, quad)
-            if (DocumentDetector.isBlank(fp) && sidesFound == 0) {
-                throw Rejected("No document found - place a document inside the frame")
-            }
-            val last = pages.lastOrNull()?.fingerprint
-            if (last != null && DocumentDetector.fingerprintSimilarity(fp, last) >= DUPLICATE_SIMILARITY) {
-                throw Rejected("Same page as the last scan - place another document")
+            val blank = DocumentDetector.isBlank(fp)
+            // In frame mode a real document shows at least two of its edges near the frame.
+            val noDocument = if (frame != null) sidesFound == 0 || (sidesFound <= 1 && blank) else sidesFound == 0 && blank
+            if (noDocument) throw Rejected("No document found - place a document inside the frame")
+            // Duplicate check against every page already scanned in this session.
+            if (sessionFingerprints.any { DocumentDetector.fingerprintSimilarity(fp, it) >= DUPLICATE_SIMILARITY }) {
+                throw Rejected("This page is already scanned - place another document")
             }
 
             return if (mode.splitBook) {
@@ -192,6 +239,39 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             gray.release()
             photo.recycle()
         }
+    }
+
+    /**
+     * Puts the flattened front and back of an ID card on one A4 page (300 dpi, card at its real
+     * 85.6 x 54 mm size, front above back) and returns it as a new page.
+     */
+    private fun combineIdCard(front: Page, back: Page): Page {
+        val a4w = 2480; val a4h = 3508
+        val cardW = 1011; val cardH = 638 // 85.6 x 54 mm at 300 dpi
+        val canvas = Mat(a4h, a4w, org.opencv.core.CvType.CV_8UC3, org.opencv.core.Scalar(250.0, 250.0, 250.0))
+        fun place(page: Page, top: Int) {
+            val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return
+            val rgb = Images.toRgbMat(bmp)
+            bmp.recycle()
+            var card = DocumentDetector.warp(rgb, page.quad, page.forcedAspect)
+            rgb.release()
+            if (card.rows() > card.cols()) { val r = Mat(); Core.rotate(card, r, Core.ROTATE_90_COUNTERCLOCKWISE); card.release(); card = r }
+            val sized = Mat()
+            Imgproc.resize(card, sized, org.opencv.core.Size(cardW.toDouble(), cardH.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+            card.release()
+            val left = (a4w - cardW) / 2
+            sized.copyTo(canvas.submat(Rect(left, top, cardW, cardH)))
+            sized.release()
+        }
+        place(front, 420)
+        place(back, 420 + cardH + 280)
+        val file = File(sessionDir, "idcard_${System.currentTimeMillis()}.jpg")
+        val out = Images.toBitmap(canvas)
+        canvas.release()
+        Images.saveJpeg(out, file, 95)
+        out.recycle()
+        // The composite is already flat: full-image quad, no forced aspect, keep original colours.
+        return Page(file, Quad.FULL, ScanFilter.AUTO, null, fingerprint = back.fingerprint)
     }
 
     private fun launchRender(page: Page, pickSmartFilter: Boolean = false) {
@@ -235,6 +315,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val filter = if (pickSmartFilter) SmartFilter.choose(flat) else page.filter
         val enhanced = ImageEnhancer.apply(flat, filter)
         flat.release()
+        com.rskusum.scanner.vision.Eraser.apply(enhanced, page.erasures.toList())
         val out = Images.toBitmap(enhanced)
         enhanced.release()
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
@@ -290,11 +371,22 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun rotate(page: Page) {
         page.rotation = (page.rotation + 90) % 360
+        // Eraser strokes live on the finished page: turn them with it.
+        val turned = page.erasures.map { it.rotatedCw() }
+        page.erasures.clear(); page.erasures.addAll(turned)
         launchRender(page)
     }
 
     fun setQuad(page: Page, quad: Quad) {
+        if (quad != page.quad) page.erasures.clear() // strokes no longer line up with a new crop
         page.quad = quad
+        launchRender(page)
+    }
+
+    /** Eraser screen "Done": store the strokes and re-render the page. */
+    fun setErasures(page: Page, strokes: List<com.rskusum.scanner.vision.EraseStroke>) {
+        page.erasures.clear()
+        page.erasures.addAll(strokes)
         launchRender(page)
     }
 
@@ -336,6 +428,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         sessionDir.listFiles()?.forEach { it.delete() }
         documentName = defaultName()
         tracker.reset()
+        resetIdCard()
     }
 
     val isRendering: Boolean get() = processingCaptures > 0 || importing || pages.any { it.rendering }
@@ -391,7 +484,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val TAG = "ScannerVM"
-        const val MAX_PHOTO_SIDE = 4200
+        const val MAX_PHOTO_SIDE = 4800
         /** Fingerprint correlation above which a capture counts as the same page (tested: same >= 0.976, different <= 0.75). */
         const val DUPLICATE_SIMILARITY = 0.88
     }

@@ -35,4 +35,6 @@ class Page(
     var rendering by mutableStateOf(true)
     /** Bumped every time the rendered output changes, to invalidate cached images in the UI. */
     var version by mutableIntStateOf(0)
+    /** Eraser strokes, in the coordinates of the finished (rotated) page. */
+    val erasures = androidx.compose.runtime.mutableStateListOf<com.rskusum.scanner.vision.EraseStroke>()
 }

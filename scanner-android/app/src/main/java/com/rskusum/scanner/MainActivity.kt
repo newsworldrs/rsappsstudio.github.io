@@ -22,7 +22,7 @@ import com.rskusum.scanner.ui.crop.CropScreen
 import com.rskusum.scanner.ui.home.HomeScreen
 import com.rskusum.scanner.ui.review.ReviewScreen
 
-enum class Screen { CAMERA, REVIEW, CROP, HOME }
+enum class Screen { CAMERA, REVIEW, CROP, ERASE, HOME }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,13 +40,13 @@ class MainActivity : ComponentActivity() {
                 var reviewIndex by rememberSaveable { mutableStateOf(0) }
 
                 // Process death loses the in-memory session; never land on an empty editor.
-                if ((screen == Screen.REVIEW || screen == Screen.CROP) && vm.pages.isEmpty() && !vm.isRendering) {
+                if ((screen == Screen.REVIEW || screen == Screen.CROP || screen == Screen.ERASE) && vm.pages.isEmpty() && !vm.isRendering) {
                     screen = Screen.CAMERA
                 }
 
                 BackHandler(enabled = screen != Screen.CAMERA || vm.pages.isNotEmpty()) {
                     screen = when (screen) {
-                        Screen.CROP -> Screen.REVIEW
+                        Screen.CROP, Screen.ERASE -> Screen.REVIEW
                         Screen.REVIEW -> Screen.CAMERA
                         Screen.HOME -> Screen.CAMERA
                         Screen.CAMERA -> Screen.REVIEW
@@ -70,10 +70,16 @@ class MainActivity : ComponentActivity() {
                             onPageChanged = { reviewIndex = it },
                             onAddPage = { screen = Screen.CAMERA },
                             onCrop = { cropIndex = it; screen = Screen.CROP },
+                            onErase = { cropIndex = it; screen = Screen.ERASE },
                             onSaved = { screen = Screen.HOME },
                             onDiscard = { vm.discardSession(); screen = Screen.CAMERA },
                         )
                         Screen.CROP -> CropScreen(
+                            vm = vm,
+                            page = vm.pages.getOrNull(cropIndex),
+                            onDone = { screen = Screen.REVIEW },
+                        )
+                        Screen.ERASE -> com.rskusum.scanner.ui.erase.EraseScreen(
                             vm = vm,
                             page = vm.pages.getOrNull(cropIndex),
                             onDone = { screen = Screen.REVIEW },
