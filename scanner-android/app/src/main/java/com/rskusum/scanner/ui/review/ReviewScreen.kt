@@ -322,6 +322,19 @@ private fun PageView(page: Page) {
             )
         }
         if (page.rendering || image == null) CircularProgressIndicator(color = ScanColors.Accent)
+        if (page.idSide >= 0) {
+            Text(
+                if (page.idSide == 0) "ID card - Front" else "ID card - Back",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ScanColors.Accent)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+            )
+        }
     }
 }
 

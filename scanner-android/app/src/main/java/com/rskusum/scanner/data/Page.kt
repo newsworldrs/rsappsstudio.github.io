@@ -25,6 +25,10 @@ class Page(
     val frame: Quad? = null,
     /** Content fingerprint of the page at capture, for duplicate detection. */
     val fingerprint: FloatArray? = null,
+    /** ID card sides share a group id; they are edited separately and combined on one PDF page. */
+    val idGroup: String? = null,
+    /** 0 = front, 1 = back (only for ID card pages). */
+    val idSide: Int = -1,
     val id: String = UUID.randomUUID().toString(),
 ) {
     var quad by mutableStateOf(quad)

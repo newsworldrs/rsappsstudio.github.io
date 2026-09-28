@@ -131,23 +131,24 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val smart = aiAssist
         viewModelScope.launch {
             try {
-                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame) }
-                if (mode == ScanMode.ID_CARD && created.size == 1) {
-                    val front = idFront
+                val isId = mode == ScanMode.ID_CARD
+                val front = idFront
+                val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
+                val idSide = if (isId) (if (front == null) 0 else 1) else -1
+                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide) }
+                if (isId && created.size == 1) {
+                    // Front and back stay separate pages (each can be cropped/edited); they are
+                    // placed together on one A4 page only when the PDF is created.
+                    pages.add(created[0])
+                    launchRender(created[0])
                     if (front == null) {
                         idFront = created[0]
                         idStep = IdStep.BACK
-                        pages.add(created[0])
-                        launchRender(created[0])
                         _messages.tryEmit("Front captured - now flip the card and scan the BACK side")
                     } else {
-                        val combined = withContext(Dispatchers.Default) { combineIdCard(front, created[0]) }
-                        pages.remove(front)
-                        pages.add(combined)
-                        launchRender(combined)
                         idFront = null
                         idStep = IdStep.DONE
-                        _messages.tryEmit("ID card complete - front and back on one page")
+                        _messages.tryEmit("ID card complete - both sides will be placed on one PDF page")
                     }
                     return@launch
                 }
@@ -182,7 +183,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     /** Thrown when a capture is rejected (duplicate / nothing to scan); message is shown to the user. */
     private class Rejected(message: String) : Exception(message)
 
-    private fun createPages(photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?): List<Page> {
+    private fun createPages(
+        photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
+        idGroup: String? = null, idSide: Int = -1,
+    ): List<Page> {
         val file = File(sessionDir, "${System.currentTimeMillis()}_${(0..9999).random()}.jpg")
         Images.saveJpeg(photo, file, 95)
         val gray = Images.toGrayMat(photo)
@@ -230,7 +234,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 1, frame = frame, fingerprint = fp),
                 )
             } else {
-                listOf(Page(file, quad, mode.defaultFilter, mode.forcedAspect, frame = frame, fingerprint = fp))
+                listOf(Page(file, quad, mode.defaultFilter, mode.forcedAspect, frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide))
             }
         } catch (r: Rejected) {
             file.delete()
@@ -242,36 +246,50 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Puts the flattened front and back of an ID card on one A4 page (300 dpi, card at its real
-     * 85.6 x 54 mm size, front above back) and returns it as a new page.
+     * PDF page for an ID card: the edited (rendered) front and back placed on one A4 page at
+     * 300 dpi, front above back, each 10% larger than the real 85.6 x 54 mm card.
      */
-    private fun combineIdCard(front: Page, back: Page): Page {
+    private fun composeIdPage(sides: List<Page>): File? {
         val a4w = 2480; val a4h = 3508
-        val cardW = 1011; val cardH = 638 // 85.6 x 54 mm at 300 dpi
-        val canvas = Mat(a4h, a4w, org.opencv.core.CvType.CV_8UC3, org.opencv.core.Scalar(250.0, 250.0, 250.0))
-        fun place(page: Page, top: Int) {
-            val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return
-            val rgb = Images.toRgbMat(bmp)
+        val cardW = (1011 * 1.1).toInt(); val cardH = (638 * 1.1).toInt()
+        val gap = 260
+        val canvas = Mat(a4h, a4w, org.opencv.core.CvType.CV_8UC3, org.opencv.core.Scalar(255.0, 255.0, 255.0))
+        var top = (a4h - (cardH * 2 + gap)) / 3 // a little above centre, like a photocopy
+        var placed = 0
+        for (page in sides.sortedBy { it.idSide }) {
+            val f = page.processedFile ?: continue
+            val bmp = Images.decodeFile(f, MAX_PHOTO_SIDE) ?: continue
+            var card = Images.toRgbMat(bmp)
             bmp.recycle()
-            var card = DocumentDetector.warp(rgb, page.quad, page.forcedAspect)
-            rgb.release()
             if (card.rows() > card.cols()) { val r = Mat(); Core.rotate(card, r, Core.ROTATE_90_COUNTERCLOCKWISE); card.release(); card = r }
             val sized = Mat()
             Imgproc.resize(card, sized, org.opencv.core.Size(cardW.toDouble(), cardH.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
             card.release()
-            val left = (a4w - cardW) / 2
-            sized.copyTo(canvas.submat(Rect(left, top, cardW, cardH)))
+            sized.copyTo(canvas.submat(Rect((a4w - cardW) / 2, top, cardW, cardH)))
             sized.release()
+            top += cardH + gap
+            placed++
         }
-        place(front, 420)
-        place(back, 420 + cardH + 280)
-        val file = File(sessionDir, "idcard_${System.currentTimeMillis()}.jpg")
+        if (placed == 0) { canvas.release(); return null }
+        val file = File(renderDir, "idpage_${System.nanoTime()}.jpg")
         val out = Images.toBitmap(canvas)
         canvas.release()
         Images.saveJpeg(out, file, 95)
         out.recycle()
-        // The composite is already flat: full-image quad, no forced aspect, keep original colours.
-        return Page(file, Quad.FULL, ScanFilter.AUTO, null, fingerprint = back.fingerprint)
+        return file
+    }
+
+    /** Page images for the PDF, in order; ID card sides are merged onto one page. */
+    private fun pdfPageFiles(): List<File> {
+        val out = ArrayList<File>()
+        val doneGroups = HashSet<String>()
+        for (p in pages) {
+            val g = p.idGroup
+            if (g == null) { p.processedFile?.let { out += it }; continue }
+            if (!doneGroups.add(g)) continue
+            composeIdPage(pages.filter { it.idGroup == g })?.let { out += it }
+        }
+        return out
     }
 
     private fun launchRender(page: Page, pickSmartFilter: Boolean = false) {
@@ -440,7 +458,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun savePdf(): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val files = pages.mapNotNull { it.processedFile }
+            val files = pdfPageFiles()
             require(files.isNotEmpty()) { "Nothing to save" }
             val pdf = store.savePdf(documentName, files, pdfQuality)
             val where = store.exportToDownloads(pdf)
