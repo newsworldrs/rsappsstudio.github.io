@@ -211,6 +211,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
     analyzer = remember {
         DocumentAnalyzer(
             tracker = vm.tracker,
+            edgeModel = com.rskusum.scanner.vision.EdgeModel.get(context),
             onState = vm::postCameraState,
             onAutoCapture = { mainExecutor.execute { capture(manual = false) } },
             onQr = { text -> mainExecutor.execute { if (qrText == null) qrText = text } },
@@ -373,8 +374,10 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
             val analysis = ImageAnalysis.Builder()
                 // Higher than needed on purpose: the detector area-downsamples it, which averages
                 // away sensor noise that otherwise hides faint paper edges.
-                .setResolutionSelector(selector(Size(1280, 960), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
+                .setResolutionSelector(selector(Size(960, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                // Colour frames: the learned edge model needs RGB, not just luminance.
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .build()
             analysis.setAnalyzer(analysisExecutor, analyzer)
 
@@ -509,11 +512,12 @@ private fun Diagnostics(analyzer: DocumentAnalyzer, modifier: Modifier = Modifie
             val fps = count - lastCount
             lastCount = count
             val err = com.rskusum.scanner.ScannerApp.openCvError ?: analyzer.lastError
+                ?: com.rskusum.scanner.vision.EdgeModel.loadError
             isError = err != null || (fps == 0L && ticks >= 3 && !analyzer.paused && !analyzer.qrMode)
             text = when {
                 err != null -> "Detector error: $err"
                 isError -> "No camera frames reaching the detector"
-                else -> "$fps fps · ${analyzer.frameSize}"
+                else -> "$fps fps · ${analyzer.frameSize} · ${analyzer.lastSource}"
             }
         }
     }

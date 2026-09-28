@@ -1,0 +1,8 @@
+doc_edges_hed_lite.tflite
+
+Document edge detection model (HED-lite, quantized) from SmartCropper
+https://github.com/pqpo/SmartCropper (smartcropperlib/src/main/assets/models/hed_lite_model_quantize.tflite)
+Copyright 2017 pqpo. Licensed under the Apache License, Version 2.0
+http://www.apache.org/licenses/LICENSE-2.0
+
+Model architecture and training approach: https://github.com/fengjian0106/hed-tutorial-for-document-scanning

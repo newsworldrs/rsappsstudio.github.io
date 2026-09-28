@@ -39,6 +39,10 @@ android {
     packaging {
         jniLibs.useLegacyPackaging = false
     }
+    androidResources {
+        // The model is memory-mapped straight from the APK.
+        noCompress += "tflite"
+    }
 }
 
 dependencies {
@@ -68,4 +72,7 @@ dependencies {
     // Computer vision: document edge detection, perspective correction, enhancement, QR.
     // No ML Kit - the entire UI and pipeline are ours.
     implementation("org.opencv:opencv:4.12.0")
+
+    // On-device document edge model (HED-lite). Plain TFLite interpreter, no ML Kit.
+    implementation("org.tensorflow:tensorflow-lite:2.16.1")
 }

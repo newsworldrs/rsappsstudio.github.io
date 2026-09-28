@@ -95,38 +95,76 @@ object DocumentDetector {
             Imgproc.dilate(mag, mag, k3)
             mag.get(0, 0, magArr)
             val supportThr = max(lo, 2.5 * med)
-
-            var best: Array<Point>? = null
-            var bestScore = 0.0
-            for (q0 in candidates) {
-                val q = orderPoints(q0)
-                val sides = sideSupport(q, magArr, w, h, supportThr)
-                debugLog?.invoke(
-                    "cand area=%.3f sides=%s pts=%s".format(
-                        polygonArea(q) / area, sides?.joinToString { "%.2f".format(it) } ?: "frame",
-                        q.joinToString { "(%.0f,%.0f)".format(it.x, it.y) },
-                    )
-                )
-                if (sides == null) continue
-                val mean = sides.average()
-                val weakest = sides.min()
-                if (weakest < 0.55 || mean < 0.7) continue
-                // The weakest side dominates: a side overshooting the real corner loses support.
-                var score = polygonArea(q) / area * mean * mean * weakest * weakest
-                if (prev != null) {
-                    val p = prev.points
-                    val d = q.indices.maxOf { i -> hypot(q[i].x / w - p[i].x, q[i].y / h - p[i].y) }
-                    if (d < 0.06) score *= 1.4
-                }
-                if (score > bestScore) { bestScore = score; best = q }
-            }
-            val q = best ?: return null
-            fun n(pt: Point) = NPoint((pt.x / w).toFloat().coerceIn(0f, 1f), (pt.y / h).toFloat().coerceIn(0f, 1f))
-            return Quad(n(q[0]), n(q[1]), n(q[2]), n(q[3]))
+            return pickBest(candidates, magArr, w, h, supportThr, prev)
         } finally {
             small.release(); closed.release(); blur.release(); gx.release(); gy.release(); mag.release()
             bin.release(); edges.release()
         }
+    }
+
+    /** Edge-map value above which the learned model reports a boundary. */
+    private const val EDGE_PROB = 0.2
+
+    /**
+     * Finds the document in the output of [EdgeModel] (256x256 boundary strength). The model
+     * already suppresses text, fabric patterns and noise, so the same geometric search as
+     * [detect] (region contours + line pairs, scored by per-side support) becomes very reliable.
+     */
+    fun detectFromEdgeMap(prob: Mat, prev: Quad? = null): Quad? {
+        val w = prob.cols()
+        val h = prob.rows()
+        val bin = Mat()
+        val dil = Mat()
+        try {
+            Imgproc.threshold(prob, bin, EDGE_PROB, 255.0, Imgproc.THRESH_BINARY)
+            bin.convertTo(bin, CvType.CV_8U)
+            val candidates = ArrayList<Array<Point>>()
+            collectLineQuads(bin, w, h, candidates)
+            val closedEdges = Mat()
+            Imgproc.dilate(bin, closedEdges, rect(3))
+            Imgproc.rectangle(closedEdges, Point(0.0, 0.0), Point(w - 1.0, h - 1.0), Scalar(255.0), 1)
+            collectQuads(closedEdges, w.toDouble() * h, candidates)
+            closedEdges.release()
+            if (candidates.isEmpty()) return null
+            Imgproc.dilate(prob, dil, rect(3))
+            val arr = FloatArray(w * h)
+            dil.get(0, 0, arr)
+            return pickBest(candidates, arr, w, h, EDGE_PROB, prev)
+        } finally {
+            bin.release(); dil.release()
+        }
+    }
+
+    /** Scores candidates by area x per-side edge support; the weakest side dominates. */
+    private fun pickBest(candidates: List<Array<Point>>, support: FloatArray, w: Int, h: Int, thr: Double, prev: Quad?): Quad? {
+        val area = w.toDouble() * h
+        var best: Array<Point>? = null
+        var bestScore = 0.0
+        for (q0 in candidates) {
+            val q = orderPoints(q0)
+            val sides = sideSupport(q, support, w, h, thr)
+            debugLog?.invoke(
+                "cand area=%.3f sides=%s pts=%s".format(
+                    polygonArea(q) / area, sides?.joinToString { "%.2f".format(it) } ?: "frame",
+                    q.joinToString { "(%.0f,%.0f)".format(it.x, it.y) },
+                )
+            )
+            if (sides == null) continue
+            val mean = sides.average()
+            val weakest = sides.min()
+            if (weakest < 0.55 || mean < 0.7) continue
+            // A side overshooting the real corner loses support, so it can't win on area alone.
+            var score = polygonArea(q) / area * mean * mean * weakest * weakest
+            if (prev != null) {
+                val p = prev.points
+                val d = q.indices.maxOf { i -> hypot(q[i].x / w - p[i].x, q[i].y / h - p[i].y) }
+                if (d < 0.06) score *= 1.4
+            }
+            if (score > bestScore) { bestScore = score; best = q }
+        }
+        val q = best ?: return null
+        fun n(pt: Point) = NPoint((pt.x / w).toFloat().coerceIn(0f, 1f), (pt.y / h).toFloat().coerceIn(0f, 1f))
+        return Quad(n(q[0]), n(q[1]), n(q[2]), n(q[3]))
     }
 
     /**
@@ -146,7 +184,17 @@ object DocumentDetector {
             val k = max(3, (max(w, h) / 60).toInt() or 1)
             Imgproc.morphologyEx(small, closed, Imgproc.MORPH_CLOSE, rect(k))
             Imgproc.GaussianBlur(closed, blur, Size(5.0, 5.0), 0.0)
-            Imgproc.Canny(blur, edges, 15.0, 45.0)
+            // Contrast-adaptive thresholds (faint paper edges on white tables still register).
+            val gx = Mat(); val gy = Mat(); val mag = Mat()
+            Imgproc.Sobel(blur, gx, CvType.CV_32F, 1, 0, 3)
+            Imgproc.Sobel(blur, gy, CvType.CV_32F, 0, 1, 3)
+            Core.magnitude(gx, gy, mag)
+            val magArr = FloatArray(small.cols() * small.rows())
+            mag.get(0, 0, magArr)
+            gx.release(); gy.release(); mag.release()
+            val med = percentile(magArr, 0.5)
+            val hi = max(3.5 * med, 10.0)
+            Imgproc.Canny(blur, edges, max(0.45 * hi, 1.5 * med), hi, 3, true)
 
             val pts = quad.points.map { Point(it.x * w, it.y * h) }
             val band = max(4, (0.012 * hypot(w, h)).toInt())

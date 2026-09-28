@@ -117,8 +117,17 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         Images.saveJpeg(photo, file, 95)
         val gray = Images.toGrayMat(photo)
         val quad = try {
-            // The still is far sharper than preview frames: try two scales before giving up.
-            val detected = DocumentDetector.detect(gray, 640, prev = hint) ?: DocumentDetector.detect(gray, 1000, prev = hint)
+            // Learned edge model on the sharp still first, then the classic detector at two scales.
+            val model = com.rskusum.scanner.vision.EdgeModel.get(getApplication())
+            val fromModel = model?.let {
+                val rgb = Images.toRgbMat(photo)
+                val prob = it.run(rgb)
+                rgb.release()
+                DocumentDetector.detectFromEdgeMap(prob, hint).also { prob.release() }
+            }
+            val detected = fromModel
+                ?: DocumentDetector.detect(gray, 640, prev = hint)
+                ?: DocumentDetector.detect(gray, 1000, prev = hint)
             when {
                 detected != null -> DocumentDetector.refine(gray, detected)
                 hint != null -> DocumentDetector.refine(gray, hint)
