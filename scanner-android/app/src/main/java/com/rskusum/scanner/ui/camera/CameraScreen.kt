@@ -257,6 +257,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
         analyzer.qrMode = qrMode
         analyzer.paused = qrText != null
         analyzer.frame = if (qrMode) null else vm.guideFrame
+        analyzer.knownPages = vm.sessionFingerprints
+        analyzer.captureAllowed = vm.captureAllowed
         holder.capture?.flashMode = flash.mode
     }
 
@@ -264,6 +266,13 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
         if (toast != null) {
             kotlinx.coroutines.delay(2200)
             toast = null
+        }
+    }
+    // ID card: once both sides are on the page, go straight to review.
+    LaunchedEffect(vm.idStep) {
+        if (vm.mode == ScanMode.ID_CARD && vm.idStep == ScannerViewModel.IdStep.DONE) {
+            kotlinx.coroutines.delay(900)
+            onOpenReview()
         }
     }
     // Pipeline messages, e.g. "Same page as the last scan - place another document".
@@ -310,32 +319,53 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                     val guide = vm.guideFrame
                     when {
                         qrMode -> QrFrame()
-                        guide != null -> GuideFrameOverlay(guide, state.aligned)
+                        guide != null -> GuideFrameOverlay(guide, state.aligned, spine = vm.mode == ScanMode.BOOK)
                         else -> QuadOverlay(state.quad, state.phase)
                     }
                 } else {
                     PermissionRationale { permissionLauncher.launch(Manifest.permission.CAMERA) }
                 }
 
+                val words = modeWords(vm.mode, vm.idStep)
                 val hint = when {
                     !granted -> null
                     qrMode -> "Point at a QR code"
+                    !vm.captureAllowed -> words.done
                     state.phase == CapturePhase.CAPTURING -> "Capturing…"
                     state.guidance != null -> state.guidance
                     vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> "Processing…"
                     else -> when (state.phase) {
                         CapturePhase.SEARCHING -> when {
                             vm.autoCapture && state.progress > 0f -> "Hold still to capture"
-                            vm.guideFrame != null -> "Place the page inside the frame"
-                            else -> "Looking for document"
+                            vm.guideFrame != null -> words.place
+                            else -> words.looking
                         }
                         CapturePhase.TOO_SMALL -> "Move closer"
                         CapturePhase.HOLD_STEADY -> if (vm.autoCapture) "Hold steady" else "Tap the shutter to capture"
                         CapturePhase.CAPTURING -> "Capturing…"
-                        CapturePhase.NEXT_PAGE -> "Ready for next page"
+                        CapturePhase.NEXT_PAGE -> words.next
                     }
                 }
                 if (hint != null) HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
+                if (granted && !qrMode && vm.mode == ScanMode.ID_CARD) {
+                    val step = when (vm.idStep) {
+                        ScannerViewModel.IdStep.FRONT -> "Front side  1 / 2"
+                        ScannerViewModel.IdStep.BACK -> "Back side  2 / 2"
+                        ScannerViewModel.IdStep.DONE -> "Both sides captured"
+                    }
+                    Text(
+                        step,
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 58.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(ScanColors.Accent)
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
                 toast?.let { HintChip(it, Modifier.align(Alignment.Center)) }
                 if (granted && !qrMode) {
                     OrientationToggle(
@@ -389,7 +419,13 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 vm.autoCapture = !vm.autoCapture
                 toast = if (vm.autoCapture) "Auto-capture on" else "Auto-capture off"
             },
-            onShutter = { if (!qrMode) capture(manual = true) },
+            onShutter = {
+                when {
+                    qrMode -> Unit
+                    !vm.captureAllowed -> toast = "ID card complete - tap the thumbnail to review"
+                    else -> capture(manual = true)
+                }
+            },
             onFlash = { flash = flash.next() },
             onThumbnail = { if (vm.pages.isNotEmpty() || vm.processingCaptures > 0) onOpenReview() },
         )
@@ -433,7 +469,13 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
 
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                .setResolutionSelector(selector(Size(4032, 3024), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER))
+                // Highest 4:3 resolution the camera offers: sharper text in the final scan.
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                        .build()
+                )
                 .setFlashMode(flashMode)
                 .build()
 
@@ -526,12 +568,32 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
     }
 }
 
+/** Mode-specific wording for the camera guidance. */
+private class ModeWords(val place: String, val looking: String, val next: String, val done: String)
+
+private fun modeWords(mode: ScanMode, idStep: ScannerViewModel.IdStep): ModeWords = when (mode) {
+    ScanMode.DOCUMENT -> ModeWords("Place the page inside the frame", "Looking for document", "Ready for next page", "")
+    ScanMode.WHITEBOARD -> ModeWords("Fit the whiteboard inside the frame", "Looking for whiteboard", "Ready for the next board", "")
+    ScanMode.BOOK -> ModeWords(
+        "Open the book - align its spine with the centre line", "Looking for an open book",
+        "Turn the page", "",
+    )
+    ScanMode.BOOK_COVER -> ModeWords("Fit the book cover inside the frame", "Looking for the book cover", "Ready for the next cover", "")
+    ScanMode.BUSINESS_CARD -> ModeWords("Place the business card inside the frame", "Looking for a business card", "Ready for the next card", "")
+    ScanMode.ID_CARD -> when (idStep) {
+        ScannerViewModel.IdStep.FRONT -> ModeWords("Place the FRONT of the ID card in the frame", "Looking for the ID card front", "Flip the card", "")
+        ScannerViewModel.IdStep.BACK -> ModeWords("Flip the card - place the BACK side in the frame", "Looking for the ID card back", "Flip the card", "")
+        ScannerViewModel.IdStep.DONE -> ModeWords("", "", "", "ID card complete - tap the thumbnail to review")
+    }
+}
+
 /**
  * Fixed document-shaped guide frame. Outside is dimmed; corner brackets turn green when the
  * live detection lines up with the frame. (The detection outline itself is only drawn in Free mode.)
+ * [spine]: Book mode's dashed centre line to align the book's spine with.
  */
 @Composable
-private fun GuideFrameOverlay(frame: Quad, aligned: Boolean) {
+private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = false) {
     val color = if (aligned) Color(0xFF34C759) else Color.White
     Canvas(Modifier.fillMaxSize()) {
         val l = frame.tl.x * size.width
@@ -559,6 +621,16 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean) {
         ).forEach { (p, sx, sy) ->
             drawLine(color, p, p + Offset(c * sx, 0f), sw, StrokeCap.Round)
             drawLine(color, p, p + Offset(0f, c * sy), sw, StrokeCap.Round)
+        }
+        if (spine) {
+            val x = (l + r) / 2
+            drawLine(
+                color, Offset(x, t + 8.dp.toPx()), Offset(x, b - 8.dp.toPx()), 2.5.dp.toPx(),
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14.dp.toPx(), 10.dp.toPx())),
+            )
+            // small book-spine markers at both ends
+            drawCircle(color, 5.dp.toPx(), Offset(x, t))
+            drawCircle(color, 5.dp.toPx(), Offset(x, b))
         }
     }
 }
