@@ -47,10 +47,10 @@ class DocumentAnalyzer(
                     }
                     return
                 }
-                val quad = DocumentDetector.detect(gray)
-                lastQuad = quad
+                val quad = DocumentDetector.detect(gray, prev = tracker.currentAnchor)
                 val sig = quad?.let { DocumentDetector.signature(gray, it) }
                 val (state, fire) = tracker.update(quad, sig, SystemClock.elapsedRealtime(), autoCapture)
+                lastQuad = state.quad
                 onState(state)
                 if (fire) onAutoCapture()
             } finally {

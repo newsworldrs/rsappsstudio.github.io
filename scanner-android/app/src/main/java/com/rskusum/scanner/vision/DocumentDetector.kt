@@ -38,7 +38,7 @@ object DocumentDetector {
      * @param gray 8-bit single channel image (upright).
      * @return quad in normalized coordinates, or null when no document is visible.
      */
-    fun detect(gray: Mat, maxDim: Int = 480): Quad? {
+    fun detect(gray: Mat, maxDim: Int = 480, prev: Quad? = null): Quad? {
         val scale = min(1.0, maxDim.toDouble() / max(gray.cols(), gray.rows()))
         val small = Mat()
         val closed = Mat()
