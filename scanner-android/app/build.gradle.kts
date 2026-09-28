@@ -39,6 +39,15 @@ android {
     packaging {
         jniLibs.useLegacyPackaging = false
     }
+    splits {
+        abi {
+            // Small APK for 64-bit ARM phones (practically all current devices) + a universal one.
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
+        }
+    }
     androidResources {
         // The model is memory-mapped straight from the APK.
         noCompress += "tflite"
