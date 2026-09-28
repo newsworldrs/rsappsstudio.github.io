@@ -44,7 +44,7 @@ object ImageEnhancer {
         ScanFilter.NO_SHADOW -> {
             // Finer, deeper illumination model that follows hard shadow edges (phone/hand
             // shadows) and lifts even dark shade to paper white; colours and contrast untouched.
-            val n = normalize(rgb, kernelDiv = 45, floor = 0.3)
+            val n = normalize(rgb, kernelDiv = 18, floor = 0.3)
             val s = stretch(n, 0.002, 252.0)
             n.release()
             s
@@ -102,8 +102,10 @@ object ImageEnhancer {
         Imgproc.resize(rgb, small, Size(w * s, h * s), 0.0, 0.0, Imgproc.INTER_AREA)
         val k = max(5, (max(small.cols(), small.rows()) / kernelDiv) or 1)
         val bg = Mat()
-        Imgproc.dilate(small, bg, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble())))
-        Imgproc.medianBlur(bg, bg, 21)
+        // Morphological closing (dilate then erode) removes text/ink smaller than the kernel but,
+        // unlike a plain dilation, keeps large brightness steps (hard shadow edges) in place.
+        Imgproc.morphologyEx(small, bg, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble())))
+        Imgproc.medianBlur(bg, bg, if (floor < 0.5) 9 else 21)
         val chans = ArrayList<Mat>()
         Core.split(bg, chans)
         for (c in chans) {

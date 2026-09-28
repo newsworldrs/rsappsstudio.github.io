@@ -39,22 +39,19 @@ object Eraser {
         val bg = ImageEnhancer.estimateBackground(rgb, kernelDiv = 25, floor = 0.8)
 
         if (Core.countNonZero(marks) > 0) {
-            // Text = dark AND neutral (black/grey print). Everything else under the brush -
-            // coloured pen, highlighter, light pencil, stains - becomes paper.
-            val gray = Mat(); Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
-            val bgGray = Mat(); Imgproc.cvtColor(bg, bgGray, Imgproc.COLOR_RGB2GRAY)
-            val hsv = Mat(); Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV)
-            val sat = Mat(); Core.extractChannel(hsv, sat, 1)
-            val darkThr = Mat(); Core.multiply(bgGray, Scalar(0.55), darkThr)
-            val dark = Mat(); Core.compare(gray, darkThr, dark, Core.CMP_LT)
-            val neutral = Mat(); Imgproc.threshold(sat, neutral, 70.0, 255.0, Imgproc.THRESH_BINARY_INV)
-            val text = Mat(); Core.bitwise_and(dark, neutral, text)
+            // Text = much darker than the paper in EVERY colour channel. Black print passes even
+            // under a translucent highlighter; coloured pen/highlighter/red marks are bright in at
+            // least one channel and light pencil is not dark enough - those become paper.
+            val ratio = Mat(); Core.divide(rgb, bg, ratio, 255.0)
+            val ch = ArrayList<Mat>(); Core.split(ratio, ch)
+            val maxRatio = Mat(); Core.max(ch[0], ch[1], maxRatio); Core.max(maxRatio, ch[2], maxRatio)
+            val text = Mat(); Imgproc.threshold(maxRatio, text, 0.6 * 255, 255.0, Imgproc.THRESH_BINARY_INV)
             // Keep the soft anti-aliased edges of letters.
             Imgproc.dilate(text, text, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(3.0, 3.0)))
             val eraseMask = Mat(); Core.bitwise_not(text, eraseMask)
             Core.bitwise_and(eraseMask, marks, eraseMask)
             bg.copyTo(rgb, eraseMask)
-            listOf(gray, bgGray, hsv, sat, darkThr, dark, neutral, text, eraseMask).forEach { it.release() }
+            (ch + listOf(ratio, maxRatio, text, eraseMask)).forEach { it.release() }
         }
         if (Core.countNonZero(all) > 0) bg.copyTo(rgb, all)
         bg.release(); all.release(); marks.release()
