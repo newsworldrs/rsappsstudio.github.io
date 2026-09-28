@@ -51,12 +51,12 @@ class DocumentAnalyzer(
 
     private var buffer = ByteArray(0)
     private val qrDetector by lazy { QRCodeDetector() }
-    private var frame = 0L
+    private var frameCount = 0L
 
     override fun analyze(image: ImageProxy) {
         try {
             if (paused) return
-            frame++
+            frameCount++
             frameSize = "${image.width}x${image.height}"
             val src = upright(image)
             val gray = Mat()
@@ -70,7 +70,7 @@ class DocumentAnalyzer(
                     Imgproc.cvtColor(src, rgb, Imgproc.COLOR_GRAY2RGB)
                 }
                 if (qrMode) {
-                    if (frame % 3 == 0L) {
+                    if (frameCount % 3 == 0L) {
                         val text = qrDetector.detectAndDecode(gray)
                         if (!text.isNullOrEmpty()) onQr(text)
                     }
