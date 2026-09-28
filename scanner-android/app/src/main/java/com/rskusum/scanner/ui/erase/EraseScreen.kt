@@ -78,7 +78,8 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
         LaunchedEffect(Unit) { onDone() }
         return
     }
-    // The rendered page; previous strokes are drawn on top as a translucent overlay for reference.
+    // Show the page without previous erasures being baked in? The rendered file already contains
+    // them; that's fine - strokes are drawn on top as a translucent overlay for reference.
     val image by produceState<ImageBitmap?>(null, page.version) {
         val f = page.processedFile
         value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 2000)?.asImageBitmap() }
