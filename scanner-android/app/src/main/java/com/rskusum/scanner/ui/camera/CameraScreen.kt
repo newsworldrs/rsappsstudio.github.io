@@ -174,6 +174,16 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
     fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?) {
         ic.takePicture(captureExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
+                // The photo is fully captured at this point: only now give the shutter feedback,
+                // so moving the phone after hearing it can't disturb the image.
+                mainExecutor.execute {
+                    sound.play(MediaActionSound.SHUTTER_CLICK)
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    scope.launch {
+                        flashOverlay.snapTo(0.8f)
+                        flashOverlay.animateTo(0f, tween(320))
+                    }
+                }
                 val bmp: Bitmap? = try {
                     val buf = image.planes[0].buffer
                     val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
@@ -207,18 +217,13 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
         if (manual) vm.tracker.onManualCaptureStarted(SystemClock.elapsedRealtime())
         val hint = analyzer.lastQuad
         val frame = vm.guideFrame
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 
         // Focus on the page before shooting (sharp text), then capture. Never wait > 1.2 s.
+        // Shutter sound/flash are played in takePhoto once the image is actually captured.
         var shot = false
         fun shoot() {
             if (shot) return
             shot = true
-            sound.play(MediaActionSound.SHUTTER_CLICK)
-            scope.launch {
-                flashOverlay.snapTo(0.8f)
-                flashOverlay.animateTo(0f, tween(320))
-            }
             takePhoto(ic, hint, frame)
         }
         val cam = holder.camera
@@ -298,7 +303,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                     val guide = vm.guideFrame
                     when {
                         qrMode -> QrFrame()
-                        guide != null -> GuideFrameOverlay(guide, state.aligned, state.rawQuad)
+                        guide != null -> GuideFrameOverlay(guide, state.aligned)
                         else -> QuadOverlay(state.quad, state.phase)
                     }
                 } else {
@@ -516,10 +521,10 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
 
 /**
  * Fixed document-shaped guide frame. Outside is dimmed; corner brackets turn green when the
- * live detection lines up with the frame. A thin outline shows the raw detection otherwise.
+ * live detection lines up with the frame. (The detection outline itself is only drawn in Free mode.)
  */
 @Composable
-private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, raw: Quad?) {
+private fun GuideFrameOverlay(frame: Quad, aligned: Boolean) {
     val color = if (aligned) Color(0xFF34C759) else Color.White
     Canvas(Modifier.fillMaxSize()) {
         val l = frame.tl.x * size.width
@@ -547,13 +552,6 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, raw: Quad?) {
         ).forEach { (p, sx, sy) ->
             drawLine(color, p, p + Offset(c * sx, 0f), sw, StrokeCap.Round)
             drawLine(color, p, p + Offset(0f, c * sy), sw, StrokeCap.Round)
-        }
-        if (raw != null && !aligned) {
-            val pts = raw.points.map { Offset(it.x * size.width, it.y * size.height) }
-            val path = Path().apply {
-                moveTo(pts[0].x, pts[0].y); for (i in 1 until 4) lineTo(pts[i].x, pts[i].y); close()
-            }
-            drawPath(path, ScanColors.Accent.copy(alpha = 0.8f), style = Stroke(2.dp.toPx()))
         }
     }
 }
