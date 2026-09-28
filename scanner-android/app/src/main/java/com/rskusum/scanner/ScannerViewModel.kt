@@ -50,8 +50,23 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Capture settings ------------------------------------------------------------------
     var mode by mutableStateOf(ScanMode.DOCUMENT)
+        private set
+    var orientation by mutableStateOf(com.rskusum.scanner.data.FrameOrientation.PORTRAIT)
     var aiAssist by mutableStateOf(false)
     var autoCapture by mutableStateOf(true)
+
+    fun selectMode(m: ScanMode) {
+        mode = m
+        if (orientation != com.rskusum.scanner.data.FrameOrientation.FREE) orientation = m.defaultOrientation
+    }
+
+    /** The on-screen guide frame (normalized), or null in free-detection mode. */
+    val guideFrame: Quad?
+        get() = when (orientation) {
+            com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> DocumentDetector.guideFrame(1 / mode.frameRatio)
+            com.rskusum.scanner.data.FrameOrientation.LANDSCAPE -> DocumentDetector.guideFrame(mode.frameRatio)
+            com.rskusum.scanner.data.FrameOrientation.FREE -> null
+        }
 
     // --- Current scan session --------------------------------------------------------------
     val pages = mutableStateListOf<Page>()
@@ -79,13 +94,13 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * Entry point for both camera captures and gallery imports.
      * [hint] is the live-preview quad, used if the still photo is ambiguous.
      */
-    fun addPhoto(photo: Bitmap, hint: Quad?) {
+    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null) {
         processingCaptures++
         val mode = mode
         val smart = aiAssist
         viewModelScope.launch {
             try {
-                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode) }
+                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame) }
                 pages.addAll(created)
                 created.forEach { p -> launchRender(p, pickSmartFilter = smart) }
             } catch (t: Throwable) {
@@ -112,11 +127,20 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun createPages(photo: Bitmap, hint: Quad?, mode: ScanMode): List<Page> {
+    private fun createPages(photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?): List<Page> {
         val file = File(sessionDir, "${System.currentTimeMillis()}_${(0..9999).random()}.jpg")
         Images.saveJpeg(photo, file, 95)
         val gray = Images.toGrayMat(photo)
-        val quad = try {
+        val quad = if (frame != null) {
+            // Guided frame: edges are searched only near the frame sides on the full-res photo,
+            // then line-fitted; undetectable sides fall back to the frame + 1%.
+            try {
+                DocumentDetector.refine(gray, DocumentDetector.snapToFrame(gray, frame))
+            } finally {
+                gray.release()
+                photo.recycle()
+            }
+        } else try {
             // Learned edge model on the sharp still first, then the classic detector at two scales.
             val model = com.rskusum.scanner.vision.EdgeModel.get(getApplication())
             val fromModel = model?.let {
@@ -191,7 +215,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val out = Images.toBitmap(enhanced)
         enhanced.release()
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
-        Images.saveJpeg(out, file, 92)
+        Images.saveJpeg(out, file, 95)
         val thumb = Images.scaleDown(out, 360).asImageBitmap()
         return Triple(file, thumb, filter)
     }

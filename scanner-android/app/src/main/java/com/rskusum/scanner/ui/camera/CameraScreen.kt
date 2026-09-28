@@ -61,6 +61,9 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.CropFree
+import androidx.compose.material.icons.outlined.CropLandscape
+import androidx.compose.material.icons.outlined.CropPortrait
 import androidx.compose.material.icons.outlined.DocumentScanner
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.QrCodeScanner
@@ -168,18 +171,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
 
     lateinit var analyzer: DocumentAnalyzer
 
-    fun capture(manual: Boolean) {
-        val ic = holder.capture ?: return
-        if (capturing) return
-        capturing = true
-        if (manual) vm.tracker.onManualCaptureStarted(SystemClock.elapsedRealtime())
-        val hint = analyzer.lastQuad
-        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        sound.play(MediaActionSound.SHUTTER_CLICK)
-        scope.launch {
-            flashOverlay.snapTo(0.8f)
-            flashOverlay.animateTo(0f, tween(320))
-        }
+    fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?) {
         ic.takePicture(captureExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 val bmp: Bitmap? = try {
@@ -194,7 +186,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 mainExecutor.execute {
                     capturing = false
                     vm.tracker.onCaptured(bmp != null)
-                    if (bmp != null) vm.addPhoto(bmp, hint) else toast = "Capture failed, try again"
+                    if (bmp != null) vm.addPhoto(bmp, hint, frame) else toast = "Capture failed, try again"
                 }
             }
 
@@ -206,6 +198,44 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 }
             }
         })
+    }
+
+    fun capture(manual: Boolean) {
+        val ic = holder.capture ?: return
+        if (capturing) return
+        capturing = true
+        if (manual) vm.tracker.onManualCaptureStarted(SystemClock.elapsedRealtime())
+        val hint = analyzer.lastQuad
+        val frame = vm.guideFrame
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+
+        // Focus on the page before shooting (sharp text), then capture. Never wait > 1.2 s.
+        var shot = false
+        fun shoot() {
+            if (shot) return
+            shot = true
+            sound.play(MediaActionSound.SHUTTER_CLICK)
+            scope.launch {
+                flashOverlay.snapTo(0.8f)
+                flashOverlay.animateTo(0f, tween(320))
+            }
+            takePhoto(ic, hint, frame)
+        }
+        val cam = holder.camera
+        val pv = holder.previewView
+        val target = hint ?: frame
+        if (cam != null && pv != null && pv.width > 0 && target != null) {
+            val cx = target.points.map { it.x }.average().toFloat() * pv.width
+            val cy = target.points.map { it.y }.average().toFloat() * pv.height
+            val action = FocusMeteringAction.Builder(pv.meteringPointFactory.createPoint(cx, cy), FocusMeteringAction.FLAG_AF)
+                .disableAutoCancel()
+                .build()
+            runCatching { cam.cameraControl.startFocusAndMetering(action).addListener({ shoot() }, mainExecutor) }
+                .onFailure { shoot() }
+            scope.launch { kotlinx.coroutines.delay(1200); shoot() }
+        } else {
+            shoot()
+        }
     }
 
     analyzer = remember {
@@ -221,6 +251,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
         analyzer.autoCapture = vm.autoCapture
         analyzer.qrMode = qrMode
         analyzer.paused = qrText != null
+        analyzer.frame = if (qrMode) null else vm.guideFrame
         holder.capture?.flashMode = flash.mode
     }
 
@@ -264,8 +295,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
             ) {
                 if (granted) {
                     CameraPreview(holder, analyzer, flash.mode)
-                    if (!qrMode) QuadOverlay(state.quad, state.phase)
-                    else QrFrame()
+                    val guide = vm.guideFrame
+                    when {
+                        qrMode -> QrFrame()
+                        guide != null -> GuideFrameOverlay(guide, state.aligned, state.rawQuad)
+                        else -> QuadOverlay(state.quad, state.phase)
+                    }
                 } else {
                     PermissionRationale { permissionLauncher.launch(Manifest.permission.CAMERA) }
                 }
@@ -273,10 +308,15 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 val hint = when {
                     !granted -> null
                     qrMode -> "Point at a QR code"
+                    state.phase == CapturePhase.CAPTURING -> "Capturing…"
+                    state.guidance != null -> state.guidance
                     vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> "Processing…"
                     else -> when (state.phase) {
-                        CapturePhase.SEARCHING ->
-                            if (vm.autoCapture && state.progress > 0f) "Hold still to capture" else "Looking for document"
+                        CapturePhase.SEARCHING -> when {
+                            vm.autoCapture && state.progress > 0f -> "Hold still to capture"
+                            vm.guideFrame != null -> "Place the page inside the frame"
+                            else -> "Looking for document"
+                        }
                         CapturePhase.TOO_SMALL -> "Move closer"
                         CapturePhase.HOLD_STEADY -> if (vm.autoCapture) "Hold steady" else "Tap the shutter to capture"
                         CapturePhase.CAPTURING -> "Capturing…"
@@ -285,6 +325,20 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 }
                 if (hint != null) HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
                 toast?.let { HintChip(it, Modifier.align(Alignment.Center)) }
+                if (granted && !qrMode) {
+                    OrientationToggle(
+                        selected = vm.orientation,
+                        onSelect = {
+                            vm.orientation = it
+                            toast = when (it) {
+                                com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> "Portrait frame"
+                                com.rskusum.scanner.data.FrameOrientation.LANDSCAPE -> "Landscape frame"
+                                com.rskusum.scanner.data.FrameOrientation.FREE -> "Free detection"
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                    )
+                }
                 if (granted) Diagnostics(analyzer, Modifier.align(Alignment.BottomStart).padding(8.dp))
 
                 Box(
@@ -306,7 +360,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
             )
         }
 
-        ModeCarousel(vm.mode, onSelect = { vm.mode = it })
+        ModeCarousel(vm.mode, onSelect = { vm.selectMode(it) })
 
         BottomControls(
             progress = if (vm.autoCapture && !qrMode) state.progress else 0f,
@@ -456,6 +510,83 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
         pts.forEach {
             drawCircle(Color.White.copy(alpha = alpha), 7.dp.toPx(), it)
             drawCircle(color.copy(alpha = alpha), 5.dp.toPx(), it)
+        }
+    }
+}
+
+/**
+ * Fixed document-shaped guide frame. Outside is dimmed; corner brackets turn green when the
+ * live detection lines up with the frame. A thin outline shows the raw detection otherwise.
+ */
+@Composable
+private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, raw: Quad?) {
+    val color = if (aligned) Color(0xFF34C759) else Color.White
+    Canvas(Modifier.fillMaxSize()) {
+        val l = frame.tl.x * size.width
+        val t = frame.tl.y * size.height
+        val r = frame.br.x * size.width
+        val b = frame.br.y * size.height
+        val outside = Path().apply {
+            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+            addRect(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height))
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(l, t, r, b, 12.dp.toPx(), 12.dp.toPx()))
+        }
+        drawPath(outside, Color.Black.copy(alpha = 0.45f))
+        drawRoundRect(
+            color.copy(alpha = 0.5f),
+            topLeft = Offset(l, t),
+            size = androidx.compose.ui.geometry.Size(r - l, b - t),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(12.dp.toPx()),
+            style = Stroke(1.5.dp.toPx()),
+        )
+        val c = 34.dp.toPx()
+        val sw = 5.dp.toPx()
+        listOf(
+            Triple(Offset(l, t), 1f, 1f), Triple(Offset(r, t), -1f, 1f),
+            Triple(Offset(r, b), -1f, -1f), Triple(Offset(l, b), 1f, -1f),
+        ).forEach { (p, sx, sy) ->
+            drawLine(color, p, p + Offset(c * sx, 0f), sw, StrokeCap.Round)
+            drawLine(color, p, p + Offset(0f, c * sy), sw, StrokeCap.Round)
+        }
+        if (raw != null && !aligned) {
+            val pts = raw.points.map { Offset(it.x * size.width, it.y * size.height) }
+            val path = Path().apply {
+                moveTo(pts[0].x, pts[0].y); for (i in 1 until 4) lineTo(pts[i].x, pts[i].y); close()
+            }
+            drawPath(path, ScanColors.Accent.copy(alpha = 0.8f), style = Stroke(2.dp.toPx()))
+        }
+    }
+}
+
+@Composable
+private fun OrientationToggle(
+    selected: com.rskusum.scanner.data.FrameOrientation,
+    onSelect: (com.rskusum.scanner.data.FrameOrientation) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(Color.Black.copy(alpha = 0.55f))
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        listOf(
+            com.rskusum.scanner.data.FrameOrientation.PORTRAIT to Icons.Outlined.CropPortrait,
+            com.rskusum.scanner.data.FrameOrientation.LANDSCAPE to Icons.Outlined.CropLandscape,
+            com.rskusum.scanner.data.FrameOrientation.FREE to Icons.Outlined.CropFree,
+        ).forEach { (o, icon) ->
+            val isSel = o == selected
+            Box(
+                Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (isSel) ScanColors.Accent else Color.Transparent)
+                    .clickable { onSelect(o) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = o.name.lowercase(), tint = Color.White, modifier = Modifier.size(24.dp))
+            }
         }
     }
 }
@@ -622,8 +753,8 @@ private fun Modifier.pointerModeSwipe(vm: ScannerViewModel): Modifier = pointerI
         onDragEnd = {
             val modes = ScanMode.entries
             val i = modes.indexOf(vm.mode)
-            if (total < -120 && i < modes.lastIndex) vm.mode = modes[i + 1]
-            if (total > 120 && i > 0) vm.mode = modes[i - 1]
+            if (total < -120 && i < modes.lastIndex) vm.selectMode(modes[i + 1])
+            if (total > 120 && i > 0) vm.selectMode(modes[i - 1])
         },
     ) { _, dx -> total += dx }
 }

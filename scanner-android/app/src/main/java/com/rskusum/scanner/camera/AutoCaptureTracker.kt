@@ -10,6 +10,12 @@ data class TrackerState(
     val phase: CapturePhase = CapturePhase.SEARCHING,
     /** 0..1 progress of the auto-capture countdown (drawn as the arc around the shutter). */
     val progress: Float = 0f,
+    /** Guide-frame mode: raw live detection (may not be aligned), for on-screen feedback. */
+    val rawQuad: Quad? = null,
+    /** Guide-frame mode: page detected and matching the frame. */
+    val aligned: Boolean = false,
+    /** Guide-frame mode: what the user should do, e.g. "Move closer". */
+    val guidance: String? = null,
 )
 
 /**
@@ -59,7 +65,11 @@ class AutoCaptureTracker(
      *   used to measure camera steadiness independent of document detection.
      */
     @Synchronized
-    fun update(quad: Quad?, sig: ByteArray?, now: Long, autoEnabled: Boolean, scene: ByteArray? = null): Pair<TrackerState, Boolean> {
+    fun update(
+        quad: Quad?, sig: ByteArray?, now: Long, autoEnabled: Boolean, scene: ByteArray? = null,
+        /** False while something is visibly wrong (e.g. page not aligned with the guide frame). */
+        allowFallback: Boolean = true,
+    ): Pair<TrackerState, Boolean> {
         val dt = if (lastFrameAt == 0L) 0L else (now - lastFrameAt).coerceIn(0L, 200L)
         lastFrameAt = now
         if (capturingSince != 0L && now - capturingSince > 4000) capturingSince = 0L // capture failed/timed out
@@ -73,6 +83,7 @@ class AutoCaptureTracker(
             if (c != null && DocumentDetector.signatureDistance(scene, c) > SCENE_CHANGED) capturedScene = null
         }
 
+        if (!allowFallback) sceneSteadyMs = 0L
         if (capturingSince == 0L && scene != null && capturedScene == null && capturedSig == null) {
             val noDoc = quad == null && anchor == null
             // Held still but no (stable) outline: capture anyway, crop on the full-res photo.

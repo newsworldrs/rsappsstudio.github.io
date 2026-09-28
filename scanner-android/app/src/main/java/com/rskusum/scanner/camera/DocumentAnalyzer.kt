@@ -31,6 +31,8 @@ class DocumentAnalyzer(
     @Volatile var autoCapture = true
     @Volatile var qrMode = false
     @Volatile var paused = false
+    /** Guide frame (normalized) or null for free detection. */
+    @Volatile var frame: Quad? = null
 
     /** Last detected quad, used as a fallback when the high-res photo is ambiguous. */
     @Volatile var lastQuad: Quad? = null
@@ -87,10 +89,29 @@ class DocumentAnalyzer(
                     quad = DocumentDetector.detect(gray, prev = prev)
                     lastSource = if (quad != null) "cv" else "-"
                 }
-                val sig = quad?.let { DocumentDetector.signature(gray, it) }
-                val (state, fire) = tracker.update(quad, sig, SystemClock.elapsedRealtime(), autoCapture, scene)
+                val guide = frame
+                var trackQuad = quad
+                var guidance: String? = null
+                if (guide != null && quad != null) {
+                    // Only a page lined up with the guide frame counts for auto-capture.
+                    val ratio = quad.area() / guide.area()
+                    val aligned = quad.distanceTo(guide) < ALIGN_TOLERANCE
+                    if (!aligned) {
+                        trackQuad = null
+                        guidance = when {
+                            ratio < 0.7f -> "Move closer"
+                            ratio > 1.3f -> "Move back"
+                            else -> "Align the page with the frame"
+                        }
+                    }
+                }
+                val sig = trackQuad?.let { DocumentDetector.signature(gray, it) }
+                val (state, fire) = tracker.update(
+                    trackQuad, sig, SystemClock.elapsedRealtime(), autoCapture, scene,
+                    allowFallback = guidance == null,
+                )
                 lastQuad = state.quad
-                onState(state)
+                onState(state.copy(rawQuad = quad, aligned = guide != null && trackQuad != null, guidance = guidance))
                 framesAnalyzed++
                 lastError = null
                 if (fire) onAutoCapture()
@@ -103,6 +124,11 @@ class DocumentAnalyzer(
         } finally {
             image.close()
         }
+    }
+
+    private companion object {
+        /** Max corner distance (normalized) between detection and guide frame to count as aligned. */
+        const val ALIGN_TOLERANCE = 0.09f
     }
 
     /** Copies plane 0 (RGBA_8888 = 4 bytes/px, or Y = 1 byte/px) into an upright Mat. */

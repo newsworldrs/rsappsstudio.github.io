@@ -32,11 +32,12 @@ object ImageEnhancer {
     fun apply(rgb: Mat, filter: ScanFilter): Mat = when (filter) {
         ScanFilter.ORIGINAL -> rgb.clone()
         ScanFilter.AUTO -> {
+            // Gentle: even out lighting, whiten paper, keep natural ink and photo colours.
             val n = normalize(rgb)
-            val s = stretch(n, 0.01, 248.0)
+            val s = stretch(n, 0.004, 250.0)
             n.release()
-            saturate(s, 1.25)
-            sharpen(s, 0.5)
+            saturate(s, 1.08)
+            sharpen(s, 0.3)
             s
         }
         ScanFilter.WHITEBOARD -> {
@@ -48,8 +49,8 @@ object ImageEnhancer {
             s
         }
         ScanFilter.GRAYSCALE -> {
-            val g = grayNormalized(rgb, 0.01, 248.0)
-            sharpen(g, 0.5)
+            val g = grayNormalized(rgb, 0.004, 250.0)
+            sharpen(g, 0.3)
             toRgb(g)
         }
         ScanFilter.LIGHT_TEXT -> {
@@ -81,6 +82,16 @@ object ImageEnhancer {
         val bg = Mat()
         Imgproc.dilate(small, bg, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble())))
         Imgproc.medianBlur(bg, bg, 21)
+        // Large dark printed areas (photos, filled boxes, dark covers) must not be mistaken for
+        // shadow: never assume the paper is darker than ~55% of the brightest paper level.
+        val chans = ArrayList<Mat>()
+        Core.split(bg, chans)
+        for (c in chans) {
+            val paper = percentile(c, 0.95)
+            Core.max(c, org.opencv.core.Scalar(paper * 0.55), c)
+        }
+        Core.merge(chans, bg)
+        chans.forEach { it.release() }
         val bgFull = Mat()
         Imgproc.resize(bg, bgFull, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
         val out = Mat()

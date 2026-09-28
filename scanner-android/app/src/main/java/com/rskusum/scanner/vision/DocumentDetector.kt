@@ -233,6 +233,225 @@ object DocumentDetector {
     }
 
     /**
+     * Guided-frame crop. The user placed the page inside an on-screen guide frame, so each page
+     * edge must lie in a narrow band around the corresponding frame side. Searching only there
+     * makes the result robust where a global search fails:
+     *  - faint edges (white paper on a white table) only compete with other lines in the band;
+     *  - boxes, tables or photos printed on the page are further inside, and the *outermost*
+     *    well-supported line in the band is taken, so the page border wins over inner borders.
+     * A side with no convincing edge falls back to the frame side pushed out by [fallbackMargin].
+     *
+     * @param frame axis-aligned guide rectangle, normalized image coordinates.
+     * @param edgeHint optional [EdgeModel] output for the same image (any size, CV_32F).
+     */
+    fun snapToFrame(gray: Mat, frame: Quad, edgeHint: Mat? = null, maxDim: Int = 1600, fallbackMargin: Float = 0.01f): Quad {
+        val scale = min(1.0, maxDim.toDouble() / max(gray.cols(), gray.rows()))
+        val small = Mat()
+        val closed = Mat()
+        val blur = Mat()
+        val edges = Mat()
+        try {
+            Imgproc.resize(gray, small, Size(gray.cols() * scale, gray.rows() * scale), 0.0, 0.0, Imgproc.INTER_AREA)
+            val w = small.cols()
+            val h = small.rows()
+            val k = max(5, (max(w, h) / 80) or 1)
+            Imgproc.morphologyEx(small, closed, Imgproc.MORPH_CLOSE, rect(k))
+            Imgproc.GaussianBlur(closed, blur, Size(5.0, 5.0), 0.0)
+            val gx = Mat(); val gy = Mat(); val mag = Mat()
+            Imgproc.Sobel(blur, gx, CvType.CV_32F, 1, 0, 3)
+            Imgproc.Sobel(blur, gy, CvType.CV_32F, 0, 1, 3)
+            Core.magnitude(gx, gy, mag)
+            val magArr = FloatArray(w * h)
+            mag.get(0, 0, magArr)
+            gx.release(); gy.release(); mag.release()
+            val med = percentile(magArr, 0.5)
+            val hi = max(3.0 * med, 8.0)
+            Imgproc.Canny(blur, edges, max(0.4 * hi, 1.5 * med), hi, 3, true)
+            if (edgeHint != null) {
+                val hint = Mat()
+                Imgproc.resize(edgeHint, hint, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
+                Imgproc.threshold(hint, hint, EDGE_PROB, 255.0, Imgproc.THRESH_BINARY)
+                hint.convertTo(hint, CvType.CV_8U)
+                Core.bitwise_or(edges, hint, edges)
+                hint.release()
+            }
+
+            val fx0 = frame.tl.x.toDouble() * w; val fy0 = frame.tl.y.toDouble() * h
+            val fx1 = frame.br.x.toDouble() * w; val fy1 = frame.br.y.toDouble() * h
+            val corners = arrayOf(Point(fx0, fy0), Point(fx1, fy0), Point(fx1, fy1), Point(fx0, fy1))
+            val band = 0.085 * min(fx1 - fx0, fy1 - fy0)
+            val cx = (fx0 + fx1) / 2
+            val cy = (fy0 + fy1) / 2
+            val pix = ByteArray(w * h)
+            blur.get(0, 0, pix)
+
+            val lines = Array(4) { i ->
+                val a = corners[i]
+                val b = corners[(i + 1) % 4]
+                findSideLine(edges, pix, w, h, a, b, cx, cy, band)
+                    ?: run {
+                        // Fallback: the frame side itself, pushed out by the margin.
+                        val m = fallbackMargin * if (i % 2 == 0) (fy1 - fy0) else (fx1 - fx0)
+                        val (ox, oy) = outwardNormal(a, b, cx, cy)
+                        doubleArrayOf(b.x - a.x, b.y - a.y, a.x + ox * m, a.y + oy * m).normalizedDir()
+                    }
+            }
+            val out = Array(4) { i ->
+                var p = intersect(lines[(i + 3) % 4], lines[i])
+                if (p == null || hypot(p.x - corners[i].x, p.y - corners[i].y) > band * 1.8) p = corners[i]
+                NPoint((p.x / w).toFloat().coerceIn(0f, 1f), (p.y / h).toFloat().coerceIn(0f, 1f))
+            }
+            return Quad(out[0], out[1], out[2], out[3])
+        } finally {
+            small.release(); closed.release(); blur.release(); edges.release()
+        }
+    }
+
+    /** Guide rectangle of the given width/height [aspect], centred in a 3:4 portrait frame. */
+    fun guideFrame(aspect: Double, margin: Double = 0.06): Quad {
+        val fw = min(3 * (1 - 2 * margin), 4 * (1 - 2 * margin) * aspect)
+        val fh = fw / aspect
+        val nx = (fw / 3 / 2).toFloat()
+        val ny = (fh / 4 / 2).toFloat()
+        return Quad(NPoint(0.5f - nx, 0.5f - ny), NPoint(0.5f + nx, 0.5f - ny), NPoint(0.5f + nx, 0.5f + ny), NPoint(0.5f - nx, 0.5f + ny))
+    }
+
+    private fun DoubleArray.normalizedDir(): DoubleArray {
+        val l = hypot(this[0], this[1]).coerceAtLeast(1e-9)
+        return doubleArrayOf(this[0] / l, this[1] / l, this[2], this[3])
+    }
+
+    private fun outwardNormal(a: Point, b: Point, cx: Double, cy: Double): Pair<Double, Double> {
+        val dx = b.x - a.x; val dy = b.y - a.y
+        val l = hypot(dx, dy)
+        var nx = -dy / l; var ny = dx / l
+        if (nx * ((a.x + b.x) / 2 - cx) + ny * ((a.y + b.y) / 2 - cy) < 0) { nx = -nx; ny = -ny }
+        return nx to ny
+    }
+
+    /**
+     * Best page-edge line near the frame side a->b: straight segments within [band] of the side
+     * and within 12° of its direction are grouped by offset; the outermost group covering at
+     * least 30% of the side wins. Returns (vx, vy, x0, y0) or null.
+     */
+    private fun findSideLine(
+        edges: Mat, pix: ByteArray, w: Int, h: Int,
+        a: Point, b: Point, cx: Double, cy: Double, band: Double,
+    ): DoubleArray? {
+        val len = hypot(b.x - a.x, b.y - a.y)
+        val dx = (b.x - a.x) / len
+        val dy = (b.y - a.y) / len
+        val (nx, ny) = outwardNormal(a, b, cx, cy)
+        val mask = Mat.zeros(edges.size(), CvType.CV_8UC1)
+        val ext = 0.1 * len
+        val poly = MatOfPoint(
+            Point(a.x - dx * ext + nx * band, a.y - dy * ext + ny * band),
+            Point(b.x + dx * ext + nx * band, b.y + dy * ext + ny * band),
+            Point(b.x + dx * ext - nx * band, b.y + dy * ext - ny * band),
+            Point(a.x - dx * ext - nx * band, a.y - dy * ext - ny * band),
+        )
+        Imgproc.fillConvexPoly(mask, poly, Scalar(255.0))
+        poly.release()
+        val masked = Mat()
+        Core.bitwise_and(edges, mask, masked)
+        mask.release()
+        val segs = Mat()
+        Imgproc.HoughLinesP(masked, segs, 1.0, Math.PI / 360, 30, 0.08 * len, 0.03 * len)
+        masked.release()
+
+        // o0/o1: the segment's infinite line, as perpendicular offsets at both ends of the side.
+        class Seg(val off: Double, val o0: Double, val o1: Double, val t0: Double, val t1: Double, val x0: Double, val y0: Double, val x1: Double, val y1: Double)
+        val list = ArrayList<Seg>()
+        val cosTol = kotlin.math.cos(Math.toRadians(12.0))
+        for (i in 0 until segs.rows()) {
+            val s = segs.get(i, 0)
+            val sx = s[2] - s[0]; val sy = s[3] - s[1]
+            val sl = hypot(sx, sy)
+            if (sl < 1 || kotlin.math.abs((sx * dx + sy * dy) / sl) < cosTol) continue
+            val mx = (s[0] + s[2]) / 2 - a.x; val my = (s[1] + s[3]) / 2 - a.y
+            val off = mx * nx + my * ny
+            val ta = (s[0] - a.x) * dx + (s[1] - a.y) * dy
+            val tb = (s[2] - a.x) * dx + (s[3] - a.y) * dy
+            val slope = (sx * nx + sy * ny) / (sx * dx + sy * dy)
+            val tm = (ta + tb) / 2
+            list += Seg(off, off - slope * tm, off + slope * (len - tm), min(ta, tb), max(ta, tb), s[0], s[1], s[2], s[3])
+        }
+        segs.release()
+        if (list.isEmpty()) return null
+
+        // Cluster segments lying on (nearly) the same infinite line: compare both end offsets,
+        // so a slightly tilted page edge doesn't chain up with nearby noise.
+        list.sortBy { it.off }
+        val tol = 0.012 * len + 3
+        val clusters = ArrayList<MutableList<Seg>>()
+        for (s in list) {
+            val home = clusters.firstOrNull { c ->
+                kotlin.math.abs(c.map { it.o0 }.average() - s.o0) < tol && kotlin.math.abs(c.map { it.o1 }.average() - s.o1) < tol
+            }
+            if (home != null) home += s else clusters += mutableListOf(s)
+        }
+        fun coverage(c: List<Seg>): Double {
+            val iv = c.map { it.t0.coerceIn(0.0, len) to it.t1.coerceIn(0.0, len) }.sortedBy { it.first }
+            var covered = 0.0; var curS = -1.0; var curE = -1.0
+            for ((s, e) in iv) {
+                if (s > curE) { if (curE > curS) covered += curE - curS; curS = s; curE = e } else curE = max(curE, e)
+            }
+            if (curE > curS) covered += curE - curS
+            return covered / len
+        }
+        fun fit(c: List<Seg>): DoubleArray {
+            val pts = MatOfPoint2f(*c.flatMap { listOf(Point(it.x0, it.y0), Point(it.x1, it.y1)) }.toTypedArray())
+            val line = Mat()
+            Imgproc.fitLine(pts, line, Imgproc.DIST_HUBER, 0.0, 0.01, 0.01)
+            val r = doubleArrayOf(line.get(0, 0)[0], line.get(1, 0)[0], line.get(2, 0)[0], line.get(3, 0)[0])
+            pts.release(); line.release()
+            return r
+        }
+        // A real page border has the same brightness step (paper vs. surface) all along it;
+        // noise, fabric texture and shadows flip sign. Fraction of samples agreeing in sign.
+        fun polarity(l: DoubleArray): Double {
+            var pos = 0; var neg = 0; val n = 60
+            for (j in 0 until n) {
+                val t = 0.08 + 0.84 * j / (n - 1)
+                // point on the line nearest to a + t*(b-a)
+                val qx = a.x + (b.x - a.x) * t; val qy = a.y + (b.y - a.y) * t
+                val u = (qx - l[2]) * l[0] + (qy - l[3]) * l[1]
+                val px = l[2] + u * l[0]; val py = l[3] + u * l[1]
+                val o = 4.0
+                fun avg(x0: Double, y0: Double): Int {
+                    // mean of 5 pixels along the line direction: suppresses sensor noise
+                    var sum = 0; var cnt = 0
+                    for (k in -2..2) {
+                        val x = (x0 + l[0] * k * 2).toInt(); val y = (y0 + l[1] * k * 2).toInt()
+                        if (x in 0 until w && y in 0 until h) { sum += pix[y * w + x].toInt() and 0xFF; cnt++ }
+                    }
+                    return if (cnt == 0) -1 else sum / cnt
+                }
+                val outside = avg(px + nx * o, py + ny * o)
+                val inside = avg(px - nx * o, py - ny * o)
+                if (outside < 0 || inside < 0) continue
+                val d = outside - inside
+                if (d >= 3) pos++ else if (d <= -3) neg++
+            }
+            val decisive = pos + neg
+            return if (decisive < n / 4) 0.0 else kotlin.math.abs(pos - neg).toDouble() / decisive
+        }
+        var best: DoubleArray? = null
+        var bestOff = Double.NEGATIVE_INFINITY
+        for (c in clusters) {
+            val cov = coverage(c)
+            if (cov < 0.3) continue
+            val l = fit(c)
+            val pol = polarity(l)
+            val off = (c.map { it.o0 }.average() + c.map { it.o1 }.average()) / 2
+            debugLog?.invoke("side cluster off=%.0f cov=%.2f n=%d polarity=%.2f".format(c.map { it.off }.average(), cov, c.size, pol))
+            if (pol < 0.6) continue
+            if (off > bestOff) { bestOff = off; best = l }
+        }
+        return best
+    }
+
+    /**
      * Real-world width/height ratio of the rectangle imaged by [quad], using the single-view
      * rectangle method of Zhang & He ("Whiteboard scanning and image enhancement", 2007).
      * It estimates the focal length from the perspective itself, so it is correct regardless of
