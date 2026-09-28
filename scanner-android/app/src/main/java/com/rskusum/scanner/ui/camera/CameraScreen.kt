@@ -262,8 +262,15 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
 
     LaunchedEffect(toast) {
         if (toast != null) {
-            kotlinx.coroutines.delay(1600)
+            kotlinx.coroutines.delay(2200)
             toast = null
+        }
+    }
+    // Pipeline messages, e.g. "Same page as the last scan - place another document".
+    LaunchedEffect(Unit) {
+        vm.messages.collect {
+            toast = it
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
         }
     }
 

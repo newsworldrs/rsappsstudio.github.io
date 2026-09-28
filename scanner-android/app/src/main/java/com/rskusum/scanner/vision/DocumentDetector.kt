@@ -244,7 +244,21 @@ object DocumentDetector {
      * @param frame axis-aligned guide rectangle, normalized image coordinates.
      * @param edgeHint optional [EdgeModel] output for the same image (any size, CV_32F).
      */
-    fun snapToFrame(gray: Mat, frame: Quad, edgeHint: Mat? = null, maxDim: Int = 1600, fallbackMargin: Float = 0.01f): Quad {
+    fun snapToFrame(gray: Mat, frame: Quad, edgeHint: Mat? = null, maxDim: Int = 1600, fallbackMargin: Float = 0.01f): Quad =
+        snapToQuad(gray, frame, edgeHint, maxDim, fallbackMargin).quad
+
+    /** Result of [snapToQuad]: the quad and how many of its 4 sides were matched to real edges. */
+    class SnapResult(val quad: Quad, val sidesFound: Int)
+
+    /**
+     * Same band search as [snapToFrame], around any convex prior outline (guide frame, the user's
+     * rough crop, or a coarse detection). [bandFraction] sets the search half-width relative to
+     * the prior's shortest side.
+     */
+    fun snapToQuad(
+        gray: Mat, prior: Quad, edgeHint: Mat? = null, maxDim: Int = 1600,
+        fallbackMargin: Float = 0.01f, bandFraction: Double = 0.085,
+    ): SnapResult {
         val scale = min(1.0, maxDim.toDouble() / max(gray.cols(), gray.rows()))
         val small = Mat()
         val closed = Mat()
@@ -276,22 +290,22 @@ object DocumentDetector {
                 hint.release()
             }
 
-            val fx0 = frame.tl.x.toDouble() * w; val fy0 = frame.tl.y.toDouble() * h
-            val fx1 = frame.br.x.toDouble() * w; val fy1 = frame.br.y.toDouble() * h
-            val corners = arrayOf(Point(fx0, fy0), Point(fx1, fy0), Point(fx1, fy1), Point(fx0, fy1))
-            val band = 0.085 * min(fx1 - fx0, fy1 - fy0)
-            val cx = (fx0 + fx1) / 2
-            val cy = (fy0 + fy1) / 2
+            val corners = prior.points.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray()
+            val sideLen = DoubleArray(4) { hypot(corners[(it + 1) % 4].x - corners[it].x, corners[(it + 1) % 4].y - corners[it].y) }
+            val band = bandFraction * sideLen.min()
+            val cx = corners.sumOf { it.x } / 4
+            val cy = corners.sumOf { it.y } / 4
             val pix = ByteArray(w * h)
             blur.get(0, 0, pix)
 
+            var found = 0
             val lines = Array(4) { i ->
                 val a = corners[i]
                 val b = corners[(i + 1) % 4]
-                findSideLine(edges, pix, w, h, a, b, cx, cy, band)
+                findSideLine(edges, pix, w, h, a, b, cx, cy, band)?.also { found++ }
                     ?: run {
-                        // Fallback: the frame side itself, pushed out by the margin.
-                        val m = fallbackMargin * if (i % 2 == 0) (fy1 - fy0) else (fx1 - fx0)
+                        // Fallback: the prior's side itself, pushed out by the margin.
+                        val m = fallbackMargin * sideLen[(i + 1) % 4]
                         val (ox, oy) = outwardNormal(a, b, cx, cy)
                         doubleArrayOf(b.x - a.x, b.y - a.y, a.x + ox * m, a.y + oy * m).normalizedDir()
                     }
@@ -301,10 +315,132 @@ object DocumentDetector {
                 if (p == null || hypot(p.x - corners[i].x, p.y - corners[i].y) > band * 1.8) p = corners[i]
                 NPoint((p.x / w).toFloat().coerceIn(0f, 1f), (p.y / h).toFloat().coerceIn(0f, 1f))
             }
-            return Quad(out[0], out[1], out[2], out[3])
+            return SnapResult(Quad(out[0], out[1], out[2], out[3]), found)
         } finally {
             small.release(); closed.release(); blur.release(); edges.release()
         }
+    }
+
+    /**
+     * How convincingly [quad] outlines a real object in [gray]: per side, the fraction of samples
+     * with a clear brightness step across the side in the side's dominant direction (a page
+     * border is consistently brighter or darker than its surroundings). Score in 0..1, driven by
+     * the weakest side; a quad drifting onto text or background scores low.
+     */
+    fun scoreQuad(gray: Mat, quad: Quad, maxDim: Int = 1000): Double {
+        val scale = min(1.0, maxDim.toDouble() / max(gray.cols(), gray.rows()))
+        val small = Mat()
+        val closed = Mat()
+        try {
+            Imgproc.resize(gray, small, Size(gray.cols() * scale, gray.rows() * scale), 0.0, 0.0, Imgproc.INTER_AREA)
+            val w = small.cols(); val h = small.rows()
+            Imgproc.morphologyEx(small, closed, Imgproc.MORPH_CLOSE, rect(max(5, (max(w, h) / 80) or 1)))
+            Imgproc.GaussianBlur(closed, closed, Size(5.0, 5.0), 0.0)
+            val pix = ByteArray(w * h)
+            closed.get(0, 0, pix)
+            fun at(x: Double, y: Double): Int {
+                val xi = x.toInt(); val yi = y.toInt()
+                return if (xi in 0 until w && yi in 0 until h) pix[yi * w + xi].toInt() and 0xFF else -1
+            }
+            val p = quad.points.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }
+            val cx = p.sumOf { it.x } / 4; val cy = p.sumOf { it.y } / 4
+            if (polygonArea(p.toTypedArray()) < 0.05 * w * h) return 0.0
+            val sides = DoubleArray(4) { i ->
+                val a = p[i]; val b = p[(i + 1) % 4]
+                val (nx, ny) = outwardNormal(a, b, cx, cy)
+                var pos = 0; var neg = 0; var usable = 0
+                val n = 60
+                for (j in 0 until n) {
+                    val t = 0.08 + 0.84 * j / (n - 1)
+                    val x = a.x + (b.x - a.x) * t; val y = a.y + (b.y - a.y) * t
+                    val o = at(x + nx * 4, y + ny * 4); val iv = at(x - nx * 4, y - ny * 4)
+                    if (o < 0 || iv < 0) continue // on the photo border: no evidence either way
+                    usable++
+                    val d = o - iv
+                    if (d >= 4) pos++ else if (d <= -4) neg++
+                }
+                // A side hugging the photo border is a guess, not an edge: weak score.
+                if (usable < n * 0.3) 0.3 else max(pos, neg).toDouble() / usable
+            }
+            return sides.average() * 0.4 + sides.min() * 0.6
+        } finally {
+            small.release(); closed.release()
+        }
+    }
+
+    /**
+     * Best-effort automatic outline for a captured photo, used by the crop screen's Auto button.
+     * Candidates: every [priors] outline (guide frame, current crop, live detection) snapped to
+     * nearby edges at two search widths, the learned-model detection ([edgeMap]) and the classic
+     * detector - each refined on the full photo, then ranked by [scoreQuad].
+     */
+    fun autoDetect(gray: Mat, edgeMap: Mat?, priors: List<Quad>): Quad? {
+        val cands = ArrayList<Quad>()
+        // Generic priors so there is always a starting outline, even without a guide frame.
+        val allPriors = priors + listOf(Quad.inset(0.06f), Quad.inset(0.14f))
+        for (prior in allPriors) {
+            for (bf in doubleArrayOf(0.085, 0.16)) {
+                val snap = snapToQuad(gray, prior, bandFraction = bf)
+                if (snap.sidesFound >= 2) cands += refine(gray, snap.quad)
+            }
+        }
+        edgeMap?.let { m -> detectFromEdgeMap(m)?.let { cands += refine(gray, it) } }
+        detect(gray, 640)?.let { cands += refine(gray, it) }
+        detect(gray, 1000)?.let { cands += refine(gray, it) }
+        var best: Quad? = null
+        var bestScore = 0.0
+        for (q in cands) {
+            val s = scoreQuad(gray, q) * (0.6 + 0.4 * sqrt(q.area().toDouble().coerceAtMost(1.0)))
+            debugLog?.invoke("auto cand score=%.3f %s".format(s, q))
+            if (s > bestScore) { bestScore = s; best = q }
+        }
+        return if (bestScore >= 0.35) best else null
+    }
+
+    /**
+     * Content fingerprint of the flattened page for duplicate detection. Built from the page's
+     * fine detail (high-pass: text lines, drawings) at 96x128, so two different pages that share
+     * a big dark area or similar brightness don't look alike. [FloatArray] is zero-mean /
+     * unit-variance; the last element stores the detail energy (low = blank page / bare surface).
+     */
+    fun fingerprint(gray: Mat, quad: Quad): FloatArray {
+        val w = gray.cols().toDouble(); val h = gray.rows().toDouble()
+        val fw = 96; val fh = 128
+        val src = MatOfPoint2f(*quad.points.map { Point(it.x * w, it.y * h) }.toTypedArray())
+        val dst = MatOfPoint2f(Point(0.0, 0.0), Point(fw.toDouble(), 0.0), Point(fw.toDouble(), fh.toDouble()), Point(0.0, fh.toDouble()))
+        val m = Imgproc.getPerspectiveTransform(src, dst)
+        val out = Mat()
+        Imgproc.warpPerspective(gray, out, m, Size(fw.toDouble(), fh.toDouble()), Imgproc.INTER_AREA)
+        val f = Mat(); out.convertTo(f, CvType.CV_32F)
+        val low = Mat(); Imgproc.GaussianBlur(f, low, Size(0.0, 0.0), 6.0)
+        Core.subtract(f, low, f)
+        Imgproc.GaussianBlur(f, f, Size(3.0, 3.0), 0.0)
+        val v = FloatArray(fw * fh)
+        f.get(0, 0, v)
+        src.release(); dst.release(); m.release(); out.release(); f.release(); low.release()
+        val mean = v.average().toFloat()
+        var sd = 0.0
+        for (x in v) sd += (x - mean) * (x - mean)
+        val std = sqrt(sd / v.size).toFloat()
+        val res = FloatArray(v.size + 1)
+        for (i in v.indices) res[i] = (v[i] - mean) / std.coerceAtLeast(1e-3f)
+        res[v.size] = std
+        return res
+    }
+
+    /** Detail energy below this means a blank page / bare surface (nothing to compare). */
+    const val BLANK_DETAIL = 2.0f
+
+    fun isBlank(fp: FloatArray) = fp.last() < BLANK_DETAIL
+
+    /** Correlation of two fingerprints: ~1 same page, low for different content. */
+    fun fingerprintSimilarity(a: FloatArray, b: FloatArray): Double {
+        if (a.size != b.size) return 0.0
+        if (isBlank(a) && isBlank(b)) return 1.0 // two captures of an empty surface
+        if (isBlank(a) || isBlank(b)) return 0.0
+        var s = 0.0
+        for (i in 0 until a.size - 1) s += a[i] * b[i]
+        return s / (a.size - 1)
     }
 
     /** Guide rectangle of the given width/height [aspect], centred in a 3:4 portrait frame. */

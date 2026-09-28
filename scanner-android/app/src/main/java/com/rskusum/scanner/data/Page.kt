@@ -21,6 +21,10 @@ class Page(
     val forcedAspect: Double?,
     /** -1 whole page, 0 left half of a book spread, 1 right half. */
     val bookHalf: Int = -1,
+    /** Guide frame used at capture (normalized), if any: a prior for Auto detect. */
+    val frame: Quad? = null,
+    /** Content fingerprint of the page at capture, for duplicate detection. */
+    val fingerprint: FloatArray? = null,
     val id: String = UUID.randomUUID().toString(),
 ) {
     var quad by mutableStateOf(quad)

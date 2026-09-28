@@ -132,6 +132,7 @@ fun ReviewScreen(
     }
 
     var pendingJpeg by remember { mutableStateOf(false) }
+    var choosingSize by remember { mutableStateOf(false) }
     val legacyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (ok) doSave(pendingJpeg) else scope.launch { snackbar.showSnackbar("Storage permission is needed to save") }
     }
@@ -166,7 +167,7 @@ fun ReviewScreen(
                 },
                 actions = {
                     Button(
-                        onClick = { save(asJpeg = false) },
+                        onClick = { choosingSize = true },
                         enabled = !saving && vm.pages.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = ScanColors.Accent),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
@@ -254,6 +255,39 @@ fun ReviewScreen(
                 TextButton(onClick = { if (text.isNotBlank()) vm.documentName = text.trim(); renaming = false }) { Text("OK") }
             },
             dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
+        )
+    }
+    if (choosingSize) {
+        AlertDialog(
+            onDismissRequest = { choosingSize = false },
+            title = { Text("PDF size") },
+            text = {
+                Column {
+                    com.rskusum.scanner.data.PdfQuality.entries.forEach { q ->
+                        val perPage = when (q) {
+                            com.rskusum.scanner.data.PdfQuality.SMALL -> "Smallest file - for email and WhatsApp"
+                            com.rskusum.scanner.data.PdfQuality.BALANCED -> "Recommended - sharp text, compact"
+                            com.rskusum.scanner.data.PdfQuality.HIGH -> "Largest file - best for printing"
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { vm.pdfQuality = q }
+                                .padding(vertical = 6.dp),
+                        ) {
+                            androidx.compose.material3.RadioButton(selected = vm.pdfQuality == q, onClick = { vm.pdfQuality = q })
+                            Column {
+                                Text(q.label, color = Color.White)
+                                Text(perPage, color = ScanColors.TextDim, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { choosingSize = false; save(asJpeg = false) }) { Text("Save PDF") } },
+            dismissButton = { TextButton(onClick = { choosingSize = false }) { Text("Cancel") } },
         )
     }
     if (confirmDiscard) {

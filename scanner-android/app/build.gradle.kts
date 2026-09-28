@@ -75,4 +75,7 @@ dependencies {
 
     // On-device document edge model (HED-lite). Plain TFLite interpreter, no ML Kit.
     implementation("org.tensorflow:tensorflow-lite:2.16.1")
+
+    // PDF creation.
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 }

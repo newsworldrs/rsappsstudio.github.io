@@ -16,6 +16,8 @@ enum class ScanMode(
 ) {
     WHITEBOARD("Whiteboard", ScanFilter.WHITEBOARD, frameRatio = 4.0 / 3.0, defaultOrientation = FrameOrientation.LANDSCAPE),
     BOOK("Book", ScanFilter.AUTO, splitBook = true, defaultOrientation = FrameOrientation.LANDSCAPE),
+    /** Front/back cover of a book, notebook or folder: one colourful page, kept in colour. */
+    BOOK_COVER("Book cover", ScanFilter.ORIGINAL, frameRatio = 1.5),
     DOCUMENT("Document", ScanFilter.AUTO),
     ID_CARD("ID card", ScanFilter.AUTO, forcedAspect = 85.60 / 53.98, frameRatio = 85.60 / 53.98, defaultOrientation = FrameOrientation.LANDSCAPE),
     BUSINESS_CARD("Business card", ScanFilter.AUTO, forcedAspect = 85.0 / 55.0, frameRatio = 85.0 / 55.0, defaultOrientation = FrameOrientation.LANDSCAPE),

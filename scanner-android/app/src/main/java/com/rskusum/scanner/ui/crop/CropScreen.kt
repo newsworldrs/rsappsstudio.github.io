@@ -78,6 +78,7 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
     var quad by remember(page.id) { mutableStateOf(page.quad) }
     var detecting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         Modifier
@@ -122,9 +123,14 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             TextButton(onClick = {
+                if (detecting) return@TextButton
                 scope.launch {
                     detecting = true
-                    vm.autoDetect(page)?.let { quad = it }
+                    // The current outline is used as a starting guess: roughly dragging the
+                    // handles near the page and pressing Auto snaps them onto the real edges.
+                    val found = vm.autoDetect(page, quad)
+                    if (found != null) quad = found
+                    else android.widget.Toast.makeText(context, "Couldn't find clear edges - drag the handles", android.widget.Toast.LENGTH_SHORT).show()
                     detecting = false
                 }
             }) {

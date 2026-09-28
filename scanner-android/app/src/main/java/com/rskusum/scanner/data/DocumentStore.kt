@@ -18,6 +18,16 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
 
+/** PDF size presets: long side of each page image in pixels and JPEG quality. */
+enum class PdfQuality(val label: String, val maxSide: Int, val jpegQuality: Int) {
+    SMALL("Small file", 1600, 60),        // ~150 dpi A4, smallest for email/WhatsApp
+    BALANCED("Balanced", 2200, 72),       // ~190 dpi A4, sharp text, modest size
+    HIGH("High quality", 3300, 88),       // ~280 dpi A4, for printing
+}
+
+private const val A4_SHORT = 595.28f
+private const val A4_LONG = 841.89f
+
 data class SavedDocument(
     val file: File,
     val name: String,
@@ -37,12 +47,42 @@ class DocumentStore(private val context: Context) {
             .sortedByDescending { it.lastModified() }
             .map { SavedDocument(it, it.nameWithoutExtension, it.lastModified(), it.length(), pageCount(it)) }
 
-    /** Writes the pages as a PDF into the library. Returns the file. */
-    fun savePdf(name: String, pageFiles: List<File>): File {
+    /**
+     * Writes the pages as a PDF into the library with Apache PDFBox. Every page image is
+     * downscaled and JPEG-compressed per [quality] *before* embedding (the JPEG is embedded as-is,
+     * no second re-compression), which keeps files small. Returns the file.
+     */
+    fun savePdf(name: String, pageFiles: List<File>, quality: PdfQuality = PdfQuality.BALANCED): File {
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
         val file = uniqueFile(sanitize(name), "pdf")
-        val pages = pageFiles.map { toPdfPage(it) }
-        FileOutputStream(file).use { PdfWriter.write(it, pages, name) }
+        com.tom_roush.pdfbox.pdmodel.PDDocument().use { doc ->
+            doc.documentInformation.title = name
+            doc.documentInformation.producer = "RS Kusum Scanner"
+            for (pf in pageFiles) {
+                val (jpeg, w, h) = compressPage(pf, quality)
+                val image = com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory.createFromByteArray(doc, jpeg)
+                // A4 width (or height for landscape) in points; height follows the page aspect.
+                val landscape = w > h
+                val pw = if (landscape) A4_LONG else A4_SHORT
+                val ph = pw * h / w
+                val page = com.tom_roush.pdfbox.pdmodel.PDPage(com.tom_roush.pdfbox.pdmodel.common.PDRectangle(pw, ph))
+                doc.addPage(page)
+                com.tom_roush.pdfbox.pdmodel.PDPageContentStream(doc, page).use { cs -> cs.drawImage(image, 0f, 0f, pw, ph) }
+            }
+            doc.save(file)
+        }
         return file
+    }
+
+    /** Downscale to the preset's resolution and JPEG-encode at its quality. */
+    private fun compressPage(file: File, quality: PdfQuality): Triple<ByteArray, Int, Int> {
+        val bmp = Images.decodeFile(file, quality.maxSide) ?: error("Cannot decode $file")
+        val bytes = ByteArrayOutputStream().use { bos ->
+            bmp.compress(Bitmap.CompressFormat.JPEG, quality.jpegQuality, bos); bos.toByteArray()
+        }
+        val result = Triple(bytes, bmp.width, bmp.height)
+        bmp.recycle()
+        return result
     }
 
     /** Copies a library PDF to the public Downloads/RS Kusum Scanner folder. */
@@ -112,23 +152,6 @@ class DocumentStore(private val context: Context) {
     private fun pageCount(file: File): Int = runCatching {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { pfd -> PdfRenderer(pfd).use { it.pageCount } }
     }.getOrDefault(0)
-
-    /** Re-encodes very large pages to ~300 dpi A4 so PDFs stay shareable. */
-    private fun toPdfPage(file: File): PdfWriter.JpegPage {
-        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(file.absolutePath, o)
-        val maxSide = 3508
-        if (maxOf(o.outWidth, o.outHeight) <= maxSide) {
-            return PdfWriter.JpegPage(file.readBytes(), o.outWidth, o.outHeight)
-        }
-        val bmp = Images.decodeFile(file, maxSide) ?: error("Cannot decode $file")
-        val bytes = ByteArrayOutputStream().use { bos ->
-            bmp.compress(Bitmap.CompressFormat.JPEG, 90, bos); bos.toByteArray()
-        }
-        val page = PdfWriter.JpegPage(bytes, bmp.width, bmp.height)
-        bmp.recycle()
-        return page
-    }
 
     private fun writePublic(fileName: String, mime: String, publicDir: String, collection: () -> Uri, write: (OutputStream) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

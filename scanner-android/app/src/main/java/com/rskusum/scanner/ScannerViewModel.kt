@@ -48,6 +48,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val camera: StateFlow<TrackerState> = _camera
     fun postCameraState(s: TrackerState) { _camera.value = s }
 
+    /** One-off user messages from the pipeline (e.g. duplicate capture rejected). */
+    private val _messages = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val messages: kotlinx.coroutines.flow.SharedFlow<String> = _messages
+
     // --- Capture settings ------------------------------------------------------------------
     var mode by mutableStateOf(ScanMode.DOCUMENT)
         private set
@@ -103,6 +107,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame) }
                 pages.addAll(created)
                 created.forEach { p -> launchRender(p, pickSmartFilter = smart) }
+            } catch (r: Rejected) {
+                _messages.tryEmit(r.message ?: "Capture rejected")
             } catch (t: Throwable) {
                 Log.e(TAG, "capture processing failed", t)
             } finally {
@@ -127,47 +133,64 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Thrown when a capture is rejected (duplicate / nothing to scan); message is shown to the user. */
+    private class Rejected(message: String) : Exception(message)
+
     private fun createPages(photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?): List<Page> {
         val file = File(sessionDir, "${System.currentTimeMillis()}_${(0..9999).random()}.jpg")
         Images.saveJpeg(photo, file, 95)
         val gray = Images.toGrayMat(photo)
-        val quad = if (frame != null) {
-            // Guided frame: edges are searched only near the frame sides on the full-res photo,
-            // then line-fitted; undetectable sides fall back to the frame + 1%.
-            try {
-                DocumentDetector.refine(gray, DocumentDetector.snapToFrame(gray, frame))
-            } finally {
-                gray.release()
-                photo.recycle()
+        try {
+            var sidesFound = 4
+            val quad = if (frame != null) {
+                // Guided frame: edges are searched only near the frame sides on the full-res photo,
+                // then line-fitted; undetectable sides fall back to the frame + 1%.
+                val snap = DocumentDetector.snapToQuad(gray, frame)
+                sidesFound = snap.sidesFound
+                DocumentDetector.refine(gray, snap.quad)
+            } else {
+                // Learned edge model on the sharp still first, then the classic detector at two scales.
+                val model = com.rskusum.scanner.vision.EdgeModel.get(getApplication())
+                val fromModel = model?.let {
+                    val rgb = Images.toRgbMat(photo)
+                    val prob = it.run(rgb)
+                    rgb.release()
+                    DocumentDetector.detectFromEdgeMap(prob, hint).also { prob.release() }
+                }
+                val detected = fromModel
+                    ?: DocumentDetector.detect(gray, 640, prev = hint)
+                    ?: DocumentDetector.detect(gray, 1000, prev = hint)
+                when {
+                    detected != null -> DocumentDetector.refine(gray, detected)
+                    hint != null -> DocumentDetector.refine(gray, hint)
+                    else -> { sidesFound = 0; Quad.FULL }
+                }
             }
-        } else try {
-            // Learned edge model on the sharp still first, then the classic detector at two scales.
-            val model = com.rskusum.scanner.vision.EdgeModel.get(getApplication())
-            val fromModel = model?.let {
-                val rgb = Images.toRgbMat(photo)
-                val prob = it.run(rgb)
-                rgb.release()
-                DocumentDetector.detectFromEdgeMap(prob, hint).also { prob.release() }
+
+            // Duplicate / empty-surface check against the most recent page.
+            val fp = DocumentDetector.fingerprint(gray, quad)
+            if (DocumentDetector.isBlank(fp) && sidesFound == 0) {
+                throw Rejected("No document found - place a document inside the frame")
             }
-            val detected = fromModel
-                ?: DocumentDetector.detect(gray, 640, prev = hint)
-                ?: DocumentDetector.detect(gray, 1000, prev = hint)
-            when {
-                detected != null -> DocumentDetector.refine(gray, detected)
-                hint != null -> DocumentDetector.refine(gray, hint)
-                else -> Quad.FULL
+            val last = pages.lastOrNull()?.fingerprint
+            if (last != null && DocumentDetector.fingerprintSimilarity(fp, last) >= DUPLICATE_SIMILARITY) {
+                throw Rejected("Same page as the last scan - place another document")
             }
+
+            return if (mode.splitBook) {
+                listOf(
+                    Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 0, frame = frame, fingerprint = fp),
+                    Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 1, frame = frame, fingerprint = fp),
+                )
+            } else {
+                listOf(Page(file, quad, mode.defaultFilter, mode.forcedAspect, frame = frame, fingerprint = fp))
+            }
+        } catch (r: Rejected) {
+            file.delete()
+            throw r
         } finally {
             gray.release()
             photo.recycle()
-        }
-        return if (mode.splitBook) {
-            listOf(
-                Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 0),
-                Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 1),
-            )
-        } else {
-            listOf(Page(file, quad, mode.defaultFilter, mode.forcedAspect))
         }
     }
 
@@ -275,14 +298,26 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         launchRender(page)
     }
 
-    /** Re-runs detection on the original photo (Crop screen "Auto" button). */
-    suspend fun autoDetect(page: Page): Quad? = withContext(Dispatchers.Default) {
-        val bmp = Images.decodeFile(page.originalFile, 1600) ?: return@withContext null
+    /**
+     * Crop screen "Auto detect": multi-candidate search on the original photo. Priors are the
+     * user's current outline, the guide frame used at capture and the stored crop; plus the
+     * learned edge model and classic detector. Best candidate by edge evidence wins.
+     */
+    suspend fun autoDetect(page: Page, current: Quad?): Quad? = withContext(Dispatchers.Default) {
+        val bmp = Images.decodeFile(page.originalFile, 2000) ?: return@withContext null
         val gray = Images.toGrayMat(bmp)
+        val edgeMap = com.rskusum.scanner.vision.EdgeModel.get(getApplication())?.let { model ->
+            val rgb = Images.toRgbMat(bmp)
+            model.run(rgb).also { rgb.release() }
+        }
         bmp.recycle()
-        val q = DocumentDetector.detect(gray, 640)?.let { DocumentDetector.refine(gray, it) }
-        gray.release()
-        q
+        try {
+            val priors = listOfNotNull(current, page.frame, page.quad).distinct()
+            DocumentDetector.autoDetect(gray, edgeMap, priors)
+        } finally {
+            gray.release()
+            edgeMap?.release()
+        }
     }
 
     fun deletePage(page: Page) {
@@ -308,11 +343,13 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     // --- Saving ----------------------------------------------------------------------------
 
     /** Saves the session as a PDF in the library and in Downloads. Returns a user message. */
+    var pdfQuality by mutableStateOf(com.rskusum.scanner.data.PdfQuality.BALANCED)
+
     suspend fun savePdf(): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val files = pages.mapNotNull { it.processedFile }
             require(files.isNotEmpty()) { "Nothing to save" }
-            val pdf = store.savePdf(documentName, files)
+            val pdf = store.savePdf(documentName, files, pdfQuality)
             val where = store.exportToDownloads(pdf)
             withContext(Dispatchers.Main) {
                 discardSession()
@@ -355,5 +392,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val TAG = "ScannerVM"
         const val MAX_PHOTO_SIDE = 4200
+        /** Fingerprint correlation above which a capture counts as the same page (tested: same >= 0.976, different <= 0.75). */
+        const val DUPLICATE_SIMILARITY = 0.88
     }
 }
