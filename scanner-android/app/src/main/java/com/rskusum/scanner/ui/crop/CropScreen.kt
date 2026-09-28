@@ -114,8 +114,24 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             val bmp = bitmap
-            if (bmp == null || detecting) CircularProgressIndicator(color = Color.White)
-            if (bmp != null) CropEditor(bmp, quad) { quad = it }
+            if (bmp != null) CropEditor(bmp, quad) { if (!detecting) quad = it }
+            // Drawn on top of the photo so it's clearly visible while Auto detect works.
+            if (bmp == null || detecting) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = if (bmp == null) 0f else 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = ScanColors.Accent, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
+                        if (detecting) {
+                            Spacer(Modifier.height(12.dp))
+                            Text("Finding page edges…", color = Color.White, fontSize = 15.sp)
+                        }
+                    }
+                }
+            }
         }
 
         Row(
@@ -134,9 +150,10 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                     detecting = false
                 }
             }) {
-                Icon(Icons.Outlined.AutoFixHigh, null, tint = Color.White)
+                if (detecting) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                else Icon(Icons.Outlined.AutoFixHigh, null, tint = Color.White)
                 Spacer(Modifier.size(8.dp))
-                Text("Auto detect", color = Color.White)
+                Text(if (detecting) "Detecting…" else "Auto detect", color = Color.White)
             }
             TextButton(onClick = { quad = Quad.FULL }) {
                 Icon(Icons.Outlined.CropFree, null, tint = Color.White)

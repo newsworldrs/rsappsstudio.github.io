@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.AutoFixNormal
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.AlertDialog
@@ -94,6 +95,7 @@ fun ReviewScreen(
     onPageChanged: (Int) -> Unit,
     onAddPage: () -> Unit,
     onCrop: (Int) -> Unit,
+    onErase: (Int) -> Unit,
     onSaved: () -> Unit,
     onDiscard: () -> Unit,
 ) {
@@ -197,6 +199,7 @@ fun ReviewScreen(
                     ToolButton(Icons.Outlined.AddAPhoto, "Add") { onAddPage() }
                     ToolButton(Icons.Outlined.Crop, "Crop") { current?.let { onCrop(vm.pages.indexOf(it)) } }
                     ToolButton(Icons.Filled.RotateRight, "Rotate") { current?.let { vm.rotate(it) } }
+                    ToolButton(Icons.Outlined.AutoFixNormal, "Erase") { current?.let { onErase(vm.pages.indexOf(it)) } }
                     ToolButton(Icons.Outlined.AutoFixHigh, "Filters", selected = showFilters) { showFilters = !showFilters }
                     ToolButton(Icons.Outlined.Delete, "Delete") {
                         current?.let {
