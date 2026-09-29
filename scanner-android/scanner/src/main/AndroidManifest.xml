@@ -7,6 +7,8 @@
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Only for the one-time OCR language model download (RsOcr). -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Only used on Android 9 and older, and only when saving to public Downloads / Pictures. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"

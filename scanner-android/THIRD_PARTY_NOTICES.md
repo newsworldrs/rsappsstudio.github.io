@@ -25,6 +25,8 @@ GPL, LGPL or AGPL, and nothing requires your app to be open source.
 | OpenCV (`org.opencv:opencv`) | 4.12.0 | Apache 2.0 | Yes | Apache 2.0 since 4.5.0. Its bundled 3rd-party code (libjpeg-turbo, libpng, libwebp, zlib, OpenJPEG, protobuf, quirc, carotene, …) is BSD/zlib/MIT/IJG-style. |
 | TensorFlow Lite (`org.tensorflow:tensorflow-lite`) | 2.16.1 | Apache 2.0 | Yes | Bundles FlatBuffers (Apache 2.0), XNNPACK (BSD), ruy (Apache 2.0). |
 | PDFBox-Android (`com.tom-roush:pdfbox-android`) | 2.0.27.0 | Apache 2.0 | Yes | Port of Apache PDFBox. Includes Adobe AFM font metrics (freely redistributable) and Liberation Sans (SIL OFL 1.1, allows commercial embedding). |
+| Tesseract4Android (`cz.adaptech.tesseract4android`) | 4.9.0 | Apache 2.0 | Yes | Android wrapper for Tesseract OCR (Apache 2.0). Bundles Leptonica (BSD 2-clause), libjpeg-turbo, libpng and zlib (permissive). |
+| Tesseract language models (`*.traineddata`, downloaded at runtime or bundled by the app) | tessdata_best / tessdata_fast | Apache 2.0 | Yes | © Google / Tesseract contributors |
 | AndroidX: Compose, Material 3, Material Icons, Activity, Lifecycle, Core, ExifInterface | see `scanner/build.gradle.kts` | Apache 2.0 | Yes | |
 | CameraX | 1.4.1 | Apache 2.0 | Yes | |
 | Kotlin stdlib, kotlinx.coroutines | 2.0.21 / 1.9.0 | Apache 2.0 | Yes | |

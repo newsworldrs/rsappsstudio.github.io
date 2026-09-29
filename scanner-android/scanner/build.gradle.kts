@@ -7,7 +7,7 @@ plugins {
 }
 
 /** Library version; CI / JitPack can override it with -PscannerVersion=... */
-val scannerVersion: String = (findProperty("scannerVersion") as String?) ?: "1.0.0"
+val scannerVersion: String = (findProperty("scannerVersion") as String?) ?: "1.1.0"
 
 android {
     namespace = "com.rskusum.scanner"
@@ -81,6 +81,9 @@ dependencies {
 
     // PDF creation.
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
+    // On-device OCR (Tesseract LSTM, Apache 2.0) - published on JitPack.
+    implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")
 }
 
 publishing {

@@ -26,5 +26,8 @@ Libraries used at runtime (downloaded from Maven, not copied into this repositor
   TensorFlow Lite 2.16.1     - Apache License 2.0      https://www.tensorflow.org/lite
   PDFBox-Android 2.0.27.0    - Apache License 2.0      https://github.com/TomRoush/PdfBox-Android
     (based on Apache PDFBox, Copyright The Apache Software Foundation)
+  Tesseract4Android 4.9.0   - Apache License 2.0      https://github.com/adaptech-cz/Tesseract4Android
+    (Tesseract OCR, Apache 2.0; Leptonica, BSD 2-clause)
+  Tesseract language models - Apache License 2.0      https://github.com/tesseract-ocr/tessdata_best
   AndroidX / Jetpack Compose / CameraX - Apache License 2.0
   Kotlin, kotlinx.coroutines - Apache License 2.0

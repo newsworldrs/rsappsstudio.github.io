@@ -24,6 +24,7 @@ A complete document scanner for Android apps, and a ready-made scanner app (`com
   * Filters: Auto color, Original, No shadow, Light text, Grayscale, B&W, Whiteboard.
   * Eraser: "marks only" keeps printed text; "everything" wipes the area.
 * **Output:** a compressed PDF (built with PDFBox) and/or one JPEG per page.
+* **Text recognition (OCR):** on-device Tesseract (LSTM), with 100+ languages including English and Hindi. It doesn't use ML Kit (see [OCR](#text-recognition-ocr)).
 
 ## Add it to your app: step by step
 
@@ -93,6 +94,7 @@ Your app **does not** need to use Jetpack Compose. The scanner brings its own sc
        implementation("org.opencv:opencv:4.12.0")
        implementation("org.tensorflow:tensorflow-lite:2.16.1")
        implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+       implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0") // needs maven("https://jitpack.io")
    }
    ```
 
@@ -236,6 +238,29 @@ Run on a **real phone**, because emulators have no usable camera. Check that:
 | JitPack says "Build failed" | Open the log on jitpack.io; the tag must contain `jitpack.yml` (commit `d984e83` or later) |
 | Black preview / "Detector error" on screen | The camera permission was denied, or the phone's ABI is missing (keep arm64-v8a in your ABI filters) |
 | Two FileProviders clash | They can't: the library uses its own authority `<applicationId>.rsscanner.fileprovider` |
+
+### Text recognition (OCR)
+
+`RsOcr` reads the text of a scanned page on the device. It uses Tesseract's LSTM engine, not ML Kit, and needs no cloud service.
+
+```kotlin
+import com.rskusum.scanner.ocr.RsOcr
+
+// In a coroutine, e.g. lifecycleScope.launch { ... }
+val ocr = RsOcr.recognize(context, result.pageUris.first())            // English
+val ocr = RsOcr.recognize(context, uri, languages = "eng+hin")          // English + Hindi
+ocr.text        // the page text
+ocr.confidence  // 0-100
+```
+
+**Language models.** Each language needs a `<lang>.traineddata` file.
+- The best-quality model is about 12–15 MB per language.
+- `OcrModel.FAST` is about 2–4 MB per language.
+- The file is downloaded once from the Tesseract project on first use and then kept on the device.
+- To warm up at app start, call `RsOcr.prepare(context, "eng")` early, so the first scan doesn't wait for the download.
+- To work fully offline, put the files in your app at `app/src/main/assets/tessdata/eng.traineddata`, taken from https://github.com/tesseract-ocr/tessdata_best. They are then used without any download.
+
+Language codes: `eng`, `hin`, `mar`, `ben`, `guj`, `pan`, `tam`, `tel`, `kan`, `mal`, `urd`, `ara`, `fra`, `deu`, `spa`, … To combine languages, join them with `+`.
 
 ### More ways to use it
 
