@@ -1,0 +1,30 @@
+RS Kusum Scanner
+Copyright 2026 RS Apps Studio
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes the following third-party components. All of them are
+under licenses that allow free and commercial use, modification and
+redistribution. Full details: THIRD_PARTY_NOTICES.md
+
+Bundled model files (scanner/src/main/assets/models):
+
+  doc_edges_hed_lite.tflite
+    Document edge detection model (HED-lite) from SmartCropper
+    https://github.com/pqpo/SmartCropper
+    Copyright 2017 pqpo. Apache License 2.0.
+
+  doc_orientation.tflite
+    Text orientation classifier (PP-LCNet, PaddleClas "text_image_orientation"),
+    as packaged by RapidOrientation https://github.com/RapidAI/RapidOrientation
+    Copyright RapidAI and the PaddlePaddle Authors. Apache License 2.0.
+    Modified: converted from ONNX to TensorFlow Lite (float16) with onnx2tf.
+
+Libraries used at runtime (downloaded from Maven, not copied into this repository):
+
+  OpenCV 4.12.0              - Apache License 2.0      https://opencv.org
+  TensorFlow Lite 2.16.1     - Apache License 2.0      https://www.tensorflow.org/lite
+  PDFBox-Android 2.0.27.0    - Apache License 2.0      https://github.com/TomRoush/PdfBox-Android
+    (based on Apache PDFBox, Copyright The Apache Software Foundation)
+  AndroidX / Jetpack Compose / CameraX - Apache License 2.0
+  Kotlin, kotlinx.coroutines - Apache License 2.0

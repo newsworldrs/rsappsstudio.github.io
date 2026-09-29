@@ -1,0 +1,63 @@
+name: Scanner Android build
+
+on:
+  push:
+    paths:
+      - "scanner-android/**"
+      - ".github/workflows/scanner-android.yml"
+  pull_request:
+    paths:
+      - "scanner-android/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scanner-android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug and release APKs and the library
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug assembleRelease
+          # Same command JitPack runs (jitpack.yml): proves the library publishes.
+          ./gradlew --no-daemon :scanner:publishReleasePublicationToMavenLocal
+          ls -R ~/.m2/repository/com/github/newsworldrs/ | head -20
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rskusum-scanner-apks
+          path: |
+            scanner-android/app/build/outputs/apk/debug/*.apk
+            scanner-android/app/build/outputs/apk/release/*.apk
+
+      - name: Publish APK as a downloadable release
+        if: github.event_name != 'pull_request'
+        run: |
+          ls -la app/build/outputs/apk/*/
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk RSKusumScanner-arm64.apk
+          cp app/build/outputs/apk/release/app-universal-release.apk RSKusumScanner-release.apk
+          cp app/build/outputs/apk/debug/app-universal-debug.apk RSKusumScanner-debug.apk
+          cp scanner/build/outputs/aar/scanner-release.aar RSKusumScanner-library.aar
+          # Full Android Studio project (source only, no build output).
+          git -C .. archive --format=zip --prefix=RSKusumScanner/ -o "$PWD/RSKusumScanner-project.zip" HEAD:scanner-android
+          gh release delete scanner-latest --yes --cleanup-tag || true
+          gh release create scanner-latest RSKusumScanner-arm64.apk RSKusumScanner-release.apk RSKusumScanner-debug.apk RSKusumScanner-project.zip RSKusumScanner-library.aar \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "RS Kusum Scanner (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7}. RSKusumScanner-arm64.apk = small APK for 64-bit phones (recommended). RSKusumScanner-release.apk = universal. RSKusumScanner-project.zip = Android Studio project (File > Open the RSKusumScanner folder). RSKusumScanner-library.aar = the scanner library (Apache 2.0); for Gradle use JitPack, see scanner-android/README.md."
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -1,0 +1,9 @@
+<resources>
+    <color name="rs_scanner_black">#FF000000</color>
+
+    <style name="Theme.RsScanner" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/rs_scanner_black</item>
+        <item name="android:statusBarColor">@color/rs_scanner_black</item>
+        <item name="android:navigationBarColor">@color/rs_scanner_black</item>
+    </style>
+</resources>
