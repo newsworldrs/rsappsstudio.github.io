@@ -1,0 +1,57 @@
+name: Release library
+
+# Actions tab -> "Release library" -> Run workflow -> enter a version (e.g. 1.2.0).
+# Creates the tag + GitHub release on main, then asks JitPack to build it so apps can use
+#   implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.2.0)"
+        required: true
+      notes:
+        description: "Release notes (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Create tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION already exists"; exit 1
+          fi
+          body="RS Kusum Scanner library $VERSION.
+
+          implementation(\"com.github.newsworldrs:rsappsstudio.github.io:$VERSION\")  // with maven(\"https://jitpack.io\")
+
+          $NOTES"
+          gh release create "$VERSION" --target "$(git rev-parse HEAD)" \
+            --title "RS Kusum Scanner $VERSION" --notes "$body"
+
+      - name: Build it on JitPack
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          base=https://jitpack.io/com/github/newsworldrs/rsappsstudio.github.io/$VERSION
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 600 "$base/rsappsstudio.github.io-$VERSION.pom")
+            echo "JitPack try $i: HTTP $code"
+            [ "$code" = "200" ] && break
+            sleep 60
+          done
+          curl -s --max-time 120 "$base/build.log" | tail -30
+          [ "$code" = "200" ] || { echo "JitPack build did not finish - see https://jitpack.io/#newsworldrs/rsappsstudio.github.io"; exit 1; }
