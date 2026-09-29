@@ -7,7 +7,7 @@ plugins {
 }
 
 /** Library version; CI / JitPack can override it with -PscannerVersion=... */
-val scannerVersion: String = (findProperty("scannerVersion") as String?) ?: "1.1.0"
+val scannerVersion: String = (findProperty("scannerVersion") as String?) ?: "1.2.0"
 
 android {
     namespace = "com.rskusum.scanner"

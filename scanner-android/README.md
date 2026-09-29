@@ -24,6 +24,12 @@ A complete document scanner for Android apps, and a ready-made scanner app (`com
   * Filters: Auto color, Original, No shadow, Light text, Grayscale, B&W, Whiteboard.
   * Eraser: "marks only" keeps printed text; "everything" wipes the area.
 * **Output:** a compressed PDF (built with PDFBox) and/or one JPEG per page.
+* **AI Text mode:** the live camera highlights the text lines on the page. Each capture is then read on the device and opens in an AI Text screen showing:
+  * the editable text,
+  * the detected document type (invoice, receipt, letter, ID, resume, exam paper, …),
+  * tappable key details: links, e-mails, phone numbers, dates, amounts, PAN, GSTIN and PIN code.
+
+  The Review screen also has a **Text** tool that does the same for any page.
 * **Text recognition (OCR):** on-device Tesseract (LSTM), with 100+ languages including English and Hindi. It doesn't use ML Kit (see [OCR](#text-recognition-ocr)).
 
 ## Add it to your app: step by step
@@ -261,6 +267,26 @@ ocr.confidence  // 0-100
 - To work fully offline, put the files in your app at `app/src/main/assets/tessdata/eng.traineddata`, taken from https://github.com/tesseract-ocr/tessdata_best. They are then used without any download.
 
 Language codes: `eng`, `hin`, `mar`, `ben`, `guj`, `pan`, `tam`, `tel`, `kan`, `mal`, `urd`, `ara`, `fra`, `deu`, `spa`, … To combine languages, join them with `+`.
+
+### AI Text: text back to your app
+
+Open the scanner in AI Text mode and read `result.text` when it returns:
+
+```kotlin
+scanner.launch(ScannerOptions(modes = listOf(ScanMode.AI_TEXT), initialMode = ScanMode.AI_TEXT,
+                              returnPdf = false, ocrLanguages = "eng"))
+// ... in the result callback:
+result?.text   // all pages that were read, separated by a blank line
+```
+
+In AI Text mode, the user points the camera at a page and the text lines are highlighted live. The page is captured automatically, and the AI Text screen shows:
+- the text,
+- what kind of document it is,
+- key details.
+
+**Done** returns everything to your app. `ScanResult.text` is also filled when the user read pages with the **Text** tool in any other mode.
+
+For key details and the document type on your own text, call `TextInsights.analyze(text)`. It runs offline.
 
 ### More ways to use it
 
