@@ -58,6 +58,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var orientation by mutableStateOf(com.rskusum.scanner.data.FrameOrientation.PORTRAIT)
     var aiAssist by mutableStateOf(false)
+    /** Book mode: false = top half is page 1 (Adobe default), true = bottom half is page 1. */
+    var bookSwap by mutableStateOf(false)
     var autoCapture by mutableStateOf(true)
 
     fun selectMode(m: ScanMode) {
@@ -90,7 +92,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val guideFrame: Quad?
         get() = when (orientation) {
             com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> DocumentDetector.guideFrame(1 / mode.frameRatio)
-            com.rskusum.scanner.data.FrameOrientation.LANDSCAPE -> DocumentDetector.guideFrame(mode.frameRatio)
+            // An open book is always framed along the phone's long side (spread split top/bottom).
+            com.rskusum.scanner.data.FrameOrientation.LANDSCAPE ->
+                if (mode == ScanMode.BOOK) DocumentDetector.guideFrame(1 / mode.frameRatio) else DocumentDetector.guideFrame(mode.frameRatio)
             com.rskusum.scanner.data.FrameOrientation.FREE -> null
         }
 
@@ -139,7 +143,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val front = idFront
                 val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
-                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation) }
+                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap) }
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
@@ -189,7 +193,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun createPages(
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
-        idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0,
+        idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false,
     ): List<Page> {
         val photoW = photo.width
         val photoH = photo.height
@@ -241,10 +245,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val (a, b) = DocumentDetector.splitSpread(quad, photoW, photoH)
                 val (sw, sh) = DocumentDetector.naiveSize(quad, photoW, photoH)
                 val acrossBook = sh > sw
-                val topIsRight = deviceRotation == 90 // phone top pointing to the book's right side
-                val first = if (acrossBook && topIsRight) b else a
-                val second = if (first === a) b else a
-                val turn = if (!acrossBook) 0 else if (topIsRight) 90 else 270
+                // Page 1 = top (or left) half as shown on screen, unless the user swapped the order.
+                val first = if (swap) b else a
+                val second = if (swap) a else b
+                // Phone held across the book: halves are sideways - turn them upright. Default is
+                // the phone's top pointing left (like Adobe Scan's sideways labels).
+                val turn = if (!acrossBook) 0 else if (deviceRotation == 90) 90 else 270
                 return listOf(first, second).map { q ->
                     Page(file, q, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).apply { rotation = turn }
                 }

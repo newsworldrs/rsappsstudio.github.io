@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.outlined.CropFree
 import androidx.compose.material.icons.outlined.CropLandscape
 import androidx.compose.material.icons.outlined.CropPortrait
@@ -90,6 +91,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -334,10 +336,25 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 if (granted) {
                     CameraPreview(holder, analyzer, flash.mode)
                     val guide = vm.guideFrame
+                    val book = vm.mode == ScanMode.BOOK && !qrMode
                     when {
                         qrMode -> QrFrame()
-                        guide != null -> GuideFrameOverlay(guide, state.aligned, spine = vm.mode == ScanMode.BOOK)
+                        guide != null -> GuideFrameOverlay(guide, state.aligned)
                         else -> QuadOverlay(state.quad, state.phase)
+                    }
+                    // Adobe-style book guide: dashed divider across the whole preview, sideways
+                    // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
+                    if (book) {
+                        val divider = guide?.let { (it.tl.y + it.br.y) / 2f } ?: 0.5f
+                        BookOverlay(divider, vm.bookSwap)
+                        BookSwapButton(
+                            swapped = vm.bookSwap,
+                            onSwap = {
+                                vm.bookSwap = !vm.bookSwap
+                                toast = if (vm.bookSwap) "Bottom half is page 1" else "Top half is page 1"
+                            },
+                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 6.dp),
+                        )
                     }
                 } else {
                     PermissionRationale { permissionLauncher.launch(Manifest.permission.CAMERA) }
@@ -363,7 +380,14 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                         CapturePhase.NEXT_PAGE -> words.next
                     }
                 }
-                if (hint != null) HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
+                if (hint != null) {
+                    if (vm.mode == ScanMode.BOOK && !qrMode) {
+                        // Book mode is used with the phone held sideways: turn the text with it.
+                        HintChip(hint, Modifier.align(Alignment.Center).rotate(90f))
+                    } else {
+                        HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
+                    }
+                }
                 if (granted && !qrMode && vm.mode == ScanMode.ID_CARD) {
                     val step = when (vm.idStep) {
                         ScannerViewModel.IdStep.FRONT -> "Front side  1 / 2"
@@ -592,7 +616,7 @@ private fun modeWords(mode: ScanMode, idStep: ScannerViewModel.IdStep): ModeWord
     ScanMode.DOCUMENT -> ModeWords("Place the page inside the frame", "Looking for document", "Ready for next page", "")
     ScanMode.WHITEBOARD -> ModeWords("Fit the whiteboard inside the frame", "Looking for whiteboard", "Ready for the next board", "")
     ScanMode.BOOK -> ModeWords(
-        "Hold the phone across the open book - spine on the centre line", "Looking for an open book",
+        "Line up the book's spine with the dashed line", "Looking for book",
         "Turn the page", "",
     )
     ScanMode.BOOK_COVER -> ModeWords("Fit the book cover inside the frame", "Looking for the book cover", "Ready for the next cover", "")
@@ -654,6 +678,57 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = fa
             drawCircle(color, 5.dp.toPx(), p1)
             drawCircle(color, 5.dp.toPx(), p2)
         }
+    }
+}
+
+/**
+ * Book mode guide (like Adobe Scan): the phone is held sideways across the open book, the spine
+ * lies on a dashed line across the preview, the left page shows as "1" (top) and the right page as
+ * "2" (bottom). Numbers are drawn sideways so they read correctly with the phone turned.
+ */
+@Composable
+private fun BookOverlay(dividerY: Float, swapped: Boolean) {
+    val purple = Color(0xFFB04BD8)
+    Box(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize()) {
+            val y = dividerY * size.height
+            drawLine(
+                purple, Offset(0f, y), Offset(size.width, y), 4.dp.toPx(),
+                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(18.dp.toPx(), 12.dp.toPx())),
+            )
+        }
+        val top = if (swapped) "2" else "1"
+        val bottom = if (swapped) "1" else "2"
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+            val h = maxHeight
+            val labelStyle = androidx.compose.ui.text.TextStyle(fontSize = 96.sp, fontWeight = FontWeight.Bold, color = purple.copy(alpha = 0.85f))
+            Text(
+                top, style = labelStyle,
+                modifier = Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 60.dp).rotate(90f),
+            )
+            Text(
+                bottom, style = labelStyle,
+                modifier = Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 60.dp).rotate(90f),
+            )
+        }
+    }
+}
+
+/** "1 ⇅ 2" button: swaps which half of the spread becomes page 1. */
+@Composable
+private fun BookSwapButton(swapped: Boolean, onSwap: () -> Unit, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.Black.copy(alpha = 0.6f))
+            .border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .clickable(onClick = onSwap)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(if (swapped) "2" else "1", color = Color.White, fontSize = 15.sp, modifier = Modifier.rotate(90f))
+        Icon(Icons.Filled.SwapVert, contentDescription = "Swap page order", tint = Color.White, modifier = Modifier.size(22.dp))
+        Text(if (swapped) "1" else "2", color = Color.White, fontSize = 15.sp, modifier = Modifier.rotate(90f))
     }
 }
 
