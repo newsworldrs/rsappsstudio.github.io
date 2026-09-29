@@ -251,9 +251,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // Phone held across the book: halves are sideways - turn them upright. Default is
                 // the phone's top pointing left (like Adobe Scan's sideways labels).
                 val turn = if (!acrossBook) 0 else if (deviceRotation == 90) 90 else 270
-                return listOf(first, second).map { q ->
-                    Page(file, q, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).apply { rotation = turn }
+                // Detach the pages: each gets its OWN upright image cut at the spine, so crop,
+                // filters and eraser only ever see that one page.
+                val pagesOut = listOf(first, second).mapIndexed { i, q ->
+                    val (pageFile, pageQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
+                    Page(pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect, fingerprint = fp)
                 }
+                file.delete() // the full spread photo is no longer needed
+                return pagesOut
             }
             return listOf(
                 Page(
@@ -268,6 +273,51 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             gray.release()
             photo.recycle()
         }
+    }
+
+    /**
+     * Cuts one page of an open book out of the spread photo: the page's bounding box plus a small
+     * margin on the outer sides, but nothing beyond the spine, turned upright by [turn] degrees
+     * (clockwise). Returns the new image file and the page outline in its coordinates.
+     */
+    private fun detachBookPage(photo: Bitmap, q: Quad, tall: Boolean, firstHalf: Boolean, turn: Int, index: Int): Pair<File, Quad> {
+        val w = photo.width.toFloat(); val h = photo.height.toFloat()
+        val xs = q.points.map { it.x * w }; val ys = q.points.map { it.y * h }
+        val mx = 0.03f * w; val my = 0.03f * h
+        var l = xs.min() - mx; var r = xs.max() + mx; var t = ys.min() - my; var b = ys.max() + my
+        // Spine side: cut exactly at the spine (no sliver of the other page).
+        when {
+            tall && firstHalf -> b = maxOf(q.bl.y, q.br.y) * h   // top page: spine is its bottom edge
+            tall -> t = minOf(q.tl.y, q.tr.y) * h                // bottom page: spine is its top edge
+            firstHalf -> r = maxOf(q.tr.x, q.br.x) * w           // left page: spine is its right edge
+            else -> l = minOf(q.tl.x, q.bl.x) * w               // right page: spine is its left edge
+        }
+        val x0 = l.coerceIn(0f, w - 2).toInt(); val y0 = t.coerceIn(0f, h - 2).toInt()
+        val x1 = r.coerceIn(x0 + 1f, w).toInt(); val y1 = b.coerceIn(y0 + 1f, h).toInt()
+        var crop = Bitmap.createBitmap(photo, x0, y0, x1 - x0, y1 - y0)
+        if (crop === photo) crop = photo.copy(Bitmap.Config.ARGB_8888, false) // never recycle the source
+        val cw = (x1 - x0).toFloat(); val ch = (y1 - y0).toFloat()
+        var pts = q.points.map { com.rskusum.scanner.vision.NPoint(((it.x * w - x0) / cw).coerceIn(0f, 1f), ((it.y * h - y0) / ch).coerceIn(0f, 1f)) }
+        if (turn % 360 != 0) {
+            crop = Images.rotate(crop, turn)
+            pts = pts.map { p ->
+                if (turn == 90) com.rskusum.scanner.vision.NPoint(1f - p.y, p.x) // clockwise
+                else com.rskusum.scanner.vision.NPoint(p.y, 1f - p.x)          // 270 = counter-clockwise
+            }
+        }
+        val file = File(sessionDir, "book_${System.currentTimeMillis()}_$index.jpg")
+        Images.saveJpeg(crop, file, 95)
+        crop.recycle()
+        return file to orderQuad(pts)
+    }
+
+    /** Orders 4 points clockwise from the one nearest the top-left corner. */
+    private fun orderQuad(p: List<com.rskusum.scanner.vision.NPoint>): Quad {
+        val cx = p.map { it.x }.average(); val cy = p.map { it.y }.average()
+        val sorted = p.sortedBy { kotlin.math.atan2(it.y - cy, it.x - cx) }
+        val start = sorted.indices.minBy { sorted[it].x + sorted[it].y }
+        val o = List(4) { sorted[(start + it) % 4] }
+        return Quad(o[0], o[1], o[2], o[3])
     }
 
     /**
