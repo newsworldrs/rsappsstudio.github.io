@@ -80,6 +80,7 @@ object RsScanner {
  * @param returnPdf create a PDF of the scan ([ScanResult.pdfUri]).
  * @param returnJpegs return every finished page as a JPEG ([ScanResult.pageUris]).
  * @param pdfQuality size / quality preset preselected for the PDF.
+ * @param ocrLanguages Tesseract languages for AI Text / Extract text, e.g. "eng" or "eng+hin".
  * @param standalone full app behaviour: home screen with the PDF library, QR scanner, and
  *   saving to the public Downloads folder. Leave false when embedding the scanner.
  */
@@ -94,6 +95,7 @@ data class ScannerOptions @JvmOverloads constructor(
     val returnJpegs: Boolean = true,
     val pdfQuality: PdfQuality = PdfQuality.BALANCED,
     val standalone: Boolean = false,
+    val ocrLanguages: String = "eng",
 ) : Parcelable {
     init {
         require(modes.isNotEmpty()) { "ScannerOptions.modes must not be empty" }
@@ -116,6 +118,11 @@ data class ScanResult(
     val pdfUri: Uri?,
     val pageUris: List<Uri>,
     val pageCount: Int,
+    /**
+     * Text read from the pages (AI Text mode or the Text tool), pages separated by a blank line;
+     * null when no page was read.
+     */
+    val text: String? = null,
 ) : Parcelable
 
 /** Activity-result contract: launch with [ScannerOptions], get a [ScanResult] or null when cancelled. */

@@ -16,6 +16,8 @@ data class TrackerState(
     val aligned: Boolean = false,
     /** Guide-frame mode: what the user should do, e.g. "Move closer". */
     val guidance: String? = null,
+    /** AI Text mode: live text line boxes (normalized), for the highlight overlay. */
+    val textBoxes: List<com.rskusum.scanner.vision.NRect> = emptyList(),
 )
 
 /**

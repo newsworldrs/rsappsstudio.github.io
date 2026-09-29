@@ -18,6 +18,8 @@ enum class ScanMode(
     val frameRatio: Double = A4,
     /** Orientation the guide frame starts in for this mode. */
     val defaultOrientation: FrameOrientation = FrameOrientation.PORTRAIT,
+    /** AI Text: text areas are highlighted live and every capture is read with OCR. */
+    val extractText: Boolean = false,
 ) {
     /** Whiteboards come out as A4 landscape pages. */
     WHITEBOARD(
@@ -35,6 +37,12 @@ enum class ScanMode(
     DOCUMENT("Document", ScanFilter.AUTO, forcedAspect = A4),
     ID_CARD("ID card", ScanFilter.AUTO, forcedAspect = 85.60 / 53.98, frameRatio = 85.60 / 53.98, defaultOrientation = FrameOrientation.LANDSCAPE),
     BUSINESS_CARD("Business card", ScanFilter.AUTO, forcedAspect = 85.0 / 55.0, frameRatio = 85.0 / 55.0, defaultOrientation = FrameOrientation.LANDSCAPE),
+    /**
+     * AI Text: live text highlighting in the camera; each capture is flattened, read on the device
+     * (Tesseract) and opened in the AI Text screen with the text, the document type and key
+     * details (links, e-mails, phone numbers, dates, amounts, ...). Page keeps its real proportions.
+     */
+    AI_TEXT("AI Text", ScanFilter.AUTO, extractText = true),
 }
 
 /**

@@ -43,4 +43,14 @@ class Page(
     var version by mutableIntStateOf(0)
     /** Eraser strokes, in the coordinates of the finished (rotated) page. */
     val erasures = androidx.compose.runtime.mutableStateListOf<com.rskusum.scanner.vision.EraseStroke>()
+
+    // --- AI Text (OCR) ---
+    /** Recognised text of the finished page (null = not read yet). Editable by the user. */
+    var ocrText by mutableStateOf<String?>(null)
+    /** Tesseract's mean confidence 0-100 for [ocrText]. */
+    var ocrConfidence by mutableIntStateOf(0)
+    /** What the text looks like: document type and key details (links, phones, dates, ...). */
+    var insights by mutableStateOf<com.rskusum.scanner.ocr.DocInsights?>(null)
+    var ocrBusy by mutableStateOf(false)
+    var ocrError by mutableStateOf<String?>(null)
 }

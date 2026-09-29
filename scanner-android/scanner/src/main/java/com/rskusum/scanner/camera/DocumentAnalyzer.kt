@@ -31,6 +31,9 @@ class DocumentAnalyzer(
     @Volatile var autoCapture = true
     @Volatile var qrMode = false
     @Volatile var paused = false
+    /** AI Text mode: look for text lines on the live preview. */
+    @Volatile var textMode = false
+    private var textBoxes: List<com.rskusum.scanner.vision.NRect> = emptyList()
     /** Guide frame (normalized) or null for free detection. */
     @Volatile var frame: Quad? = null
     /** Fingerprints of pages already scanned this session: never auto-capture them again. */
@@ -123,6 +126,12 @@ class DocumentAnalyzer(
                     }
                 }
                 if (!captureAllowed) guidance = "Scan complete - tap the thumbnail to review"
+                if (!textMode) {
+                    textBoxes = emptyList()
+                } else if (frameCount % 4 == 0L) {
+                    // Live text highlighting, limited to the page (or the guide frame).
+                    textBoxes = com.rskusum.scanner.vision.TextRegionDetector.detect(gray, trackQuad ?: quad ?: guide)
+                }
                 val sig = trackQuad?.let { DocumentDetector.signature(gray, it) }
                 val (state, fire0) = tracker.update(
                     trackQuad, sig, SystemClock.elapsedRealtime(), autoCapture && captureAllowed, scene,
@@ -141,7 +150,7 @@ class DocumentAnalyzer(
                     }
                 }
                 lastQuad = state.quad
-                onState(state.copy(rawQuad = quad, aligned = guide != null && trackQuad != null, guidance = guidance))
+                onState(state.copy(rawQuad = quad, aligned = guide != null && trackQuad != null, guidance = guidance, textBoxes = textBoxes))
                 framesAnalyzed++
                 lastError = null
                 if (fire) onAutoCapture()
