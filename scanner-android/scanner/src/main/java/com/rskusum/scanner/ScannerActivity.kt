@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
+import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rskusum.scanner.ui.ScannerTheme
 import com.rskusum.scanner.ui.camera.CameraScreen
@@ -58,7 +59,7 @@ class ScannerActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { CAMERA, REVIEW, CROP, ERASE, HOME }
+private enum class Screen { CAMERA, REVIEW, CROP, ERASE, HOME, AI_TEXT }
 
 /**
  * The whole scanner as one composable: camera -> review -> crop / erase -> result.
@@ -75,9 +76,11 @@ fun ScannerFlow(options: ScannerOptions = ScannerOptions(), onResult: (ScanResul
     var screen by rememberSaveable { mutableStateOf(Screen.CAMERA) }
     var cropIndex by rememberSaveable { mutableIntStateOf(0) }
     var reviewIndex by rememberSaveable { mutableIntStateOf(0) }
+    var aiPageId by rememberSaveable { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     // Process death loses the in-memory session; never land on an empty editor.
-    if ((screen == Screen.REVIEW || screen == Screen.CROP || screen == Screen.ERASE) && vm.pages.isEmpty() && !vm.isRendering) {
+    if ((screen == Screen.REVIEW || screen == Screen.CROP || screen == Screen.ERASE || screen == Screen.AI_TEXT) && vm.pages.isEmpty() && !vm.isRendering) {
         screen = Screen.CAMERA
     }
 
@@ -85,10 +88,15 @@ fun ScannerFlow(options: ScannerOptions = ScannerOptions(), onResult: (ScanResul
     LaunchedEffect(vm) {
         vm.results.collect { onResult(it) }
     }
+    // AI Text: a page to read was captured (or picked in review) - show it.
+    LaunchedEffect(vm) {
+        vm.aiRequests.collect { page -> aiPageId = page.id; screen = Screen.AI_TEXT }
+    }
 
     BackHandler(enabled = screen != Screen.CAMERA || vm.pages.isNotEmpty()) {
         screen = when (screen) {
             Screen.CROP, Screen.ERASE -> Screen.REVIEW
+            Screen.AI_TEXT -> Screen.CAMERA
             Screen.REVIEW -> Screen.CAMERA
             Screen.HOME -> Screen.CAMERA
             Screen.CAMERA -> Screen.REVIEW
@@ -113,8 +121,23 @@ fun ScannerFlow(options: ScannerOptions = ScannerOptions(), onResult: (ScanResul
                 onAddPage = { screen = Screen.CAMERA },
                 onCrop = { cropIndex = it; screen = Screen.CROP },
                 onErase = { cropIndex = it; screen = Screen.ERASE },
+                onText = { i -> vm.pages.getOrNull(i)?.let { vm.openAiText(it) } },
                 onSaved = { screen = if (options.standalone) Screen.HOME else Screen.CAMERA },
                 onDiscard = { vm.discardSession(); screen = Screen.CAMERA },
+            )
+            Screen.AI_TEXT -> com.rskusum.scanner.ui.ai.AiTextScreen(
+                vm = vm,
+                page = vm.pages.firstOrNull { it.id == aiPageId },
+                onBack = { screen = Screen.CAMERA },
+                onScanMore = { screen = Screen.CAMERA },
+                onDone = {
+                    if (options.standalone) {
+                        reviewIndex = vm.pages.indexOfFirst { it.id == aiPageId }.coerceAtLeast(0)
+                        screen = Screen.REVIEW
+                    } else {
+                        scope.launch { vm.savePdf() } // hands the ScanResult (with text) to the caller
+                    }
+                },
             )
             Screen.CROP -> CropScreen(
                 vm = vm,

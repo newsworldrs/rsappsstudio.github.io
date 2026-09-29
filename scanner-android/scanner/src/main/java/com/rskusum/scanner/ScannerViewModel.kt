@@ -27,6 +27,7 @@ import com.rskusum.scanner.vision.SmartFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -192,6 +193,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 created.drop(room).forEach { deletePage(it) }
                 pages.addAll(kept)
                 kept.forEach { p -> launchRender(p, pickSmartFilter = smart) }
+                // AI Text: read the new page and open it in the AI Text screen.
+                if (mode.extractText) kept.firstOrNull()?.let { openAiText(it) }
             } catch (r: Rejected) {
                 _messages.tryEmit(r.message ?: "Capture rejected")
             } catch (t: Throwable) {
@@ -503,6 +506,65 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         return Mat().also { Core.rotate(m, it, code) }
     }
 
+    // --- AI Text (on-device OCR) --------------------------------------------------------------
+
+    /** Pages to show in the AI Text screen (the flow navigates when one arrives). */
+    private val _aiRequests = kotlinx.coroutines.flow.MutableSharedFlow<Page>(extraBufferCapacity = 4)
+    val aiRequests: kotlinx.coroutines.flow.SharedFlow<Page> = _aiRequests
+
+    /** True while the OCR language model is being downloaded (first use only). */
+    var ocrDownloading by mutableStateOf(false)
+        private set
+
+    /** Reads [page] (if not read yet) and shows it in the AI Text screen. */
+    fun openAiText(page: Page) {
+        extractText(page)
+        _aiRequests.tryEmit(page)
+    }
+
+    /**
+     * Runs OCR on the finished page (waits for its render), then works out the document type and
+     * key details. Results land in [Page.ocrText] / [Page.insights].
+     */
+    fun extractText(page: Page, force: Boolean = false) {
+        if (page.ocrBusy || (!force && page.ocrText != null)) return
+        page.ocrBusy = true
+        page.ocrError = null
+        viewModelScope.launch {
+            try {
+                // Wait for the flattened, cleaned page.
+                androidx.compose.runtime.snapshotFlow { page.rendering }.first { !it }
+                val file = page.processedFile ?: error("The page could not be prepared")
+                val langs = options.ocrLanguages
+                if (!com.rskusum.scanner.ocr.RsOcr.isReady(getApplication(), langs)) {
+                    ocrDownloading = true
+                    com.rskusum.scanner.ocr.RsOcr.prepare(getApplication(), langs)
+                    ocrDownloading = false
+                }
+                val result = com.rskusum.scanner.ocr.RsOcr.recognize(getApplication(), Uri.fromFile(file), langs)
+                page.ocrText = result.text
+                page.ocrConfidence = result.confidence
+                page.insights = withContext(Dispatchers.Default) { com.rskusum.scanner.ocr.TextInsights.analyze(result.text) }
+            } catch (t: Throwable) {
+                Log.e(TAG, "OCR failed", t)
+                page.ocrError = if (ocrDownloading) {
+                    "Couldn't download the text model - check the internet connection and try again"
+                } else {
+                    t.message ?: "Text recognition failed"
+                }
+            } finally {
+                ocrDownloading = false
+                page.ocrBusy = false
+            }
+        }
+    }
+
+    /** The user edited the recognised text. */
+    fun setOcrText(page: Page, text: String) {
+        page.ocrText = text
+        page.insights = com.rskusum.scanner.ocr.TextInsights.analyze(text)
+    }
+
     // --- Page editing ----------------------------------------------------------------------
 
     fun setFilter(page: Page, filter: ScanFilter) {
@@ -646,7 +708,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         } else {
             emptyList()
         }
-        val result = ScanResult(documentName, pdfUri, jpegUris, pageFiles.size)
+        val text = pages.mapNotNull { it.ocrText?.takeIf(String::isNotBlank) }.joinToString("\n\n").ifEmpty { null }
+        val result = ScanResult(documentName, pdfUri, jpegUris, pageFiles.size, text)
         withContext(Dispatchers.Main) {
             discardSession()
             _results.tryEmit(result)

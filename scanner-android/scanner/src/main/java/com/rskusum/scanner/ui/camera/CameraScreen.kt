@@ -281,6 +281,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     SideEffect {
         analyzer.autoCapture = vm.autoCapture
         analyzer.qrMode = qrMode
+        analyzer.textMode = vm.mode.extractText && !qrMode
         analyzer.paused = qrText != null
         analyzer.frame = if (qrMode) null else vm.guideFrame
         analyzer.knownPages = vm.sessionFingerprints
@@ -358,6 +359,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                         guide != null -> GuideFrameOverlay(guide, state.aligned)
                         else -> QuadOverlay(state.quad, state.phase)
                     }
+                    // AI Text: live highlight of the text lines found on the page.
+                    if (vm.mode.extractText && !qrMode) TextBoxesOverlay(state.textBoxes)
                     // Book guide: dashed divider across the whole preview, sideways
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
@@ -383,6 +386,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     !vm.captureAllowed -> words.done
                     state.phase == CapturePhase.CAPTURING -> "Capturing…"
                     state.guidance != null -> state.guidance
+                    vm.mode.extractText && state.textBoxes.size >= 3 && state.phase != CapturePhase.NEXT_PAGE ->
+                        "${state.textBoxes.size} lines of text found - hold still"
                     vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> "Processing…"
                     else -> when (state.phase) {
                         CapturePhase.SEARCHING -> when {
@@ -636,10 +641,38 @@ private fun modeWords(mode: ScanMode, idStep: ScannerViewModel.IdStep): ModeWord
     )
     ScanMode.BOOK_COVER -> ModeWords("Fit the book cover inside the frame", "Looking for the book cover", "Ready for the next cover", "")
     ScanMode.BUSINESS_CARD -> ModeWords("Place the business card inside the frame", "Looking for a business card", "Ready for the next card", "")
+    ScanMode.AI_TEXT -> ModeWords("Place the text inside the frame", "Looking for text", "Point at the next page", "")
     ScanMode.ID_CARD -> when (idStep) {
         ScannerViewModel.IdStep.FRONT -> ModeWords("Place the FRONT of the ID card in the frame", "Looking for the ID card front", "Flip the card", "")
         ScannerViewModel.IdStep.BACK -> ModeWords("Flip the card - place the BACK side in the frame", "Looking for the ID card back", "Flip the card", "")
         ScannerViewModel.IdStep.DONE -> ModeWords("", "", "", "ID card complete - tap the thumbnail to review")
+    }
+}
+
+/** AI Text mode: translucent teal bars over the text lines found in the live preview. */
+@Composable
+private fun TextBoxesOverlay(boxes: List<com.rskusum.scanner.vision.NRect>) {
+    Canvas(Modifier.fillMaxSize()) {
+        val r = 3.dp.toPx()
+        boxes.forEach { b ->
+            val l = b.l * size.width
+            val t = b.t * size.height
+            val w = (b.r - b.l) * size.width
+            val h = (b.b - b.t) * size.height
+            drawRoundRect(
+                ScanColors.AccentBright.copy(alpha = 0.28f),
+                topLeft = Offset(l, t),
+                size = androidx.compose.ui.geometry.Size(w, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r),
+            )
+            drawRoundRect(
+                ScanColors.AccentBright.copy(alpha = 0.8f),
+                topLeft = Offset(l, t),
+                size = androidx.compose.ui.geometry.Size(w, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(r),
+                style = Stroke(1.dp.toPx()),
+            )
+        }
     }
 }
 
@@ -1010,6 +1043,7 @@ private fun modeIcon(m: ScanMode) = when (m) {
     ScanMode.BOOK_COVER -> Icons.Outlined.Book
     ScanMode.DOCUMENT -> Icons.Outlined.Description
     ScanMode.ID_CARD -> Icons.Outlined.Badge
+    ScanMode.AI_TEXT -> Icons.Filled.AutoAwesome
     ScanMode.BUSINESS_CARD -> Icons.Outlined.ContactPage
 }
 
