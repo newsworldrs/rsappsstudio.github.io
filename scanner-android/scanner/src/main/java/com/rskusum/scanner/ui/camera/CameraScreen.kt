@@ -284,7 +284,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         analyzer.textMode = vm.mode.extractText && !qrMode
         analyzer.paused = qrText != null
         analyzer.frame = if (qrMode) null else vm.guideFrame
-        analyzer.knownPages = vm.sessionFingerprints
+        analyzer.knownPages = vm.sessionSignatures
         analyzer.captureAllowed = vm.captureAllowed
         holder.capture?.flashMode = flash.mode
     }

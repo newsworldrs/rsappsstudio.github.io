@@ -112,6 +112,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val sessionFingerprints: List<FloatArray>
         get() = pages.mapNotNull { it.fingerprint } + listOfNotNull(idFront?.fingerprint)
 
+    /** Signatures of every page in this session (newest first), for duplicate prevention. */
+    val sessionSignatures: List<com.rskusum.scanner.vision.PageSignature>
+        get() = (pages.reversed().mapNotNull { it.signature } + listOfNotNull(idFront?.signature)).distinct()
+
     /** The on-screen guide frame (normalized), or null in free-detection mode. */
     val guideFrame: Quad?
         get() = when (orientation) {
@@ -267,7 +271,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             val noDocument = if (frame != null) sidesFound == 0 || (sidesFound <= 1 && blank) else sidesFound == 0 && blank
             if (noDocument) throw Rejected("No document found - place a document inside the frame")
             // Duplicate check against every page already scanned in this session.
-            if (sessionFingerprints.any { DocumentDetector.fingerprintSimilarity(fp, it) >= DUPLICATE_SIMILARITY }) {
+            // Same page as one already in this session? Layout + feature matching: works whatever the
+            // crop, tilt, lighting, or if the page was turned sideways / upside down.
+            val sig = if (blank) null else com.rskusum.scanner.vision.PageMatcher.signature(gray, quad)
+            val duplicate = if (sig == null) {
+                sessionFingerprints.any { DocumentDetector.fingerprintSimilarity(fp, it) >= DUPLICATE_SIMILARITY }
+            } else {
+                sessionSignatures.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }
+            }
+            if (duplicate) {
                 throw Rejected("This page is already scanned - place another document")
             }
 
@@ -288,7 +300,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // filters and eraser only ever see that one page.
                 val pagesOut = listOf(first, second).mapIndexed { i, q ->
                     val (pageFile, pageQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
-                    Page(pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).also { autoUpright(it) }
+                    Page(pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).also { it.signature = sig; autoUpright(it) }
                 }
                 file.delete() // the full spread photo is no longer needed
                 return pagesOut
@@ -297,7 +309,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 Page(
                     file, quad, mode.defaultFilter, mode.forcedAspect, forcedOrientation = mode.pageOrientation,
                     frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide,
-                ).also { autoUpright(it) }
+                ).also { it.signature = sig; autoUpright(it) }
             )
         } catch (r: Rejected) {
             file.delete()

@@ -36,6 +36,8 @@ class Page(
     var quad by mutableStateOf(quad)
     var filter by mutableStateOf(filter)
     var rotation by mutableIntStateOf(0)
+    /** Layout + feature signature of the page at capture, for "same page again?" checks. */
+    var signature: com.rskusum.scanner.vision.PageSignature? = null
     var processedFile by mutableStateOf<File?>(null)
     var thumbnail by mutableStateOf<ImageBitmap?>(null)
     var rendering by mutableStateOf(true)
