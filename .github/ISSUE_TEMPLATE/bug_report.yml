@@ -1,0 +1,40 @@
+name: 🐞 Bug report
+description: Something in RS Kusum Scanner doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for taking the time to report a problem! For security issues, please email rskusum@rsappsstudio.com instead.
+  - type: input
+    id: version
+    attributes:
+      label: Library version
+      placeholder: "1.2.1"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone model and Android version
+      placeholder: "Samsung Galaxy A52, Android 14"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Camera / auto capture, Auto crop / edge detection, Book mode, ID card, Filters / eraser, AI Text / OCR, PDF / result, Duplicate check, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Screenshots, photos or Logcat
+      description: Drag images here, or paste the error from Logcat.

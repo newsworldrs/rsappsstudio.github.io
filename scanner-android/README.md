@@ -1,4 +1,19 @@
-# RS Kusum Scanner: an Android document scanner library
+<div align="center">
+
+# RS Kusum Scanner
+
+**An Android document scanner library: auto capture, precise auto crop, AI Text, and PDF output. It runs 100% on the device.**
+
+[![JitPack](https://jitpack.io/v/newsworldrs/rsappsstudio.github.io.svg)](https://jitpack.io/#newsworldrs/rsappsstudio.github.io)
+[![Build](https://github.com/newsworldrs/rsappsstudio.github.io/actions/workflows/scanner-android.yml/badge.svg)](https://github.com/newsworldrs/rsappsstudio.github.io/actions/workflows/scanner-android.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Min SDK](https://img.shields.io/badge/minSdk-26-3DDC84)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7F52FF?logo=kotlin&logoColor=white)
+![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-UI-4285F4?logo=jetpackcompose&logoColor=white)
+
+Made by **RS KUSUM** · [RS Apps Studio](https://www.rsappsstudio.com) · [rskusum@rsappsstudio.com](mailto:rskusum@rsappsstudio.com)
+
+</div>
 
 A complete document scanner for Android apps, and a ready-made scanner app (`com.rskusum.scanner`) built on it.
 
@@ -362,3 +377,10 @@ The library and the app are licensed under the **Apache License 2.0** ([LICENSE]
 Every bundled model and dependency is also under a permissive license (Apache 2.0, BSD, MIT or OFL). None is GPL or LGPL, and neither ML Kit nor Play services is used.
 
 The full audit is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Author
+
+**RS KUSUM**, Android & web developer ([RS Apps Studio](https://www.rsappsstudio.com))
+✉️ [rskusum@rsappsstudio.com](mailto:rskusum@rsappsstudio.com) · Changelog: [../CHANGELOG.md](../CHANGELOG.md) · Contributing: [../CONTRIBUTING.md](../CONTRIBUTING.md)
+
+If this library helps you, please ⭐ the repository and mention *RS Kusum Scanner by RS Apps Studio* in your app's credits.

@@ -105,6 +105,15 @@ publishing {
                         distribution.set("repo")
                     }
                 }
+                developers {
+                    developer {
+                        id.set("rskusum")
+                        name.set("RS KUSUM")
+                        email.set("rskusum@rsappsstudio.com")
+                        organization.set("RS Apps Studio")
+                        organizationUrl.set("https://www.rsappsstudio.com")
+                    }
+                }
                 scm {
                     url.set("https://github.com/newsworldrs/rsappsstudio.github.io")
                 }
