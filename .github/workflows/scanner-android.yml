@@ -48,10 +48,12 @@ jobs:
           cp app/build/outputs/apk/release/app-arm64-v8a-release.apk RSKusumScanner-arm64.apk
           cp app/build/outputs/apk/release/app-universal-release.apk RSKusumScanner-release.apk
           cp app/build/outputs/apk/debug/app-universal-debug.apk RSKusumScanner-debug.apk
+          # Full Android Studio project (source only, no build output).
+          git -C .. archive --format=zip --prefix=RSKusumScanner/ -o "$PWD/RSKusumScanner-project.zip" HEAD:scanner-android
           gh release delete scanner-latest --yes --cleanup-tag || true
-          gh release create scanner-latest RSKusumScanner-arm64.apk RSKusumScanner-release.apk RSKusumScanner-debug.apk \
+          gh release create scanner-latest RSKusumScanner-arm64.apk RSKusumScanner-release.apk RSKusumScanner-debug.apk RSKusumScanner-project.zip \
             --prerelease --target "$GITHUB_SHA" \
             --title "RS Kusum Scanner (latest build)" \
-            --notes "Built from ${GITHUB_SHA::7}. RSKusumScanner-arm64.apk = small APK for 64-bit phones (recommended). RSKusumScanner-release.apk = universal."
+            --notes "Built from ${GITHUB_SHA::7}. RSKusumScanner-arm64.apk = small APK for 64-bit phones (recommended). RSKusumScanner-release.apk = universal. RSKusumScanner-project.zip = Android Studio project (File > Open the RSKusumScanner folder)."
         env:
           GH_TOKEN: ${{ github.token }}

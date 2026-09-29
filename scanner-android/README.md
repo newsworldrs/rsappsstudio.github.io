@@ -55,7 +55,15 @@ caused by lighting gradients, including white paper on a light, patterned sheet.
 
 ## Build
 
-Requirements: JDK 17 and the Android SDK (compileSdk 35).
+Requirements: JDK 17 and the Android SDK (compileSdk 35). Kotlin 2.0.21, AGP 8.7.3, Gradle 8.11.1
+(wrapper included), Jetpack Compose BOM 2024.12.01, minSdk 26.
+
+**Android Studio (Ladybug or newer):** unzip `RSKusumScanner-project.zip`, choose *File → Open*,
+select the `RSKusumScanner` folder, and let Gradle sync (it downloads OpenCV, TensorFlow Lite,
+CameraX and PDFBox from Maven). Then press *Run*. Android Studio creates `local.properties` with
+your SDK path on its own.
+
+On the command line:
 
 ```bash
 cd scanner-android
@@ -81,4 +89,9 @@ before publishing to Google Play.
 | `ScannerViewModel.kt` | capture → pages → render pipeline, save and export |
 | `data/PdfWriter.kt` | minimal JPEG-in-PDF writer |
 | `data/DocumentStore.kt` | library, MediaStore export, sharing, thumbnails |
-| `ui/camera`, `ui/review`, `ui/crop`, `ui/home` | Compose screens |
+| `vision/EdgeModel.kt` | TFLite HED-lite document edge model |
+| `vision/OrientationModel.kt` | TFLite text orientation model (auto-rotate upright) |
+| `vision/Eraser.kt` | eraser (marks only / everything) |
+| `data/ScanMode.kt` | scan modes (Document, Book, Book cover, Whiteboard, ID card, Business card) |
+| `app/src/main/assets/models` | the two TFLite models and their licence notice |
+| `ui/camera`, `ui/review`, `ui/crop`, `ui/erase`, `ui/home` | Compose screens |
