@@ -627,14 +627,55 @@ object DocumentDetector {
     }
 
     /**
-     * Perspective-correct [src] (any type) to a flat, aspect-true page.
-     * @param forcedAspect optional width/height ratio (for ID cards etc.); orientation is kept.
+     * Splits the outline of an open book (two pages) into the two page outlines, following the
+     * perspective (the split runs through the true middle of the spread, not the image middle).
+     * The split is across the spread's longer side: top/bottom halves when the spread is taller
+     * than wide in the image (phone held along the book), left/right otherwise.
+     * @return (first half, second half) = (top, bottom) or (left, right).
      */
-    fun warp(src: Mat, quad: Quad, forcedAspect: Double? = null, maxSide: Int = 4000): Mat {
+    fun splitSpread(quad: Quad, imgW: Int, imgH: Int): Pair<Quad, Quad> {
+        val (w, h) = naiveSize(quad, imgW, imgH)
+        val src = MatOfPoint2f(Point(0.0, 0.0), Point(1.0, 0.0), Point(1.0, 1.0), Point(0.0, 1.0))
+        val dst = MatOfPoint2f(*quad.points.map { Point(it.x.toDouble() * imgW, it.y.toDouble() * imgH) }.toTypedArray())
+        val hm = Imgproc.getPerspectiveTransform(src, dst)
+        val tall = h > w
+        val probe = if (tall) arrayOf(Point(0.0, 0.5), Point(1.0, 0.5)) else arrayOf(Point(0.5, 0.0), Point(0.5, 1.0))
+        val inPts = MatOfPoint2f(*probe)
+        val outPts = MatOfPoint2f()
+        Core.perspectiveTransform(inPts, outPts, hm)
+        val m = outPts.toArray().map { NPoint((it.x / imgW).toFloat(), (it.y / imgH).toFloat()) }
+        src.release(); dst.release(); hm.release(); inPts.release(); outPts.release()
+        return if (tall) {
+            // m[0] = middle of left side, m[1] = middle of right side
+            Quad(quad.tl, quad.tr, m[1], m[0]) to Quad(m[0], m[1], quad.br, quad.bl)
+        } else {
+            // m[0] = middle of top side, m[1] = middle of bottom side
+            Quad(quad.tl, m[0], m[1], quad.bl) to Quad(m[0], quad.tr, quad.br, m[1])
+        }
+    }
+
+    /** Page orientation to enforce together with a forced aspect ratio. */
+    const val ORIENT_AUTO = 0
+    const val ORIENT_PORTRAIT = 1
+    const val ORIENT_LANDSCAPE = 2
+
+    /**
+     * Perspective-correct [src] (any type) to a flat, aspect-true page.
+     * @param forcedAspect optional page ratio (e.g. A4 = sqrt 2, ID card); either way round.
+     * @param forcedOrientation [ORIENT_AUTO] keeps the measured orientation; otherwise forces it.
+     */
+    fun warp(src: Mat, quad: Quad, forcedAspect: Double? = null, maxSide: Int = 4000, forcedOrientation: Int = ORIENT_AUTO): Mat {
         val w0 = src.cols()
         val h0 = src.rows()
         var ratio = estimateAspect(quad, w0, h0)
-        if (forcedAspect != null) ratio = if (ratio >= 1) max(forcedAspect, 1 / forcedAspect) else min(forcedAspect, 1 / forcedAspect)
+        if (forcedAspect != null) {
+            val landscape = when (forcedOrientation) {
+                ORIENT_PORTRAIT -> false
+                ORIENT_LANDSCAPE -> true
+                else -> ratio >= 1
+            }
+            ratio = if (landscape) max(forcedAspect, 1 / forcedAspect) else min(forcedAspect, 1 / forcedAspect)
+        }
         val (nw, nh) = naiveSize(quad, w0, h0)
         var outW = nw
         var outH = outW / ratio

@@ -171,6 +171,23 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
 
     lateinit var analyzer: DocumentAnalyzer
 
+    // Physical phone orientation (the app UI stays portrait). Used to turn book pages upright when
+    // the phone is held across an open book. Flat phones report "unknown": keep the last value.
+    val deviceRotation = remember { java.util.concurrent.atomic.AtomicInteger(270) }
+    DisposableEffect(Unit) {
+        val listener = object : android.view.OrientationEventListener(context) {
+            override fun onOrientationChanged(o: Int) {
+                if (o == ORIENTATION_UNKNOWN) return
+                when (o) {
+                    in 45 until 135 -> deviceRotation.set(90)
+                    in 225 until 315 -> deviceRotation.set(270)
+                }
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose { listener.disable() }
+    }
+
     fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?) {
         ic.takePicture(captureExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
@@ -196,7 +213,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 mainExecutor.execute {
                     capturing = false
                     vm.tracker.onCaptured(bmp != null)
-                    if (bmp != null) vm.addPhoto(bmp, hint, frame) else toast = "Capture failed, try again"
+                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get()) else toast = "Capture failed, try again"
                 }
             }
 
@@ -575,7 +592,7 @@ private fun modeWords(mode: ScanMode, idStep: ScannerViewModel.IdStep): ModeWord
     ScanMode.DOCUMENT -> ModeWords("Place the page inside the frame", "Looking for document", "Ready for next page", "")
     ScanMode.WHITEBOARD -> ModeWords("Fit the whiteboard inside the frame", "Looking for whiteboard", "Ready for the next board", "")
     ScanMode.BOOK -> ModeWords(
-        "Open the book - align its spine with the centre line", "Looking for an open book",
+        "Hold the phone across the open book - spine on the centre line", "Looking for an open book",
         "Turn the page", "",
     )
     ScanMode.BOOK_COVER -> ModeWords("Fit the book cover inside the frame", "Looking for the book cover", "Ready for the next cover", "")
@@ -623,14 +640,19 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = fa
             drawLine(color, p, p + Offset(0f, c * sy), sw, StrokeCap.Round)
         }
         if (spine) {
-            val x = (l + r) / 2
-            drawLine(
-                color, Offset(x, t + 8.dp.toPx()), Offset(x, b - 8.dp.toPx()), 2.5.dp.toPx(),
-                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14.dp.toPx(), 10.dp.toPx())),
-            )
-            // small book-spine markers at both ends
-            drawCircle(color, 5.dp.toPx(), Offset(x, t))
-            drawCircle(color, 5.dp.toPx(), Offset(x, b))
+            // The spine splits the frame across its long side: horizontal in a tall frame (phone
+            // held across the book), vertical in a wide one.
+            val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14.dp.toPx(), 10.dp.toPx()))
+            val (p1, p2) = if (b - t > r - l) {
+                val y = (t + b) / 2
+                Offset(l, y) to Offset(r, y)
+            } else {
+                val x = (l + r) / 2
+                Offset(x, t) to Offset(x, b)
+            }
+            drawLine(color, p1, p2, 2.5.dp.toPx(), pathEffect = dash)
+            drawCircle(color, 5.dp.toPx(), p1)
+            drawCircle(color, 5.dp.toPx(), p2)
         }
     }
 }

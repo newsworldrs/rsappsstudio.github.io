@@ -54,13 +54,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rskusum.scanner.ScannerViewModel
-import com.rskusum.scanner.data.Images
 import com.rskusum.scanner.data.Page
 import com.rskusum.scanner.ui.ScanColors
 import com.rskusum.scanner.vision.EraseStroke
 import com.rskusum.scanner.vision.NPoint
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -78,16 +76,26 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
         LaunchedEffect(Unit) { onDone() }
         return
     }
-    // Show the page without previous erasures being baked in? The rendered file already contains
-    // them; that's fine - strokes are drawn on top as a translucent overlay for reference.
-    val image by produceState<ImageBitmap?>(null, page.version) {
-        val f = page.processedFile
-        value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 2000)?.asImageBitmap() }
+    // Clean base (page without any erasing) + live preview with all strokes applied. The user sees
+    // the real result of every stroke: marks disappear, nothing is painted over the page.
+    val base by produceState<android.graphics.Bitmap?>(null, page.id, page.quad, page.rotation, page.filter) {
+        value = vm.eraserBase(page)
     }
     val strokes = remember(page.id) { mutableStateListOf<EraseStroke>().apply { addAll(page.erasures) } }
+    var preview by remember { mutableStateOf<ImageBitmap?>(null) }
+    var updating by remember { mutableStateOf(false) }
+    LaunchedEffect(base) {
+        val b = base ?: return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow { strokes.toList() }.collectLatest { list ->
+            updating = true
+            preview = vm.eraserPreview(b, list).asImageBitmap()
+            updating = false
+        }
+    }
     var keepText by remember { mutableStateOf(true) }
     var brush by remember { mutableFloatStateOf(0.03f) }
     val live = remember { mutableStateListOf<NPoint>() }
+    var finger by remember { mutableStateOf<Offset?>(null) }
 
     Column(
         Modifier
@@ -118,7 +126,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 .padding(16.dp),
             contentAlignment = Alignment.Center,
         ) {
-            val img = image
+            val img = preview
             if (img == null) {
                 CircularProgressIndicator(color = ScanColors.Accent)
             } else {
@@ -133,30 +141,46 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 Canvas(
                     Modifier
                         .fillMaxSize()
-                        .pointerInput(img, keepText, brush) {
+                        .pointerInput(img.width, img.height, keepText, brush) {
                             detectDragGestures(
-                                onDragStart = { live.clear(); live.add(norm(it)) },
+                                onDragStart = { live.clear(); live.add(norm(it)); finger = it },
                                 onDragEnd = {
                                     if (live.isNotEmpty()) strokes.add(EraseStroke(live.toList(), brush, keepText))
-                                    live.clear()
+                                    live.clear(); finger = null
                                 },
-                                onDragCancel = { live.clear() },
+                                onDragCancel = { live.clear(); finger = null },
                             ) { change, _ ->
                                 change.consume()
                                 live.add(norm(change.position))
+                                finger = change.position
                             }
                         }
                 ) {
                     drawImage(img, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()), dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
-                    fun drawStroke(pts: List<NPoint>, radius: Float, keep: Boolean) {
-                        val color = if (keep) Color(0x6600A2FF) else Color(0x66FF3B30)
-                        val wpx = radius * dw * 2
-                        val o = pts.map { Offset(ox + it.x * dw, oy + it.y * dh) }
-                        o.forEach { drawCircle(color, wpx / 2, it) }
-                        for (i in 1 until o.size) drawLine(color, o[i - 1], o[i], wpx, StrokeCap.Round)
+                    val rpx = brush * dw
+                    // Stroke in progress: only a faint outline (the page stays visible underneath).
+                    if (live.size > 1) {
+                        val path = androidx.compose.ui.graphics.Path()
+                        live.forEachIndexed { i, p ->
+                            val o = Offset(ox + p.x * dw, oy + p.y * dh)
+                            if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+                        }
+                        drawPath(
+                            path, Color.White.copy(alpha = 0.35f),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = rpx * 2, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+                        )
                     }
-                    strokes.forEach { drawStroke(it.points, it.radius, it.keepText) }
-                    if (live.isNotEmpty()) drawStroke(live.toList(), brush, keepText)
+                    // Brush ring under the finger.
+                    finger?.let {
+                        drawCircle(Color.Black.copy(alpha = 0.6f), rpx, it, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+                        drawCircle(Color.White, rpx, it, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                    }
+                }
+                if (updating) {
+                    CircularProgressIndicator(
+                        color = ScanColors.Accent, strokeWidth = 2.dp,
+                        modifier = Modifier.align(Alignment.TopEnd).size(22.dp),
+                    )
                 }
             }
         }
@@ -170,8 +194,8 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             ModeChip("Everything", !keepText, Modifier.weight(1f)) { keepText = false }
         }
         Text(
-            if (keepText) "Removes pen, pencil and highlighter marks and stains - printed text underneath stays."
-            else "Wipes the painted area back to clean paper, text included.",
+            if (keepText) "Rub over marks: pen, pencil, highlighter and stains disappear, printed text stays. Repeat as often as you like."
+            else "Rub over an area to wipe it back to clean paper, text included.",
             color = ScanColors.TextDim,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),

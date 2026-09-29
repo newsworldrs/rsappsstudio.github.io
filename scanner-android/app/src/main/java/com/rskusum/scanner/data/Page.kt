@@ -19,6 +19,8 @@ class Page(
     quad: Quad,
     filter: ScanFilter,
     val forcedAspect: Double?,
+    /** Orientation forced together with [forcedAspect] (DocumentDetector.ORIENT_*). */
+    val forcedOrientation: Int = 0,
     /** -1 whole page, 0 left half of a book spread, 1 right half. */
     val bookHalf: Int = -1,
     /** Guide frame used at capture (normalized), if any: a prior for Auto detect. */

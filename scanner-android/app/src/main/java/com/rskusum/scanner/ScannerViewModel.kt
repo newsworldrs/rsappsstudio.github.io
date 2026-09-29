@@ -120,7 +120,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * Entry point for both camera captures and gallery imports.
      * [hint] is the live-preview quad, used if the still photo is ambiguous.
      */
-    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null) {
+    /**
+     * @param deviceRotation physical phone orientation at capture (OrientationEventListener
+     *   degrees snapped to 0/90/180/270); used to turn book pages upright.
+     */
+    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0) {
         if (!captureAllowed) {
             photo.recycle()
             _messages.tryEmit("ID card complete - open the scan to review it")
@@ -135,7 +139,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val front = idFront
                 val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
-                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide) }
+                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation) }
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
@@ -185,8 +189,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun createPages(
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
-        idGroup: String? = null, idSide: Int = -1,
+        idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0,
     ): List<Page> {
+        val photoW = photo.width
+        val photoH = photo.height
         val file = File(sessionDir, "${System.currentTimeMillis()}_${(0..9999).random()}.jpg")
         Images.saveJpeg(photo, file, 95)
         val gray = Images.toGrayMat(photo)
@@ -228,14 +234,27 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 throw Rejected("This page is already scanned - place another document")
             }
 
-            return if (mode.splitBook) {
-                listOf(
-                    Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 0, frame = frame, fingerprint = fp),
-                    Page(file, quad, mode.defaultFilter, mode.forcedAspect, bookHalf = 1, frame = frame, fingerprint = fp),
-                )
-            } else {
-                listOf(Page(file, quad, mode.defaultFilter, mode.forcedAspect, frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide))
+            if (mode.splitBook) {
+                // Open book: two independent A4 pages, each with its own crop outline so they can be
+                // cropped/edited separately. With the phone held across the book (spread taller than
+                // wide in the photo) each half is turned upright using the phone's orientation.
+                val (a, b) = DocumentDetector.splitSpread(quad, photoW, photoH)
+                val (sw, sh) = DocumentDetector.naiveSize(quad, photoW, photoH)
+                val acrossBook = sh > sw
+                val topIsRight = deviceRotation == 90 // phone top pointing to the book's right side
+                val first = if (acrossBook && topIsRight) b else a
+                val second = if (first === a) b else a
+                val turn = if (!acrossBook) 0 else if (topIsRight) 90 else 270
+                return listOf(first, second).map { q ->
+                    Page(file, q, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).apply { rotation = turn }
+                }
             }
+            return listOf(
+                Page(
+                    file, quad, mode.defaultFilter, mode.forcedAspect, forcedOrientation = mode.pageOrientation,
+                    frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide,
+                )
+            )
         } catch (r: Rejected) {
             file.delete()
             throw r
@@ -320,7 +339,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect)
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, forcedOrientation = page.forcedOrientation)
         rgb.release()
         if (page.bookHalf >= 0) {
             val half = flat.cols() / 2
@@ -347,7 +366,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val bmp = Images.decodeFile(page.originalFile, 900) ?: return@withContext emptyMap()
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 320)
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 320, forcedOrientation = page.forcedOrientation)
         rgb.release()
         if (page.bookHalf >= 0) {
             val half = flat.cols() / 2
@@ -400,6 +419,30 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         page.quad = quad
         launchRender(page)
     }
+
+    /**
+     * Eraser screen base image: the finished page (crop, rotation, filter) at preview size,
+     * WITHOUT any eraser strokes, so every stroke can be re-applied live on top of it.
+     */
+    suspend fun eraserBase(page: Page, maxSide: Int = 1600): Bitmap? = withContext(Dispatchers.Default) {
+        val bmp = Images.decodeFile(page.originalFile, maxSide * 2) ?: return@withContext null
+        val rgb = Images.toRgbMat(bmp)
+        bmp.recycle()
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = maxSide, forcedOrientation = page.forcedOrientation)
+        rgb.release()
+        rotate(flat, page.rotation)?.let { flat.release(); flat = it }
+        val enhanced = ImageEnhancer.apply(flat, page.filter)
+        flat.release()
+        Images.toBitmap(enhanced).also { enhanced.release() }
+    }
+
+    /** Live eraser preview: [strokes] applied to a copy of [base] (same algorithm as the final render). */
+    suspend fun eraserPreview(base: Bitmap, strokes: List<com.rskusum.scanner.vision.EraseStroke>): Bitmap =
+        withContext(Dispatchers.Default) {
+            val rgb = Images.toRgbMat(base)
+            com.rskusum.scanner.vision.Eraser.apply(rgb, strokes)
+            Images.toBitmap(rgb).also { rgb.release() }
+        }
 
     /** Eraser screen "Done": store the strokes and re-render the page. */
     fun setErasures(page: Page, strokes: List<com.rskusum.scanner.vision.EraseStroke>) {
