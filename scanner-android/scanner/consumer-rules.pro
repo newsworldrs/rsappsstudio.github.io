@@ -13,3 +13,7 @@
 -dontwarn com.tom_roush.**
 -dontwarn com.gemalto.jp2.**
 -dontwarn org.bouncycastle.**
+
+# Tesseract OCR JNI
+-keep class com.googlecode.tesseract.android.** { *; }
+-dontwarn com.googlecode.tesseract.android.**
