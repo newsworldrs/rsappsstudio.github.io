@@ -37,7 +37,7 @@ class DocumentAnalyzer(
     /** Guide frame (normalized) or null for free detection. */
     @Volatile var frame: Quad? = null
     /** Fingerprints of pages already scanned this session: never auto-capture them again. */
-    @Volatile var knownPages: List<FloatArray> = emptyList()
+    @Volatile var knownPages: List<com.rskusum.scanner.vision.PageSignature> = emptyList()
     /** False when the current mode is finished (e.g. both ID card sides captured). */
     @Volatile var captureAllowed = true
     /** Page edges found near the guide frame in a recent frame (0..4), refreshed every few frames. */
@@ -142,8 +142,10 @@ class DocumentAnalyzer(
                 var fire = fire0
                 if (fire) {
                     // Never auto-capture a page that is already in this session.
-                    val fp = DocumentDetector.fingerprint(gray, trackQuad ?: guide ?: Quad.inset(0.05f))
-                    if (knownPages.any { DocumentDetector.fingerprintSimilarity(fp, it) >= LIVE_DUPLICATE }) {
+                    val known = knownPages
+                    val sig = if (known.isEmpty()) null
+                    else com.rskusum.scanner.vision.PageMatcher.signature(gray, trackQuad ?: guide ?: Quad.inset(0.05f))
+                    if (sig != null && known.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }) {
                         fire = false
                         tracker.onCaptured(true) // mark this scene as done; re-arms when it changes
                         guidance = "Already scanned - place the next page"
@@ -170,8 +172,6 @@ class DocumentAnalyzer(
     private companion object {
         /** Max corner distance (normalized) between detection and guide frame to count as aligned. */
         const val ALIGN_TOLERANCE = 0.09f
-        /** Live (preview-resolution) fingerprint similarity treated as an already-scanned page. */
-        const val LIVE_DUPLICATE = 0.85
     }
 
     /** Copies plane 0 (RGBA_8888 = 4 bytes/px, or Y = 1 byte/px) into an upright Mat. */
