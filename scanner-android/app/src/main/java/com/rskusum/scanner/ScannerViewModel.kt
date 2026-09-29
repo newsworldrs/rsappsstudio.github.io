@@ -255,7 +255,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // filters and eraser only ever see that one page.
                 val pagesOut = listOf(first, second).mapIndexed { i, q ->
                     val (pageFile, pageQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
-                    Page(pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect, fingerprint = fp)
+                    Page(pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).also { autoUpright(it) }
                 }
                 file.delete() // the full spread photo is no longer needed
                 return pagesOut
@@ -264,7 +264,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 Page(
                     file, quad, mode.defaultFilter, mode.forcedAspect, forcedOrientation = mode.pageOrientation,
                     frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide,
-                )
+                ).also { autoUpright(it) }
             )
         } catch (r: Rejected) {
             file.delete()
@@ -272,6 +272,29 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         } finally {
             gray.release()
             photo.recycle()
+        }
+    }
+
+    /**
+     * Reads the text direction of the flattened page with the on-device orientation model and
+     * turns the page upright (upside-down or sideways shots), before the first render, so the
+     * thumbnail and every edit screen already show it the right way up. Modes with a fixed page
+     * orientation (ID card, whiteboard) only get the 180 degree fix.
+     */
+    private fun autoUpright(page: Page) {
+        try {
+            val model = com.rskusum.scanner.vision.OrientationModel.get(getApplication()) ?: return
+            val bmp = Images.decodeFile(page.originalFile, 1600) ?: return
+            val rgb = Images.toRgbMat(bmp)
+            bmp.recycle()
+            val flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 1200, forcedOrientation = page.forcedOrientation)
+            rgb.release()
+            val turn = model.uprightRotation(flat)
+            flat.release()
+            val fixedOrientation = page.forcedOrientation != DocumentDetector.ORIENT_AUTO
+            if (turn == 180 || (!fixedOrientation && turn != 0)) page.rotation = turn
+        } catch (t: Throwable) {
+            Log.e(TAG, "auto orientation failed", t)
         }
     }
 
