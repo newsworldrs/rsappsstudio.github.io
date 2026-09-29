@@ -127,7 +127,7 @@ fun ReviewScreen(
             val r = if (asJpeg) vm.saveJpegs() else vm.savePdf()
             saving = false
             r.onSuccess {
-                Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                if (vm.options.standalone || asJpeg) Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                 if (!asJpeg) onSaved()
             }.onFailure { snackbar.showSnackbar("Save failed: ${it.message}") }
         }
@@ -139,7 +139,8 @@ fun ReviewScreen(
         if (ok) doSave(pendingJpeg) else scope.launch { snackbar.showSnackbar("Storage permission is needed to save") }
     }
     fun save(asJpeg: Boolean) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+        // Only the standalone app writes to public storage; embedded results stay app-private.
+        if (vm.options.standalone && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         ) {
             pendingJpeg = asJpeg
@@ -169,15 +170,18 @@ fun ReviewScreen(
                 },
                 actions = {
                     Button(
-                        onClick = { choosingSize = true },
+                        // Embedded without a PDF there is no size to choose: finish right away.
+                        onClick = { if (vm.options.standalone || vm.options.returnPdf) choosingSize = true else doSave(asJpeg = false) },
                         enabled = !saving && vm.pages.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = ScanColors.Accent),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    ) { Text("Save PDF", fontWeight = FontWeight.SemiBold) }
+                    ) { Text(if (vm.options.standalone) "Save PDF" else "Done", fontWeight = FontWeight.SemiBold) }
                     Box {
                         IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More", tint = Color.White) }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(text = { Text("Save as JPG") }, onClick = { menuOpen = false; save(asJpeg = true) })
+                            if (vm.options.standalone) {
+                                DropdownMenuItem(text = { Text("Save as JPG") }, onClick = { menuOpen = false; save(asJpeg = true) })
+                            }
                             DropdownMenuItem(text = { Text("Share pages") }, onClick = {
                                 menuOpen = false
                                 runCatching { context.startActivity(vm.sessionShareIntent()) }

@@ -5,14 +5,17 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+/** RS Kusum brand palette: deep teal accent, warm marigold highlight, slate surfaces. */
 object ScanColors {
-    val Accent = Color(0xFF2D7FF9)        // Adobe-Scan style blue (pill, selected mode, handles)
-    val AccentSoft = Color(0x552D7FF9)
-    val Bar = Color(0xFF000000)
-    val Surface = Color(0xFF121212)
-    val SurfaceHigh = Color(0xFF1E1E1E)
-    val Pill = Color(0xFF1B1B1F)
-    val TextDim = Color(0xFFB8B8B8)
+    val Accent = Color(0xFF0B8F86)        // teal: buttons, selected mode, handles
+    val AccentBright = Color(0xFF2FD3C4)  // progress rings, detected outline
+    val AccentSoft = Color(0x550B8F86)
+    val Marigold = Color(0xFFFFB020)      // book spine guide, badges
+    val Bar = Color(0xFF101418)
+    val Surface = Color(0xFF14191E)
+    val SurfaceHigh = Color(0xFF1F262D)
+    val Pill = Color(0xFF1F262D)
+    val TextDim = Color(0xFFAAB4BE)
 }
 
 private val scheme = darkColorScheme(

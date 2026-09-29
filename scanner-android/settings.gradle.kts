@@ -14,4 +14,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RSKusumScanner"
-include(":app")
+include(":scanner") // the library
+include(":app")     // the standalone scanner app / demo

@@ -19,7 +19,7 @@ data class TrackerState(
 )
 
 /**
- * Decides when to fire the shutter automatically, Adobe-Scan style.
+ * Decides when to fire the shutter automatically.
  *
  * Real camera frames are noisy: a detection can wobble by a few pixels, drop out for a frame,
  * or occasionally lock onto something else. So instead of demanding frame-to-frame identity,

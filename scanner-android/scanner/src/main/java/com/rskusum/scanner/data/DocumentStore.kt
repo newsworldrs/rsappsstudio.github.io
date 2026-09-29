@@ -52,9 +52,9 @@ class DocumentStore(private val context: Context) {
      * downscaled and JPEG-compressed per [quality] *before* embedding (the JPEG is embedded as-is,
      * no second re-compression), which keeps files small. Returns the file.
      */
-    fun savePdf(name: String, pageFiles: List<File>, quality: PdfQuality = PdfQuality.BALANCED): File {
+    fun savePdf(name: String, pageFiles: List<File>, quality: PdfQuality = PdfQuality.BALANCED, into: File = dir): File {
         com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
-        val file = uniqueFile(sanitize(name), "pdf")
+        val file = uniqueFile(sanitize(name), "pdf", into)
         com.tom_roush.pdfbox.pdmodel.PDDocument().use { doc ->
             doc.documentInformation.title = name
             doc.documentInformation.producer = "RS Kusum Scanner"
@@ -112,7 +112,7 @@ class DocumentStore(private val context: Context) {
         return target
     }
 
-    fun uriFor(file: File): Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    fun uriFor(file: File): Uri = FileProvider.getUriForFile(context, "${context.packageName}.rsscanner.fileprovider", file)
 
     fun shareIntent(files: List<File>, mime: String): Intent {
         val uris = ArrayList(files.map { uriFor(it) })
@@ -181,10 +181,10 @@ class DocumentStore(private val context: Context) {
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
     private fun downloadsUri(): Uri = MediaStore.Downloads.EXTERNAL_CONTENT_URI
 
-    private fun uniqueFile(base: String, ext: String): File {
-        var f = File(dir, "$base.$ext")
+    private fun uniqueFile(base: String, ext: String, folder: File = dir): File {
+        var f = File(folder, "$base.$ext")
         var i = 1
-        while (f.exists()) f = File(dir, "$base ($i).$ext").also { i++ }
+        while (f.exists()) f = File(folder, "$base ($i).$ext").also { i++ }
         return f
     }
 

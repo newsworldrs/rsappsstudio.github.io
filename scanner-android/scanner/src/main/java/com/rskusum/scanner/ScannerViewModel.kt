@@ -58,9 +58,32 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var orientation by mutableStateOf(com.rskusum.scanner.data.FrameOrientation.PORTRAIT)
     var aiAssist by mutableStateOf(false)
-    /** Book mode: false = top half is page 1 (Adobe default), true = bottom half is page 1. */
+    /** Book mode: false = top half is page 1 (default), true = bottom half is page 1. */
     var bookSwap by mutableStateOf(false)
     var autoCapture by mutableStateOf(true)
+
+    // --- Configuration from the calling app ---------------------------------------------------
+    var options by mutableStateOf(ScannerOptions())
+        private set
+    private var configured = false
+
+    /** Applies the caller's [ScannerOptions] once per scanner session. */
+    fun configure(o: ScannerOptions) {
+        if (configured) return
+        configured = true
+        options = o
+        autoCapture = o.autoCapture
+        pdfQuality = o.pdfQuality
+        orientation = o.startMode.defaultOrientation
+        mode = o.startMode
+    }
+
+    /** Finished scans for the calling app (embedded mode). */
+    private val _results = kotlinx.coroutines.flow.MutableSharedFlow<ScanResult>(extraBufferCapacity = 1)
+    val results: kotlinx.coroutines.flow.SharedFlow<ScanResult> = _results
+
+    /** True when [ScannerOptions.pageLimit] pages have been scanned. */
+    val pageLimitReached: Boolean get() = options.pageLimit > 0 && pages.size >= options.pageLimit
 
     fun selectMode(m: ScanMode) {
         if (m != mode) resetIdCard()
@@ -82,7 +105,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** False when the current mode must not take more photos (ID card already has both sides). */
-    val captureAllowed: Boolean get() = !(mode == ScanMode.ID_CARD && idStep == IdStep.DONE)
+    val captureAllowed: Boolean get() = !(mode == ScanMode.ID_CARD && idStep == IdStep.DONE) && !pageLimitReached
 
     /** Fingerprints of all pages in this session, for live duplicate prevention in the camera. */
     val sessionFingerprints: List<FloatArray>
@@ -131,7 +154,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0) {
         if (!captureAllowed) {
             photo.recycle()
-            _messages.tryEmit("ID card complete - open the scan to review it")
+            _messages.tryEmit(
+                if (pageLimitReached) "Page limit reached (${options.pageLimit}) - open the scan to review it"
+                else "ID card complete - open the scan to review it"
+            )
             return
         }
         processingCaptures++
@@ -160,8 +186,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                     return@launch
                 }
-                pages.addAll(created)
-                created.forEach { p -> launchRender(p, pickSmartFilter = smart) }
+                // Respect the caller's page limit (a book spread may bring two pages at once).
+                val room = if (options.pageLimit > 0) (options.pageLimit - pages.size).coerceAtLeast(0) else created.size
+                val kept = created.take(room)
+                created.drop(room).forEach { deletePage(it) }
+                pages.addAll(kept)
+                kept.forEach { p -> launchRender(p, pickSmartFilter = smart) }
             } catch (r: Rejected) {
                 _messages.tryEmit(r.message ?: "Capture rejected")
             } catch (t: Throwable) {
@@ -249,7 +279,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val first = if (swap) b else a
                 val second = if (swap) a else b
                 // Phone held across the book: halves are sideways - turn them upright. Default is
-                // the phone's top pointing left (like Adobe Scan's sideways labels).
+                // the phone's top pointing left (matching the sideways page labels).
                 val turn = if (!acrossBook) 0 else if (deviceRotation == 90) 90 else 270
                 // Detach the pages: each gets its OWN upright image cut at the spine, so crop,
                 // filters and eraser only ever see that one page.
@@ -579,6 +609,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     var pdfQuality by mutableStateOf(com.rskusum.scanner.data.PdfQuality.BALANCED)
 
     suspend fun savePdf(): Result<String> = withContext(Dispatchers.IO) {
+        if (!options.standalone) return@withContext finishForCaller()
         runCatching {
             val files = pdfPageFiles()
             require(files.isNotEmpty()) { "Nothing to save" }
@@ -590,6 +621,37 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             }
             "Saved to $where"
         }
+    }
+
+    /**
+     * Embedded mode: writes the PDF and/or page JPEGs into `files/rsscanner/<scan>/` and hands a
+     * [ScanResult] to the calling app through [results].
+     */
+    private suspend fun finishForCaller(): Result<String> = runCatching {
+        val pageFiles = pages.mapNotNull { it.processedFile }
+        require(pageFiles.isNotEmpty()) { "Nothing to save" }
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val outDir = File(getApplication<Application>().filesDir, "rsscanner/scan_$stamp").apply { mkdirs() }
+        val pdfUri = if (options.returnPdf) {
+            store.uriFor(store.savePdf(documentName, pdfPageFiles(), pdfQuality, into = outDir))
+        } else {
+            null
+        }
+        val jpegUris = if (options.returnJpegs) {
+            pageFiles.mapIndexed { i, f ->
+                val target = File(outDir, "page_${i + 1}.jpg")
+                f.copyTo(target, overwrite = true)
+                store.uriFor(target)
+            }
+        } else {
+            emptyList()
+        }
+        val result = ScanResult(documentName, pdfUri, jpegUris, pageFiles.size)
+        withContext(Dispatchers.Main) {
+            discardSession()
+            _results.tryEmit(result)
+        }
+        "Done"
     }
 
     suspend fun saveJpegs(): Result<String> = withContext(Dispatchers.IO) {

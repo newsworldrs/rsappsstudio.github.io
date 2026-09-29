@@ -17,7 +17,7 @@ import kotlin.math.roundToInt
 
 /**
  * On-device text orientation classifier (PP-LCNet, 224x224): tells whether the text on a flattened
- * page reads upright, or is turned 90 / 180 / 270 degrees - like ML Kit / Adobe Scan, a page shot
+ * page reads upright, or is turned 90 / 180 / 270 degrees, so a page shot
  * upside down or sideways comes out upright.
  *
  * Input: RGB, ImageNet-normalised, NHWC 1x224x224x3. Output: softmax over [0, 90, 180, 270]

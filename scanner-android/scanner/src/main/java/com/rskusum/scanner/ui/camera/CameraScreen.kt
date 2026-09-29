@@ -38,6 +38,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,16 +57,22 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.outlined.Badge
+import androidx.compose.material.icons.outlined.ContactPage
 import androidx.compose.material.icons.outlined.CropFree
 import androidx.compose.material.icons.outlined.CropLandscape
 import androidx.compose.material.icons.outlined.CropPortrait
-import androidx.compose.material.icons.outlined.DocumentScanner
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Dashboard
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.ImportContacts
+import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.AlertDialog
@@ -140,7 +147,7 @@ private enum class Flash(val mode: Int) {
 }
 
 @Composable
-fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> Unit) {
+fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> Unit)? = null) {
     val context = LocalContext.current
     var granted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
@@ -294,6 +301,14 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
             onOpenReview()
         }
     }
+    // Page limit set by the calling app: once reached, go to review.
+    val limitReached = vm.pageLimitReached
+    LaunchedEffect(limitReached) {
+        if (limitReached) {
+            kotlinx.coroutines.delay(900)
+            onOpenReview()
+        }
+    }
     // Pipeline messages, e.g. "Same page as the last scan - place another document".
     LaunchedEffect(Unit) {
         vm.messages.collect {
@@ -312,10 +327,11 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
         TopBar(
             qrMode = qrMode,
             onHome = onHome,
-            onQr = {
+            // The QR scanner belongs to the standalone app, not to an embedded document scanner.
+            onQr = if (vm.options.standalone) ({
                 qrMode = !qrMode
                 toast = if (qrMode) "QR code scanner" else "Document scanner"
-            },
+            }) else null,
         )
 
         // Preview area. The camera streams are 4:3, so a 3:4 portrait box shows the full sensor
@@ -342,7 +358,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                         guide != null -> GuideFrameOverlay(guide, state.aligned)
                         else -> QuadOverlay(state.quad, state.phase)
                     }
-                    // Adobe-style book guide: dashed divider across the whole preview, sideways
+                    // Book guide: dashed divider across the whole preview, sideways
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
                         val divider = guide?.let { (it.tl.y + it.br.y) / 2f } ?: 0.5f
@@ -353,7 +369,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                                 vm.bookSwap = !vm.bookSwap
                                 toast = if (vm.bookSwap) "Bottom half is page 1" else "Top half is page 1"
                             },
-                            modifier = Modifier.align(Alignment.CenterStart).padding(start = 6.dp),
+                            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp),
                         )
                     }
                 } else {
@@ -409,9 +425,24 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                 }
                 toast?.let { HintChip(it, Modifier.align(Alignment.Center)) }
                 if (granted && !qrMode) {
-                    OrientationToggle(
-                        selected = vm.orientation,
-                        onSelect = {
+                    ToolRail(
+                        flash = flash,
+                        onFlash = {
+                            flash = flash.next()
+                            toast = "Flash ${flash.name.lowercase()}"
+                        },
+                        autoCapture = vm.autoCapture,
+                        onToggleAuto = {
+                            vm.autoCapture = !vm.autoCapture
+                            toast = if (vm.autoCapture) "Auto capture on" else "Auto capture off - tap the shutter"
+                        },
+                        smartFilter = vm.aiAssist,
+                        onToggleSmart = {
+                            vm.aiAssist = !vm.aiAssist
+                            toast = if (vm.aiAssist) "Smart filter: best look picked for each page" else "Smart filter off"
+                        },
+                        frame = vm.orientation,
+                        onFrame = {
                             vm.orientation = it
                             toast = when (it) {
                                 com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> "Portrait frame"
@@ -419,10 +450,10 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                                 com.rskusum.scanner.data.FrameOrientation.FREE -> "Free detection"
                             }
                         },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
+                        modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
                     )
                 }
-                if (granted) Diagnostics(analyzer, Modifier.align(Alignment.BottomStart).padding(8.dp))
+                if (granted) Diagnostics(analyzer, Modifier.align(Alignment.BottomEnd).padding(8.dp))
 
                 Box(
                     Modifier
@@ -430,20 +461,9 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
                         .background(Color.White.copy(alpha = flashOverlay.value))
                 )
             }
-
-            ScanAiPill(
-                aiAssist = vm.aiAssist,
-                onChange = {
-                    vm.aiAssist = it
-                    toast = if (it) "AI assist: best filter picked for each page" else "Scan"
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 18.dp),
-            )
         }
 
-        ModeCarousel(vm.mode, onSelect = { vm.selectMode(it) })
+        ModeCarousel(vm.options.modes, vm.mode, onSelect = { vm.selectMode(it) })
 
         BottomControls(
             progress = if (vm.autoCapture && !qrMode) state.progress else 0f,
@@ -453,21 +473,16 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: () -> U
             thumbnail = vm.pages.lastOrNull(),
             pageCount = vm.pages.size,
             processing = vm.processingCaptures > 0,
-            onGallery = {
+            onGallery = if (vm.options.galleryImport) ({
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-            },
-            onToggleAuto = {
-                vm.autoCapture = !vm.autoCapture
-                toast = if (vm.autoCapture) "Auto-capture on" else "Auto-capture off"
-            },
+            }) else null,
             onShutter = {
                 when {
                     qrMode -> Unit
-                    !vm.captureAllowed -> toast = "ID card complete - tap the thumbnail to review"
+                    !vm.captureAllowed -> toast = "Capturing is complete - tap the pages to review"
                     else -> capture(manual = true)
                 }
             },
-            onFlash = { flash = flash.next() },
             onThumbnail = { if (vm.pages.isNotEmpty() || vm.processingCaptures > 0) onOpenReview() },
         )
     }
@@ -682,86 +697,62 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = fa
 }
 
 /**
- * Book mode guide (like Adobe Scan): the phone is held sideways across the open book, the spine
+ * Book mode guide: the phone is held sideways across the open book, the spine
  * lies on a dashed line across the preview, the left page shows as "1" (top) and the right page as
  * "2" (bottom). Numbers are drawn sideways so they read correctly with the phone turned.
  */
 @Composable
 private fun BookOverlay(dividerY: Float, swapped: Boolean) {
-    val purple = Color(0xFFB04BD8)
+    val guide = ScanColors.Marigold
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             val y = dividerY * size.height
-            drawLine(
-                purple, Offset(0f, y), Offset(size.width, y), 4.dp.toPx(),
-                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(18.dp.toPx(), 12.dp.toPx())),
-            )
+            // Spine guide: thin solid line with a soft glow band and end caps.
+            drawLine(guide.copy(alpha = 0.25f), Offset(0f, y), Offset(size.width, y), 12.dp.toPx())
+            drawLine(guide, Offset(0f, y), Offset(size.width, y), 2.dp.toPx())
+            drawCircle(guide, 5.dp.toPx(), Offset(10.dp.toPx(), y))
+            drawCircle(guide, 5.dp.toPx(), Offset(size.width - 10.dp.toPx(), y))
         }
-        val top = if (swapped) "2" else "1"
-        val bottom = if (swapped) "1" else "2"
+        val top = if (swapped) "PAGE 2" else "PAGE 1"
+        val bottom = if (swapped) "PAGE 1" else "PAGE 2"
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
             val h = maxHeight
-            val labelStyle = androidx.compose.ui.text.TextStyle(fontSize = 96.sp, fontWeight = FontWeight.Bold, color = purple.copy(alpha = 0.85f))
-            Text(
-                top, style = labelStyle,
-                modifier = Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 60.dp).rotate(90f),
-            )
-            Text(
-                bottom, style = labelStyle,
-                modifier = Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 60.dp).rotate(90f),
-            )
+            // Page badges, turned sideways so they read correctly with the phone held across the book.
+            PageBadge(top, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 14.dp).rotate(90f))
+            PageBadge(bottom, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 14.dp).rotate(90f))
         }
     }
 }
 
-/** "1 ⇅ 2" button: swaps which half of the spread becomes page 1. */
+@Composable
+private fun PageBadge(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        color = Color.Black,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(ScanColors.Marigold.copy(alpha = 0.92f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
+}
+
+/** "Swap pages" chip: swaps which half of the spread becomes page 1. */
 @Composable
 private fun BookSwapButton(swapped: Boolean, onSwap: () -> Unit, modifier: Modifier = Modifier) {
-    Column(
+    Row(
         modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color.Black.copy(alpha = 0.6f))
-            .border(1.dp, Color.White.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(ScanColors.Bar.copy(alpha = 0.72f))
+            .border(1.dp, ScanColors.Marigold, RoundedCornerShape(12.dp))
             .clickable(onClick = onSwap)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(if (swapped) "2" else "1", color = Color.White, fontSize = 15.sp, modifier = Modifier.rotate(90f))
-        Icon(Icons.Filled.SwapVert, contentDescription = "Swap page order", tint = Color.White, modifier = Modifier.size(22.dp))
-        Text(if (swapped) "1" else "2", color = Color.White, fontSize = 15.sp, modifier = Modifier.rotate(90f))
-    }
-}
-
-@Composable
-private fun OrientationToggle(
-    selected: com.rskusum.scanner.data.FrameOrientation,
-    onSelect: (com.rskusum.scanner.data.FrameOrientation) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(22.dp))
-            .background(Color.Black.copy(alpha = 0.55f))
-            .padding(4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        listOf(
-            com.rskusum.scanner.data.FrameOrientation.PORTRAIT to Icons.Outlined.CropPortrait,
-            com.rskusum.scanner.data.FrameOrientation.LANDSCAPE to Icons.Outlined.CropLandscape,
-            com.rskusum.scanner.data.FrameOrientation.FREE to Icons.Outlined.CropFree,
-        ).forEach { (o, icon) ->
-            val isSel = o == selected
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(if (isSel) ScanColors.Accent else Color.Transparent)
-                    .clickable { onSelect(o) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(icon, contentDescription = o.name.lowercase(), tint = Color.White, modifier = Modifier.size(24.dp))
-            }
-        }
+        Icon(Icons.Filled.SwapVert, contentDescription = null, tint = ScanColors.Marigold, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.size(4.dp))
+        Text(if (swapped) "Pages swapped" else "Swap pages", color = Color.White, fontSize = 12.sp)
     }
 }
 
@@ -793,9 +784,10 @@ private fun HintChip(text: String, modifier: Modifier = Modifier) {
         color = Color.White,
         fontSize = 14.sp,
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color.Black.copy(alpha = 0.6f))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .clip(RoundedCornerShape(10.dp))
+            .background(ScanColors.Bar.copy(alpha = 0.78f))
+            .border(1.dp, ScanColors.Accent, RoundedCornerShape(10.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp),
     )
 }
 
@@ -816,7 +808,7 @@ private fun Diagnostics(analyzer: DocumentAnalyzer, modifier: Modifier = Modifie
             val count = analyzer.framesAnalyzed
             val fps = count - lastCount
             lastCount = count
-            val err = com.rskusum.scanner.ScannerApp.openCvError ?: analyzer.lastError
+            val err = com.rskusum.scanner.RsScanner.openCvError ?: analyzer.lastError
                 ?: com.rskusum.scanner.vision.EdgeModel.loadError
             isError = err != null || (fps == 0L && ticks >= 3 && !analyzer.paused && !analyzer.qrMode)
             text = when {
@@ -856,76 +848,123 @@ private fun PermissionRationale(onGrant: () -> Unit) {
 // Chrome
 
 @Composable
-private fun TopBar(qrMode: Boolean, onHome: () -> Unit, onQr: () -> Unit) {
-    Box(
+private fun TopBar(qrMode: Boolean, onHome: (() -> Unit)?, onQr: (() -> Unit)?) {
+    Row(
         Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(56.dp)
             .background(ScanColors.Bar)
-            .padding(horizontal = 8.dp)
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onHome, modifier = Modifier.align(Alignment.CenterStart)) {
-            Icon(Icons.Filled.Home, contentDescription = "Home", tint = Color.White, modifier = Modifier.size(30.dp))
+        // RS Kusum wordmark: "RS" tile + name, left aligned.
+        Box(
+            Modifier
+                .size(30.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(ScanColors.Accent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("RS", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
         }
-        Box(Modifier.align(Alignment.Center).size(44.dp)) {
-            Icon(
-                Icons.Outlined.DocumentScanner,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.align(Alignment.Center).size(30.dp),
-            )
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(ScanColors.Accent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Star, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+        Spacer(Modifier.size(10.dp))
+        Text("Kusum Scan", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.weight(1f))
+        if (onQr != null) {
+            IconButton(onClick = onQr) {
+                Icon(
+                    Icons.Outlined.QrCodeScanner,
+                    contentDescription = "QR code",
+                    tint = if (qrMode) ScanColors.AccentBright else Color.White,
+                    modifier = Modifier.size(26.dp),
+                )
             }
         }
-        IconButton(onClick = onQr, modifier = Modifier.align(Alignment.CenterEnd)) {
+        if (onHome != null) {
+            IconButton(onClick = onHome) {
+                Icon(Icons.Outlined.FolderOpen, contentDescription = "My scans", tint = Color.White, modifier = Modifier.size(26.dp))
+            }
+        }
+    }
+}
+
+/**
+ * Vertical tool rail on the right edge of the preview: flash, auto capture, smart filter and the
+ * frame shape, each a round translucent button.
+ */
+@Composable
+private fun ToolRail(
+    flash: Flash,
+    onFlash: () -> Unit,
+    autoCapture: Boolean,
+    onToggleAuto: () -> Unit,
+    smartFilter: Boolean,
+    onToggleSmart: () -> Unit,
+    frame: com.rskusum.scanner.data.FrameOrientation?,
+    onFrame: (com.rskusum.scanner.data.FrameOrientation) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(ScanColors.Bar.copy(alpha = 0.62f))
+            .padding(vertical = 6.dp, horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        RailButton(selected = flash != Flash.OFF, label = when (flash) { Flash.AUTO -> "Auto"; Flash.ON -> "On"; Flash.OFF -> "Off" }, onClick = onFlash) {
             Icon(
-                Icons.Outlined.QrCodeScanner,
-                contentDescription = "QR code",
-                tint = if (qrMode) ScanColors.Accent else Color.White,
-                modifier = Modifier.size(30.dp),
+                when (flash) {
+                    Flash.AUTO -> Icons.Filled.FlashAuto
+                    Flash.ON -> Icons.Filled.FlashOn
+                    Flash.OFF -> Icons.Filled.FlashOff
+                },
+                "Flash", tint = Color.White, modifier = Modifier.size(22.dp),
             )
+        }
+        RailButton(selected = autoCapture, label = "Auto", onClick = onToggleAuto) {
+            Text("A", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black)
+        }
+        RailButton(selected = smartFilter, label = "Smart", onClick = onToggleSmart) {
+            Icon(Icons.Filled.AutoAwesome, "Smart filter", tint = Color.White, modifier = Modifier.size(20.dp))
+        }
+        if (frame != null) {
+            Box(Modifier.padding(vertical = 2.dp).size(width = 24.dp, height = 1.dp).background(Color.White.copy(alpha = 0.25f)))
+            listOf(
+                com.rskusum.scanner.data.FrameOrientation.PORTRAIT to Icons.Outlined.CropPortrait,
+                com.rskusum.scanner.data.FrameOrientation.LANDSCAPE to Icons.Outlined.CropLandscape,
+                com.rskusum.scanner.data.FrameOrientation.FREE to Icons.Outlined.CropFree,
+            ).forEach { (o, icon) ->
+                RailButton(selected = o == frame, label = null, onClick = { onFrame(o) }) {
+                    Icon(icon, contentDescription = o.name.lowercase(), tint = Color.White, modifier = Modifier.size(22.dp))
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun ScanAiPill(aiAssist: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier
-            .clip(RoundedCornerShape(50))
-            .background(ScanColors.Pill.copy(alpha = 0.92f))
-            .padding(4.dp),
-    ) {
-        listOf(false to "Scan", true to "AI assist").forEach { (value, label) ->
-            val selected = aiAssist == value
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (selected) ScanColors.Accent else Color.Transparent)
-                    .clickable { onChange(value) }
-                    .padding(horizontal = 30.dp, vertical = 11.dp),
-            ) {
-                Text(label, color = Color.White, fontSize = 17.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
-            }
-        }
+private fun RailButton(selected: Boolean, label: String?, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (selected) ScanColors.Accent else Color.Transparent)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) { content() }
+        if (label != null) Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 9.sp)
     }
 }
 
-/** Horizontal swipe on the preview switches mode, like Adobe Scan. */
+/** Horizontal swipe on the preview switches mode. */
 private fun Modifier.pointerModeSwipe(vm: ScannerViewModel): Modifier = pointerInput(Unit) {
     var total = 0f
     detectHorizontalDragGestures(
         onDragStart = { total = 0f },
         onDragEnd = {
-            val modes = ScanMode.entries
+            val modes = vm.options.modes
             val i = modes.indexOf(vm.mode)
             if (total < -120 && i < modes.lastIndex) vm.selectMode(modes[i + 1])
             if (total > 120 && i > 0) vm.selectMode(modes[i - 1])
@@ -934,54 +973,44 @@ private fun Modifier.pointerModeSwipe(vm: ScannerViewModel): Modifier = pointerI
 }
 
 @Composable
-private fun ModeCarousel(selected: ScanMode, onSelect: (ScanMode) -> Unit) {
-    val centers = remember { mutableStateMapOf<ScanMode, Float>() }
-    var width by remember { mutableFloatStateOf(0f) }
-    val target = centers[selected]?.let { width / 2f - it } ?: 0f
-    val offset by animateFloatAsState(target, tween(260), label = "carousel")
-    var drag by remember { mutableFloatStateOf(0f) }
-
-    Box(
+private fun ModeCarousel(modes: List<ScanMode>, selected: ScanMode, onSelect: (ScanMode) -> Unit) {
+    // Mode chips: icon + label in rounded tiles, scrollable; the selected one is filled.
+    val scroll = androidx.compose.foundation.rememberScrollState()
+    Row(
         Modifier
             .fillMaxWidth()
-            .height(56.dp)
             .background(ScanColors.Bar)
-            .onSizeChanged { width = it.width.toFloat() }
-            .clipToBounds()
-            .pointerInput(selected) {
-                detectHorizontalDragGestures(
-                    onDragStart = { drag = 0f },
-                    onDragEnd = {
-                        val modes = ScanMode.entries
-                        val i = modes.indexOf(selected)
-                        if (drag < -60 && i < modes.lastIndex) onSelect(modes[i + 1])
-                        if (drag > 60 && i > 0) onSelect(modes[i - 1])
-                    },
-                ) { _, dx -> drag += dx }
-            },
+            .horizontalScroll(scroll)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier
-                .align(Alignment.CenterStart)
-                .wrapContentWidth(align = Alignment.Start, unbounded = true)
-                .offset { IntOffset(offset.roundToInt(), 0) },
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ScanMode.entries.forEach { m ->
-                val isSel = m == selected
-                Text(
-                    m.label,
-                    color = if (isSel) ScanColors.Accent else Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
-                    modifier = Modifier
-                        .onGloballyPositioned { c -> centers[m] = c.positionInParent().x + c.size.width / 2f }
-                        .clickable { onSelect(m) }
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                )
+        modes.forEach { m ->
+            val isSel = m == selected
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isSel) ScanColors.Accent else ScanColors.SurfaceHigh)
+                    .border(1.dp, if (isSel) ScanColors.AccentBright else Color.Transparent, RoundedCornerShape(12.dp))
+                    .clickable { onSelect(m) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(modeIcon(m), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.size(6.dp))
+                Text(m.label, color = Color.White, fontSize = 14.sp, fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal)
             }
         }
     }
+}
+
+private fun modeIcon(m: ScanMode) = when (m) {
+    ScanMode.WHITEBOARD -> Icons.Outlined.Dashboard
+    ScanMode.BOOK -> Icons.Outlined.ImportContacts
+    ScanMode.BOOK_COVER -> Icons.Outlined.Book
+    ScanMode.DOCUMENT -> Icons.Outlined.Description
+    ScanMode.ID_CARD -> Icons.Outlined.Badge
+    ScanMode.BUSINESS_CARD -> Icons.Outlined.ContactPage
 }
 
 @Composable
@@ -993,94 +1022,81 @@ private fun BottomControls(
     thumbnail: com.rskusum.scanner.data.Page?,
     pageCount: Int,
     processing: Boolean,
-    onGallery: () -> Unit,
-    onToggleAuto: () -> Unit,
+    onGallery: (() -> Unit)?,
     onShutter: () -> Unit,
-    onFlash: () -> Unit,
     onThumbnail: () -> Unit,
 ) {
-    Row(
+    // Pages on the left, shutter in the middle, gallery on the right.
+    Box(
         Modifier
             .fillMaxWidth()
             .background(ScanColors.Bar)
-            .padding(horizontal = 12.dp, vertical = 18.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 28.dp, vertical = 16.dp),
     ) {
-        IconButton(onClick = onGallery) {
-            Icon(Icons.Outlined.PhotoLibrary, "Import from gallery", tint = Color.White, modifier = Modifier.size(32.dp))
+        Box(Modifier.align(Alignment.CenterStart)) {
+            ThumbnailStack(thumbnail, pageCount, processing, onThumbnail)
         }
-        IconButton(onClick = onToggleAuto) {
-            AutoCaptureIcon(autoCapture)
+        Box(Modifier.align(Alignment.Center)) {
+            Shutter(progress, capturing, autoCapture, onShutter)
         }
-        Shutter(progress, capturing, onShutter)
-        IconButton(onClick = onFlash) {
-            Icon(
-                when (flash) {
-                    Flash.AUTO -> Icons.Filled.FlashAuto
-                    Flash.ON -> Icons.Filled.FlashOn
-                    Flash.OFF -> Icons.Filled.FlashOff
-                },
-                "Flash",
-                tint = Color.White,
-                modifier = Modifier.size(32.dp),
-            )
+        if (onGallery != null) {
+            Column(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onGallery)
+                    .padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Outlined.PhotoLibrary, "Import from gallery", tint = Color.White, modifier = Modifier.size(28.dp))
+                Text("Import", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+            }
         }
-        ThumbnailStack(thumbnail, pageCount, processing, onThumbnail)
     }
 }
 
-/** Frame-with-sparkle icon (Adobe's auto-capture toggle), drawn so it can show on/off state. */
+/**
+ * Shutter: a teal disc with a camera glyph inside a thin track ring. With auto capture on, the
+ * ring fills clockwise as the page holds steady; while capturing the disc shrinks briefly.
+ */
 @Composable
-private fun AutoCaptureIcon(on: Boolean) {
-    val c = if (on) Color.White else Color.White.copy(alpha = 0.4f)
-    Canvas(Modifier.size(32.dp)) {
-        val w = size.width
-        val sw = 2.4.dp.toPx()
-        val k = w * 0.28f
-        // corner brackets
-        drawLine(c, Offset(0f, k), Offset(0f, 0f), sw); drawLine(c, Offset(0f, 0f), Offset(k, 0f), sw)
-        drawLine(c, Offset(w - k, 0f), Offset(w, 0f), sw); drawLine(c, Offset(w, 0f), Offset(w, k), sw)
-        drawLine(c, Offset(w, w - k), Offset(w, w), sw); drawLine(c, Offset(w, w), Offset(w - k, w), sw)
-        drawLine(c, Offset(k, w), Offset(0f, w), sw); drawLine(c, Offset(0f, w), Offset(0f, w - k), sw)
-        // sparkle
-        val cx = w / 2; val cy = w / 2; val r = w * 0.3f; val t = w * 0.07f
-        val star = Path().apply {
-            moveTo(cx, cy - r); lineTo(cx + t, cy - t); lineTo(cx + r, cy); lineTo(cx + t, cy + t)
-            lineTo(cx, cy + r); lineTo(cx - t, cy + t); lineTo(cx - r, cy); lineTo(cx - t, cy - t); close()
-        }
-        drawPath(star, c)
-        if (!on) drawLine(c, Offset(w * 0.12f, w * 0.88f), Offset(w * 0.88f, w * 0.12f), sw)
-    }
-}
-
-@Composable
-private fun Shutter(progress: Float, capturing: Boolean, onClick: () -> Unit) {
-    val inner by animateFloatAsState(if (capturing) 0.82f else 0f, tween(120), label = "shutterInner")
+private fun Shutter(progress: Float, capturing: Boolean, autoCapture: Boolean, onClick: () -> Unit) {
+    val press by animateFloatAsState(if (capturing) 0.78f else 1f, tween(120), label = "shutterPress")
     val shownProgress by animateFloatAsState(progress, tween(120), label = "shutterProgress")
     Box(
         Modifier
-            .size(84.dp)
+            .size(80.dp)
             .clip(CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {
-            val ring = 5.dp.toPx()
-            val r = size.minDimension / 2 - ring
-            drawCircle(Color.White, r, style = Stroke(ring))
+            val track = 3.dp.toPx()
+            val inset = track / 2
+            val arcSize = androidx.compose.ui.geometry.Size(size.width - track, size.height - track)
+            drawCircle(Color.White.copy(alpha = 0.25f), size.minDimension / 2 - inset, style = Stroke(track))
             if (shownProgress > 0f) {
                 drawArc(
-                    ScanColors.Accent,
+                    ScanColors.AccentBright,
                     startAngle = -90f,
-                    sweepAngle = -360f * shownProgress,
+                    sweepAngle = 360f * shownProgress,
                     useCenter = false,
-                    topLeft = Offset(ring, ring),
-                    size = androidx.compose.ui.geometry.Size(size.width - 2 * ring, size.height - 2 * ring),
-                    style = Stroke(ring, cap = StrokeCap.Round),
+                    topLeft = Offset(inset, inset),
+                    size = arcSize,
+                    style = Stroke(track, cap = StrokeCap.Round),
                 )
             }
-            if (inner > 0f) drawCircle(Color.White, r * inner)
+            drawCircle(ScanColors.Accent, (size.minDimension / 2 - 9.dp.toPx()) * press)
+        }
+        Icon(Icons.Filled.CameraAlt, contentDescription = "Capture", tint = Color.White, modifier = Modifier.size(28.dp).scale(press))
+        if (autoCapture) {
+            Text(
+                "AUTO",
+                color = Color.White,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
+            )
         }
     }
 }
@@ -1094,14 +1110,14 @@ private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, count: Int, pro
             pulse.animateTo(1f, tween(300))
         }
     }
-    Box(Modifier.size(width = 52.dp, height = 70.dp).scale(pulse.value)) {
+    Box(Modifier.size(width = 60.dp, height = 60.dp).scale(pulse.value)) {
         Box(
             Modifier
                 .align(Alignment.BottomStart)
-                .size(width = 46.dp, height = 64.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(Color(0xFF2A2A2A))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(4.dp))
+                .size(52.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(ScanColors.SurfaceHigh)
+                .border(2.dp, ScanColors.Accent, RoundedCornerShape(14.dp))
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
@@ -1118,11 +1134,11 @@ private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, count: Int, pro
                 Modifier
                     .align(Alignment.TopEnd)
                     .size(22.dp)
-                    .clip(CircleShape)
-                    .background(ScanColors.Accent),
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(ScanColors.Marigold),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("$count", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("$count", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

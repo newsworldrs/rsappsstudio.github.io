@@ -1,0 +1,8 @@
+# JitPack build for the RS Kusum Scanner Android library (lives in scanner-android/).
+# Apps use it with:
+#   repositories { maven("https://jitpack.io") }
+#   dependencies { implementation("com.github.newsworldrs:rsappsstudio.github.io:<tag>") }
+jdk:
+  - openjdk17
+install:
+  - cd scanner-android && chmod +x gradlew && ./gradlew --no-daemon :scanner:publishReleasePublicationToMavenLocal -PscannerVersion=$VERSION

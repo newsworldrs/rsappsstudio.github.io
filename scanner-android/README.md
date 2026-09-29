@@ -1,97 +1,182 @@
-# RS Kusum Scanner (`com.rskusum.scanner`)
+# RS Kusum Scanner: an Android document scanner library
 
-An Adobe Scan–style document scanner for Android. It is built with Kotlin, Jetpack Compose,
-CameraX and OpenCV. It does **not** use ML Kit, so every pixel of the UI and every step of the
-pipeline is under our control.
+A complete document scanner for Android apps, and a ready-made scanner app (`com.rskusum.scanner`) built on it.
 
-## What it does
+- **Built with:** Kotlin, Jetpack Compose, CameraX, OpenCV and TensorFlow Lite.
+- **No ML Kit:** it doesn't use ML Kit, Google Play services or any cloud service, so it runs fully offline.
+- **License:** Apache 2.0, free for commercial and non-commercial apps (see [Licensing](#licensing)).
 
-* **The app opens straight into the camera.** The layout follows Adobe Scan: a black top bar
-  (Home, the app logo with a badge, a QR scanner), a 4:3 live preview, a floating
-  `Scan | AI assist` pill, a swipeable mode carousel (`Whiteboard · Book · Document · ID card ·
-  Business card`) and a bottom row (gallery import, auto-capture toggle, shutter, flash, page
-  stack).
-* **Live edge detection.** The detected page is outlined in blue on the preview at camera frame
-  rate.
-* **Auto-capture.** When the page is large enough and held steady for about 1.1 s, a blue arc fills
-  around the shutter and the photo is taken. The app then waits for a *new* page (it compares a
-  content fingerprint) before it arms again, so you can scan a stack of pages hands-free.
-* **Automatic crop and perspective correction on the full-resolution photo.** The detected corners
-  are refined to about 1–2 px accuracy. The page's true aspect ratio is recovered from the
-  perspective itself (Zhang & He's rectangle method), so an A4 sheet comes out as A4 even when the
-  phone is tilted.
-* **Enhancement filters:** Auto color (the default: removes shadows, whitens the paper, keeps ink
-  colour), Original, Light text, Grayscale, B&W and Whiteboard. **AI assist** picks the filter for
-  each page automatically.
-* **Modes:** Book splits a two-page spread into two pages. ID card and Business card enforce the
-  standard card proportions.
-* **Review:** swipe between pages, crop (drag handles with a magnifier loupe, auto-detect, no-crop),
-  rotate, filters with live previews ("Apply to all"), delete, add more pages, rename.
-* **Export:** compact PDFs (JPEG pages embedded directly, A4 width), saved in the app library and
-  in `Download/RS Kusum Scanner`. Pages can also be saved as JPGs to `Pictures/RS Kusum Scanner`,
-  or shared.
-* **Home:** a list of recent scans with thumbnails, where you can open, share, rename or delete them.
-* **QR codes** are decoded with OpenCV's `QRCodeDetector`.
+## Features
 
-## Pipeline
+* **Automatic capture.** The scanner fires once the document is lined up in the guide frame and held steady. It rejects duplicate pages and empty shots.
+* **Precise automatic crop.** On-device edge detection (a learned HED-lite model plus OpenCV) finds the page edges and corrects perspective on the full-resolution photo. Pages come out as A4, ID cards at ID-1 size.
+* **Automatic page orientation.** An on-device text-orientation model turns upside-down or sideways pages upright.
+* **Modes:**
+  * Document.
+  * Book: the open book is split at the spine into two separate pages.
+  * Book cover.
+  * Whiteboard: A4 landscape.
+  * ID card: the front and back are placed together on one PDF page.
+  * Business card.
+* **Editing:**
+  * Crop with a magnifier and Auto detect.
+  * Rotate.
+  * Filters: Auto color, Original, No shadow, Light text, Grayscale, B&W, Whiteboard.
+  * Eraser: "marks only" keeps printed text; "everything" wipes the area.
+* **Output:** a compressed PDF (built with PDFBox) and/or one JPEG per page.
 
-```
-CameraX ImageAnalysis (640x480 Y plane) ──► DocumentDetector.detect ──► AutoCaptureTracker
-                                                          │                    │ steady ~1.1 s
-                                                          ▼                    ▼
-                                                   blue quad overlay     ImageCapture (≤ 4032x3024)
-                                                                               │
-    detect again on the still ◄────────────────────────────────────────────────┘
-      └► refine (line fit to edge pixels per side, intersect)  ~1–2 px corners
-          └► estimateAspect (focal length from perspective) ──► warpPerspective (cubic)
-              └► [Book: split halves] ► rotate ► ImageEnhancer filter ► JPEG page
-                  └► PdfWriter (DCTDecode, no re-compression) ► Downloads
+## Add it to your app
+
+**1. Repositories.** Add JitPack in `settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
 ```
 
-Detection runs a morphological close (to erase text), then Canny edge maps at three thresholds
-driven by Otsu, plus an Otsu mask. It takes the convex hull of each contour, approximates it to
-four corners, and scores each candidate by *area × edge support*. That score rejects false quads
-caused by lighting gradients, including white paper on a light, patterned sheet.
+**2. Dependency.** In `app/build.gradle.kts`, use a release tag of this repository (for example `scanner-1.0.0`):
 
-## Build
-
-Requirements: JDK 17 and the Android SDK (compileSdk 35). Kotlin 2.0.21, AGP 8.7.3, Gradle 8.11.1
-(wrapper included), Jetpack Compose BOM 2024.12.01, minSdk 26.
-
-**Android Studio (Ladybug or newer):** unzip `RSKusumScanner-project.zip`, choose *File → Open*,
-select the `RSKusumScanner` folder, and let Gradle sync (it downloads OpenCV, TensorFlow Lite,
-CameraX and PDFBox from Maven). Then press *Run*. Android Studio creates `local.properties` with
-your SDK path on its own.
-
-On the command line:
-
-```bash
-cd scanner-android
-./gradlew assembleDebug        # app/build/outputs/apk/debug/app-debug.apk
+```kotlin
+dependencies {
+    implementation("com.github.newsworldrs:rsappsstudio.github.io:scanner-1.0.0")
+}
 ```
 
-The GitHub Actions workflow `.github/workflows/scanner-android.yml` builds the debug and release
-APKs on every push that touches `scanner-android/`, and uploads them as the
-`rskusum-scanner-apks` artifact.
+As an alternative, download `RSKusumScanner-library.aar` from the [latest build](https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/scanner-latest). Put it in `app/libs/` and add the same third-party dependencies that are listed in `scanner/build.gradle.kts`.
 
-The release build type is currently signed with the debug key. Replace it with your own keystore
-before publishing to Google Play.
+**3. Requirements.**
+- minSdk 26.
+- compileSdk 35.
+- Java 17.
+- Compose. The library brings its own Compose dependencies, so your app does not have to use Compose.
 
-## Code map
+**4. Open the scanner and get the result.**
+
+In Kotlin with Compose:
+
+```kotlin
+val scanner = rememberLauncherForActivityResult(ScanDocument()) { result: ScanResult? ->
+    if (result != null) {
+        val pdf: Uri? = result.pdfUri        // the finished PDF
+        val pages: List<Uri> = result.pageUris // one JPEG per page
+    }
+}
+
+Button(onClick = {
+    scanner.launch(
+        ScannerOptions(
+            modes = listOf(ScanMode.DOCUMENT, ScanMode.ID_CARD, ScanMode.BOOK),
+            initialMode = ScanMode.DOCUMENT,
+            pageLimit = 0,            // 0 = unlimited
+            galleryImport = true,
+            returnPdf = true,
+            returnJpegs = true,
+            pdfQuality = PdfQuality.BALANCED,
+        )
+    )
+}) { Text("Scan") }
+```
+
+In Kotlin with a Fragment or View-based Activity:
+
+```kotlin
+private val scanner = registerForActivityResult(ScanDocument()) { result -> /* ... */ }
+scanner.launch(ScannerOptions())
+```
+
+In Java:
+
+```java
+ActivityResultLauncher<ScannerOptions> scanner =
+        registerForActivityResult(new ScanDocument(), result -> { /* result may be null */ });
+scanner.launch(new ScannerOptions());
+```
+
+**What the result contains.**
+- The files are saved in your app's private storage under `files/rsscanner/scan_<time>/`.
+- The URIs are `content://` URIs, so you can read them with `contentResolver`.
+- You can share the URIs with other apps if you add `FLAG_GRANT_READ_URI_PERMISSION`.
+- Move or delete the files once you have stored them.
+
+**Embedding in your own Compose navigation.** Instead of opening a separate Activity, use the `ScannerFlow(options) { result -> }` composable inside `ScannerTheme { }`.
+
+**Advanced API.** The vision engine can be used on its own. Call `RsScanner.init(context)` once, then use:
+- `DocumentDetector` for detection, refinement and warping.
+- `ImageEnhancer` for the filters.
+- `Eraser`.
+- `OrientationModel`.
+- `EdgeModel`.
+
+### ScannerOptions
+
+| Option | Default | Meaning |
+|---|---|---|
+| `modes` | all | Scan modes shown in the mode bar, in order |
+| `initialMode` | `DOCUMENT` | Mode the camera starts in |
+| `pageLimit` | `0` | Maximum number of pages per scan (0 = unlimited) |
+| `galleryImport` | `true` | Show the "import from gallery" button |
+| `autoCapture` | `true` | Start with automatic capture on |
+| `returnPdf` | `true` | Create a PDF |
+| `returnJpegs` | `true` | Return every page as a JPEG |
+| `pdfQuality` | `BALANCED` | `SMALL` / `BALANCED` / `HIGH` |
+| `standalone` | `false` | Full app behaviour: home screen and PDF library, QR scanner, saving to Downloads |
+
+**Permissions.**
+- The library declares `CAMERA`, and `WRITE_EXTERNAL_STORAGE` for Android 9 and older.
+- It asks for the camera permission itself when the scanner opens.
+- It uses its own FileProvider (`<applicationId>.rsscanner.fileprovider`), so there is no clash with yours.
+- R8/ProGuard rules are included in the library, so you don't need to add any.
+
+## Project layout
 
 | Path | Purpose |
 |---|---|
-| `vision/DocumentDetector.kt` | edge detection, corner refinement, aspect estimation, warp, page fingerprint |
-| `vision/ImageEnhancer.kt` | illumination normalization and filters |
-| `vision/SmartFilter.kt` | AI assist filter choice |
-| `camera/DocumentAnalyzer.kt` | CameraX analyzer (Y plane → OpenCV), QR mode |
-| `camera/AutoCaptureTracker.kt` | stability, progress, next-page arming |
-| `ScannerViewModel.kt` | capture → pages → render pipeline, save and export |
-| `data/PdfWriter.kt` | minimal JPEG-in-PDF writer |
-| `data/DocumentStore.kt` | library, MediaStore export, sharing, thumbnails |
-| `vision/EdgeModel.kt` | TFLite HED-lite document edge model |
-| `vision/OrientationModel.kt` | TFLite text orientation model (auto-rotate upright) |
-| `vision/Eraser.kt` | eraser (marks only / everything) |
-| `data/ScanMode.kt` | scan modes (Document, Book, Book cover, Whiteboard, ID card, Business card) |
-| `app/src/main/assets/models` | the two TFLite models and their licence notice |
-| `ui/camera`, `ui/review`, `ui/crop`, `ui/erase`, `ui/home` | Compose screens |
+| `scanner/` | **The library** (Android library module) |
+| `scanner/.../RsScanner.kt` | Public API: `ScanDocument`, `ScannerOptions`, `ScanResult`, `RsScanner` |
+| `scanner/.../ScannerActivity.kt` | Scanner screen and the `ScannerFlow` composable |
+| `scanner/.../vision/` | Detection, warp, enhancement, eraser, TFLite models |
+| `scanner/.../camera/` | CameraX analyzer, auto-capture tracker |
+| `scanner/.../ui/` | Compose screens: camera, review, crop, erase, home |
+| `scanner/src/main/assets/models/` | The two bundled TFLite models and their license notice |
+| `app/` | The RS Kusum Scanner app, which is the library in standalone mode |
+
+## Build
+
+You need JDK 17 and the Android SDK (compileSdk 35). The project uses:
+- AGP 8.7.3.
+- Kotlin 2.0.21.
+- Gradle 8.11.1, included as the wrapper.
+
+**Android Studio (Ladybug or newer):**
+1. Open the project folder with *File → Open*.
+2. Let Gradle sync.
+3. Run the `app` configuration.
+
+**Command line:**
+
+```bash
+./gradlew assembleDebug                      # app APKs
+./gradlew :scanner:assembleRelease           # library AAR: scanner/build/outputs/aar/
+./gradlew :scanner:publishToMavenLocal       # library into ~/.m2
+```
+
+**Continuous integration.** On every push, `.github/workflows/scanner-android.yml` builds the APKs, the AAR and this project as a zip. It publishes them on the `scanner-latest` release.
+
+**Publishing a library version on JitPack:**
+1. Create a GitHub release or tag, for example `scanner-1.0.0`.
+2. Open `https://jitpack.io/#newsworldrs/rsappsstudio.github.io` and click *Get it*.
+
+JitPack builds the library with `jitpack.yml`.
+
+## Licensing
+
+The library and the app are licensed under the **Apache License 2.0** ([LICENSE](LICENSE)). You may use them in free and commercial, open and closed-source apps. You must keep the license and [NOTICE](NOTICE) texts, for example on an "Open-source licenses" screen.
+
+Every bundled model and dependency is also under a permissive license (Apache 2.0, BSD, MIT or OFL). None is GPL or LGPL, and neither ML Kit nor Play services is used.
+
+The full audit is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
