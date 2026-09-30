@@ -22,7 +22,7 @@
     <string name="shortcut_blocked_short">Blocked</string>
     <string name="shortcut_blocked_long">Blocked Numbers</string>
 
-    <string name="onboarding_1_title">Know who's calling</string>
+    <string name="onboarding_1_title">Know who\'s calling</string>
     <string name="onboarding_1_body">Identify unknown callers before you answer.</string>
     <string name="onboarding_2_title">Block unwanted calls</string>
     <string name="onboarding_2_body">Protect yourself from spam and suspicious numbers.</string>

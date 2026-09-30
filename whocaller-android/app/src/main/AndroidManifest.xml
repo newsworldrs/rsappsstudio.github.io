@@ -125,6 +125,12 @@
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
 
+        <!-- Both AdMob and Firebase Analytics declare this; keep the Ads SDK's config. -->
+        <property
+            android:name="android.adservices.AD_SERVICES_CONFIG"
+            android:resource="@xml/gma_ad_services_config"
+            tools:replace="android:resource" />
+
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="${admobAppId}" />
