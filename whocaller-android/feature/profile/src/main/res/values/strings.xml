@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_title">Profile</string>
+    <string name="profile_guest">Guest</string>
+    <string name="profile_guest_desc">You\'re using WhoCaller without an account. Caller ID, blocking and search work on this device. Sign in to sync your reports and profile.</string>
+    <string name="profile_sign_in">Sign in</string>
+    <string name="profile_sign_out">Sign out</string>
+    <string name="profile_name">Name</string>
+    <string name="profile_email">Email</string>
+    <string name="profile_phone">Phone</string>
+    <string name="profile_not_set">Not set</string>
+    <string name="profile_edit_name">Edit name</string>
+    <string name="profile_save">Save</string>
+    <string name="profile_activity">Your activity on this device</string>
+    <string name="profile_reports">Reports submitted</string>
+    <string name="profile_searched">Numbers searched</string>
+    <string name="profile_blocked">Spam blocked</string>
+    <string name="profile_identified">Calls identified</string>
+    <string name="profile_privacy">Privacy</string>
+    <string name="profile_security">Security</string>
+    <string name="profile_security_desc">Your session uses short-lived tokens and HTTPS. Sign out on devices you no longer use.</string>
+    <string name="profile_delete_account">Delete account</string>
+
+    <string name="signin_title">Sign in to WhoCaller</string>
+    <string name="signin_google">Continue with Google</string>
+    <string name="signin_email">Email login</string>
+    <string name="signin_phone">Phone verification</string>
+    <string name="signin_guest">Continue as guest</string>
+    <string name="signin_unavailable">Accounts aren\'t available in this build. You can keep using WhoCaller as a guest.</string>
+    <string name="signin_google_unavailable">Google sign-in isn\'t configured in this build.</string>
+    <string name="signin_email_label">Email</string>
+    <string name="signin_password_label">Password</string>
+    <string name="signin_password_hint">At least 8 characters</string>
+    <string name="signin_submit">Sign in</string>
+    <string name="signin_create">Create account</string>
+    <string name="signin_forgot">Forgot password?</string>
+    <string name="signin_reset_sent">If an account exists for that email, a reset link is on its way.</string>
+    <string name="signin_invalid_email">Enter a valid email address.</string>
+    <string name="signin_weak_password">Use at least 8 characters.</string>
+    <string name="signin_phone_label">Phone number</string>
+    <string name="signin_send_code">Send code</string>
+    <string name="signin_code_label">Verification code</string>
+    <string name="signin_verify">Verify</string>
+    <string name="signin_code_sent">We sent a code by SMS.</string>
+    <string name="signin_terms">By continuing you agree to the Terms of Service and Privacy Policy.</string>
+    <string name="signin_success">Signed in</string>
+</resources>

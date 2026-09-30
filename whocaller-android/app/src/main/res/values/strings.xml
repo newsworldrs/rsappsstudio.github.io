@@ -21,4 +21,23 @@
     <string name="shortcut_protection_long">Spam Protection</string>
     <string name="shortcut_blocked_short">Blocked</string>
     <string name="shortcut_blocked_long">Blocked Numbers</string>
+
+    <string name="onboarding_1_title">Know who's calling</string>
+    <string name="onboarding_1_body">Identify unknown callers before you answer.</string>
+    <string name="onboarding_2_title">Block unwanted calls</string>
+    <string name="onboarding_2_body">Protect yourself from spam and suspicious numbers.</string>
+    <string name="onboarding_3_title">Search any number</string>
+    <string name="onboarding_3_body">Find information about phone numbers using WhoCaller.</string>
+    <string name="onboarding_4_title">Your privacy matters</string>
+    <string name="onboarding_4_body">Your contacts and personal information remain under your control.</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_page">Page %1$d of %2$d</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_calls">Calls</string>
+    <string name="nav_protection">Protection</string>
+    <string name="nav_settings">Settings</string>
 </resources>

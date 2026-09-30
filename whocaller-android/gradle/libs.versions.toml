@@ -22,6 +22,7 @@ okhttp = "4.12.0"
 libphonenumber = "8.13.52"
 billing = "7.1.1"
 playServicesAds = "23.6.0"
+ump = "3.1.0"
 firebaseBom = "33.7.0"
 googleServices = "4.4.2"
 crashlyticsPlugin = "3.0.2"
@@ -100,6 +101,7 @@ libphonenumber = { module = "com.googlecode.libphonenumber:libphonenumber", vers
 # Google Play / Firebase
 billing-ktx = { module = "com.android.billingclient:billing-ktx", version.ref = "billing" }
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
+ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "ump" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { module = "com.google.firebase:firebase-auth" }
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }

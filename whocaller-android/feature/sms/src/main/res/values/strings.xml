@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sms_title">Messages</string>
+    <string name="sms_check_title">Check a message</string>
+    <string name="sms_check_body">Paste a message, or share it to WhoCaller from your messaging app. It\'s checked on this device and never uploaded.</string>
+    <string name="sms_sender">Sender (optional)</string>
+    <string name="sms_text">Message text</string>
+    <string name="sms_check_button">Check message</string>
+    <string name="sms_result_title">Result</string>
+    <string name="sms_suspicious">⚠ Suspicious message</string>
+    <string name="sms_possible_phishing">Possible phishing attempt.</string>
+    <string name="sms_advice">Don\'t tap links, share codes or send money. Contact the organisation using a number you already trust. WhoCaller never deletes messages.</string>
+    <string name="sms_looks_ok">No common warning signs found. Stay careful with links and payment requests.</string>
+    <string name="sms_why">Why:</string>
+    <string name="sms_inbox">Inbox</string>
+    <string name="sms_inbox_unavailable">Reading your SMS inbox isn\'t available in this version. Google Play only allows it for default SMS apps, so WhoCaller checks messages you share with it instead.</string>
+    <string name="sms_inbox_empty">No messages to show.</string>
+
+    <string name="sms_cat_personal">Personal</string>
+    <string name="sms_cat_transactions">Transactions</string>
+    <string name="sms_cat_promotions">Promotions</string>
+    <string name="sms_cat_spam">Spam</string>
+    <string name="sms_cat_scam">Scam</string>
+    <string name="sms_cat_unknown">Unknown</string>
+
+    <string name="sms_sig_link">Contains a link</string>
+    <string name="sms_sig_short_link">Uses a shortened or unusual link</string>
+    <string name="sms_sig_urgency">Creates urgency</string>
+    <string name="sms_sig_prize">Mentions a prize or lottery</string>
+    <string name="sms_sig_account">Threatens to block an account or service</string>
+    <string name="sms_sig_credentials">Asks for a code, PIN or password</string>
+    <string name="sms_sig_payment">Asks for a payment or fee</string>
+    <string name="sms_sig_otp">Contains a one-time code</string>
+    <string name="sms_sig_transaction">Looks like a transaction alert</string>
+    <string name="sms_sig_promotion">Looks like an advertisement</string>
+    <string name="sms_sig_blocked">Sender is on your block list</string>
+    <string name="sms_sig_reported">You reported this sender</string>
+</resources>

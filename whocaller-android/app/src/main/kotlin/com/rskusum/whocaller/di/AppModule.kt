@@ -12,11 +12,15 @@ import com.rskusum.whocaller.firebase.FirebaseAnalyticsTracker
 import com.rskusum.whocaller.firebase.FirebaseAppCheckTokenProvider
 import com.rskusum.whocaller.firebase.FirebaseAuthRepository
 import com.rskusum.whocaller.firebase.FirebaseCrashReporter
+import com.rskusum.whocaller.firebase.FirebasePhoneAuthGateway
+import com.rskusum.whocaller.feature.premium.AdMobAdsManager
+import com.rskusum.whocaller.feature.profile.PhoneAuthGateway
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Named
 import javax.inject.Singleton
 
 @Module
@@ -26,6 +30,7 @@ abstract class AppBindingsModule {
     @Binds abstract fun crashReporter(impl: FirebaseCrashReporter): CrashReporter
     @Binds abstract fun auth(impl: FirebaseAuthRepository): AuthRepository
     @Binds abstract fun appCheck(impl: FirebaseAppCheckTokenProvider): AppCheckTokenProvider
+    @Binds abstract fun phoneAuth(impl: FirebasePhoneAuthGateway): PhoneAuthGateway
 }
 
 @Module
@@ -42,6 +47,10 @@ object AppProvidersModule {
         ),
         allowDevBackend = BuildConfig.ALLOW_DEV_BACKEND,
     )
+
+    @Provides
+    @Named(AdMobAdsManager.BANNER_UNIT_ID)
+    fun bannerUnitId(): String = BuildConfig.ADMOB_BANNER_ID
 
     @Provides
     @Singleton

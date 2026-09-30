@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="premium_title">WhoCaller Premium</string>
+    <string name="premium_subtitle">More protection, no ads.</string>
+    <string name="premium_active">Premium is active. Thank you for supporting WhoCaller!</string>
+    <string name="premium_free">Free</string>
+    <string name="premium_plan">Premium</string>
+    <string name="premium_feature_callerid">Caller ID</string>
+    <string name="premium_feature_basic_spam">Basic spam detection</string>
+    <string name="premium_feature_search">Number search</string>
+    <string name="premium_feature_basic_block">Basic blocking</string>
+    <string name="premium_feature_history">Call history</string>
+    <string name="premium_feature_advanced_spam">Advanced spam protection</string>
+    <string name="premium_feature_lookup">Enhanced reverse lookup</string>
+    <string name="premium_feature_more_searches">More search requests</string>
+    <string name="premium_feature_advanced_block">Advanced blocking</string>
+    <string name="premium_feature_business">Business caller information</string>
+    <string name="premium_feature_no_ads">Ad-free experience</string>
+    <string name="premium_feature_stats">Advanced statistics</string>
+    <string name="premium_loading_prices">Loading prices from Google Play…</string>
+    <string name="premium_unavailable">Subscriptions aren\'t available right now. Check that Google Play is installed and you\'re signed in.</string>
+    <string name="premium_subscribe">Subscribe %1$s</string>
+    <string name="premium_per_period">%1$s / %2$s</string>
+    <string name="premium_period_month">month</string>
+    <string name="premium_period_year">year</string>
+    <string name="premium_restore">Restore purchases</string>
+    <string name="premium_manage">Manage subscription</string>
+    <string name="premium_legal">Subscriptions renew automatically until cancelled in Google Play. Prices are shown in your local currency by Google Play.</string>
+    <string name="premium_pending">Your purchase is pending. Premium unlocks once payment completes.</string>
+    <string name="premium_error">The purchase couldn\'t be completed.</string>
+</resources>

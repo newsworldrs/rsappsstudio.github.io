@@ -32,4 +32,15 @@ include(":core:ui")
 include(":core:permissions")
 include(":core:security")
 
-// Features are included as they are implemented (see below).
+// Features. Each owns its screens and ViewModels; the app module wires navigation.
+include(":feature:home")
+include(":feature:callerid")
+include(":feature:callhistory")
+include(":feature:contacts")
+include(":feature:search")
+include(":feature:spam")
+include(":feature:blocking")
+include(":feature:sms")
+include(":feature:settings")
+include(":feature:profile")
+include(":feature:premium")

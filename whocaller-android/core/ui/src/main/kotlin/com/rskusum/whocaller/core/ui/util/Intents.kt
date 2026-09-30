@@ -23,7 +23,7 @@ object ActionIntents {
         context,
         Intent(ContactsContract.Intents.Insert.ACTION).apply {
             type = ContactsContract.RawContacts.CONTENT_TYPE
-            putExtra(ContactsContract.Intents.Insert.PHONE, number)
+            if (number.isNotBlank()) putExtra(ContactsContract.Intents.Insert.PHONE, number)
             if (name != null) putExtra(ContactsContract.Intents.Insert.NAME, name)
         },
     )

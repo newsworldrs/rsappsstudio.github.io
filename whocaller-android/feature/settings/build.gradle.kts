@@ -16,6 +16,7 @@ dependencies {
     implementation(projects.core.ui)
     implementation(projects.core.permissions)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.hilt.navigation.compose)

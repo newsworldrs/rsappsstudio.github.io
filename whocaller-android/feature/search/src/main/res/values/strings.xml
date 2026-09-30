@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_title">Search</string>
+    <string name="search_hint">Search phone number</string>
+    <string name="search_placeholder">%1$s</string>
+    <string name="search_country">Country: %1$s (+%2$d)</string>
+    <string name="search_country_picker">Choose country</string>
+    <string name="search_country_filter">Search countries</string>
+    <string name="search_button">Search</string>
+    <string name="search_recent">Recent Searches</string>
+    <string name="search_clear_all">Clear all</string>
+    <string name="search_delete_item">Delete %1$s from history</string>
+    <string name="search_empty_history">Your recent searches will appear here.</string>
+    <string name="search_history_off">Search history is turned off in Privacy settings.</string>
+    <string name="search_hidden">This is a private or hidden number. It can\'t be looked up.</string>
+    <string name="search_invalid">That doesn\'t look like a phone number. Check the digits and country.</string>
+    <string name="search_businesses">Business directory</string>
+
+    <string name="result_phone_number">Phone Number</string>
+    <string name="result_possible_identity">Possible identity</string>
+    <string name="result_identity_business">Business</string>
+    <string name="result_identity_person">Person</string>
+    <string name="result_identity_unknown">Unknown</string>
+    <string name="result_no_identity">No identity found</string>
+    <string name="result_no_identity_desc">WhoCaller has no information about this number. That doesn\'t mean it\'s spam.</string>
+    <string name="result_your_contact">In your contacts</string>
+    <string name="result_category">Category</string>
+    <string name="result_spam_risk">Spam Risk</string>
+    <string name="result_community_reports">Community reports</string>
+    <string name="result_last_reported">Last reported</string>
+    <string name="result_carrier">Carrier</string>
+    <string name="result_line_type">Number type</string>
+    <string name="result_country">Country</string>
+    <string name="result_you_reported">You reported this number as %1$s</string>
+    <string name="result_blocked">You have blocked this number</string>
+    <string name="result_offline">Showing saved information. %1$s</string>
+    <string name="result_view_business">View business profile</string>
+    <string name="result_source">Source: %1$s</string>
+    <string name="source_contacts">your contacts</string>
+    <string name="source_cache">saved on this device</string>
+    <string name="source_server">WhoCaller community</string>
+
+    <string name="type_mobile">Mobile</string>
+    <string name="type_fixed_line">Landline</string>
+    <string name="type_fixed_or_mobile">Landline or mobile</string>
+    <string name="type_toll_free">Toll-free</string>
+    <string name="type_premium">Premium rate</string>
+    <string name="type_voip">VoIP</string>
+    <string name="type_other">Other</string>
+
+    <string name="business_title">Business</string>
+    <string name="business_category">Category</string>
+    <string name="business_phone">Phone</string>
+    <string name="business_location">Location</string>
+    <string name="business_website">Website</string>
+    <string name="business_email">Email</string>
+    <string name="business_hours">Hours</string>
+    <string name="business_rating">Community rating</string>
+    <string name="business_rating_value">%1$.1f / 5 (%2$d ratings)</string>
+    <string name="business_verified_on">Verified on %1$s</string>
+    <string name="business_not_verified">Not verified. Information comes from public sources and the community.</string>
+    <string name="business_directory_title">Business directory</string>
+    <string name="business_directory_hint">Business name or category</string>
+    <string name="business_directory_empty">Search for a business by name or category.</string>
+    <string name="business_no_results">No businesses found.</string>
+    <string name="business_verify_cta">Own a business? Get verified</string>
+    <string name="verify_title">Business verification</string>
+    <string name="verify_intro">Verified businesses show a ✓ on caller ID. We confirm ownership of the phone number and the business before verifying. Submitting this form starts the review; it doesn\'t verify you immediately.</string>
+    <string name="verify_name">Business name</string>
+    <string name="verify_phone">Business phone number</string>
+    <string name="verify_category">Category</string>
+    <string name="verify_website">Website (optional)</string>
+    <string name="verify_email">Contact email</string>
+    <string name="verify_submit">Submit for review</string>
+    <string name="verify_submitted">Request received. Reference: %1$s. We\'ll email you the next steps.</string>
+    <string name="verify_invalid_email">Enter a valid email address.</string>
+    <string name="verify_required">Fill in the required fields.</string>
+    <plurals name="search_reported_by">
+        <item quantity="one">Reported by %d user</item>
+        <item quantity="other">Reported by %d users</item>
+    </plurals>
+</resources>
