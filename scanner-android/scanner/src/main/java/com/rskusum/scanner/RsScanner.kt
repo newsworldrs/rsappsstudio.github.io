@@ -27,6 +27,9 @@ import org.opencv.android.OpenCVLoader
  * Java: `registerForActivityResult(new ScanDocument(), result -> { ... })`, then
  * `launcher.launch(new ScannerOptions())`.
  */
+/** Brand line shown in the scanner. Kept in code on purpose: string resources can be overridden by apps. */
+internal const val BRAND_LINE = "powered by RS Apps Studio"
+
 object RsScanner {
     const val EXTRA_OPTIONS = "com.rskusum.scanner.OPTIONS"
     const val EXTRA_RESULT = "com.rskusum.scanner.RESULT"

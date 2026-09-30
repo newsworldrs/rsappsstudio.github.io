@@ -11,21 +11,24 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 
-enum class ScanFilter(val label: String) {
-    AUTO("Auto color"),
-    ORIGINAL("Original"),
+enum class ScanFilter(@androidx.annotation.StringRes val labelRes: Int) {
+    AUTO(com.rskusum.scanner.R.string.rs_scanner_filter_auto),
+    ORIGINAL(com.rskusum.scanner.R.string.rs_scanner_filter_original),
     /** Faded print / light photocopies: every stroke dark, bold and sharp on pure white. */
-    DARK_TEXT("Dark text"),
-    LIGHT_TEXT("Light text"),
-    GRAYSCALE("Grayscale"),
-    BW("B&W"),
-    WHITEBOARD("Whiteboard"),
+    DARK_TEXT(com.rskusum.scanner.R.string.rs_scanner_filter_dark_text),
+    LIGHT_TEXT(com.rskusum.scanner.R.string.rs_scanner_filter_light_text),
+    GRAYSCALE(com.rskusum.scanner.R.string.rs_scanner_filter_grayscale),
+    BW(com.rskusum.scanner.R.string.rs_scanner_filter_bw),
+    WHITEBOARD(com.rskusum.scanner.R.string.rs_scanner_filter_whiteboard),
     /**
      * Old "No shadow" filter, kept so existing code compiles. Shadow removal is now a separate
      * switch that works with every filter ([ImageEnhancer.apply] `removeShadow`).
      */
     @Deprecated("Use removeShadow = true with any filter")
-    NO_SHADOW("No shadow");
+    NO_SHADOW(com.rskusum.scanner.R.string.rs_scanner_remove_shadow);
+
+    /** Display name in the current app language. */
+    fun label(context: android.content.Context): String = context.getString(labelRes)
 
     companion object {
         /** Filters offered in the UI, in display order. */

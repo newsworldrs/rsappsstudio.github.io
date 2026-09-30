@@ -113,6 +113,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -122,7 +124,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rskusum.scanner.R
 import com.rskusum.scanner.ScannerViewModel
+import com.rskusum.scanner.BRAND_LINE
 import com.rskusum.scanner.camera.CapturePhase
 import com.rskusum.scanner.camera.DocumentAnalyzer
 import com.rskusum.scanner.data.Images
@@ -222,7 +226,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 mainExecutor.execute {
                     capturing = false
                     vm.tracker.onCaptured(bmp != null)
-                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get()) else toast = "Capture failed, try again"
+                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get()) else toast = context.getString(R.string.rs_scanner_capture_failed)
                 }
             }
 
@@ -230,7 +234,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 mainExecutor.execute {
                     capturing = false
                     vm.tracker.onCaptured(false)
-                    toast = "Capture failed: ${exception.imageCaptureError}"
+                    toast = context.getString(R.string.rs_scanner_capture_failed_code, exception.imageCaptureError)
                 }
             }
         })
@@ -332,7 +336,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             // The QR scanner belongs to the standalone app, not to an embedded document scanner.
             onQr = if (vm.options.standalone) ({
                 qrMode = !qrMode
-                toast = if (qrMode) "QR code scanner" else "Document scanner"
+                toast = context.getString(if (qrMode) R.string.rs_scanner_qr_scanner else R.string.rs_scanner_document_scanner)
             }) else null,
         )
 
@@ -375,7 +379,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                             swapped = vm.bookSwap,
                             onSwap = {
                                 vm.bookSwap = !vm.bookSwap
-                                toast = if (vm.bookSwap) "Bottom half is page 1" else "Top half is page 1"
+                                toast = context.getString(if (vm.bookSwap) R.string.rs_scanner_book_second_is_one else R.string.rs_scanner_book_first_is_one)
                             },
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp),
                         )
@@ -387,23 +391,23 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 val words = modeWords(vm.mode, vm.idStep)
                 val hint = when {
                     !granted -> null
-                    qrMode -> "Point at a QR code"
-                    !vm.captureAllowed -> words.done
-                    state.phase == CapturePhase.CAPTURING -> "Capturing…"
-                    state.guidance != null -> state.guidance
+                    qrMode -> stringResource(R.string.rs_scanner_point_at_qr)
+                    !vm.captureAllowed -> stringResource(words.done)
+                    state.phase == CapturePhase.CAPTURING -> stringResource(R.string.rs_scanner_capturing)
+                    state.guidance != null -> stringResource(state.guidance!!)
                     vm.mode.extractText && state.textBoxes.size >= 3 && state.phase != CapturePhase.NEXT_PAGE ->
-                        "${state.textBoxes.size} lines of text found - hold still"
-                    vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> "Processing…"
+                        pluralStringResource(R.plurals.rs_scanner_text_lines_found, state.textBoxes.size, state.textBoxes.size)
+                    vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> stringResource(R.string.rs_scanner_processing)
                     else -> when (state.phase) {
                         CapturePhase.SEARCHING -> when {
-                            vm.autoCapture && state.progress > 0f -> "Hold still to capture"
-                            vm.guideFrame != null -> words.place
-                            else -> words.looking
+                            vm.autoCapture && state.progress > 0f -> stringResource(R.string.rs_scanner_hold_still_capture)
+                            vm.guideFrame != null -> stringResource(words.place)
+                            else -> stringResource(words.looking)
                         }
-                        CapturePhase.TOO_SMALL -> "Move closer"
-                        CapturePhase.HOLD_STEADY -> if (vm.autoCapture) "Hold steady" else "Tap the shutter to capture"
-                        CapturePhase.CAPTURING -> "Capturing…"
-                        CapturePhase.NEXT_PAGE -> words.next
+                        CapturePhase.TOO_SMALL -> stringResource(R.string.rs_scanner_move_closer)
+                        CapturePhase.HOLD_STEADY -> stringResource(if (vm.autoCapture) R.string.rs_scanner_hold_steady else R.string.rs_scanner_tap_shutter)
+                        CapturePhase.CAPTURING -> stringResource(R.string.rs_scanner_capturing)
+                        CapturePhase.NEXT_PAGE -> stringResource(words.next)
                     }
                 }
                 if (hint != null) {
@@ -416,9 +420,9 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 }
                 if (granted && !qrMode && vm.mode == ScanMode.ID_CARD) {
                     val step = when (vm.idStep) {
-                        ScannerViewModel.IdStep.FRONT -> "Front side  1 / 2"
-                        ScannerViewModel.IdStep.BACK -> "Back side  2 / 2"
-                        ScannerViewModel.IdStep.DONE -> "Both sides captured"
+                        ScannerViewModel.IdStep.FRONT -> stringResource(R.string.rs_scanner_id_front_step)
+                        ScannerViewModel.IdStep.BACK -> stringResource(R.string.rs_scanner_id_back_step)
+                        ScannerViewModel.IdStep.DONE -> stringResource(R.string.rs_scanner_id_both_captured)
                     }
                     Text(
                         step,
@@ -438,9 +442,9 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 if (granted && !qrMode && vm.aiAssist) {
                     val last = vm.pages.lastOrNull()
                     val what = when {
-                        last == null -> "waiting for the first page"
+                        last == null -> stringResource(R.string.rs_scanner_smart_waiting)
                         last.smartLabel != null -> last.smartLabel!!
-                        else -> "choosing…"
+                        else -> stringResource(R.string.rs_scanner_smart_choosing)
                     }
                     Row(
                         Modifier
@@ -454,7 +458,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     ) {
                         Icon(Icons.Filled.AutoAwesome, null, tint = ScanColors.Marigold, modifier = Modifier.size(14.dp))
                         Spacer(Modifier.size(6.dp))
-                        Text("Smart: $what", color = Color.White, fontSize = 12.sp)
+                        Text(stringResource(R.string.rs_scanner_smart_chip, what), color = Color.White, fontSize = 12.sp)
                     }
                 }
                 if (granted && !qrMode) {
@@ -462,26 +466,34 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                         flash = flash,
                         onFlash = {
                             flash = flash.next()
-                            toast = "Flash ${flash.name.lowercase()}"
+                            toast = context.getString(
+                                when (flash) {
+                                    Flash.AUTO -> R.string.rs_scanner_flash_auto
+                                    Flash.ON -> R.string.rs_scanner_flash_on
+                                    Flash.OFF -> R.string.rs_scanner_flash_off
+                                }
+                            )
                         },
                         autoCapture = vm.autoCapture,
                         onToggleAuto = {
                             vm.autoCapture = !vm.autoCapture
-                            toast = if (vm.autoCapture) "Auto capture on" else "Auto capture off - tap the shutter"
+                            toast = context.getString(if (vm.autoCapture) R.string.rs_scanner_auto_capture_on else R.string.rs_scanner_auto_capture_off)
                         },
                         smartFilter = vm.aiAssist,
                         onToggleSmart = {
                             vm.aiAssist = !vm.aiAssist
-                            toast = if (vm.aiAssist) "Smart filter ON - the best filter (and shadow removal) is picked for every page" else "Smart filter off"
+                            toast = context.getString(if (vm.aiAssist) R.string.rs_scanner_smart_on else R.string.rs_scanner_smart_off)
                         },
                         frame = vm.orientation,
                         onFrame = {
                             vm.orientation = it
-                            toast = when (it) {
-                                com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> "Portrait frame"
-                                com.rskusum.scanner.data.FrameOrientation.LANDSCAPE -> "Landscape frame"
-                                com.rskusum.scanner.data.FrameOrientation.FREE -> "Free detection"
-                            }
+                            toast = context.getString(
+                                when (it) {
+                                    com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> R.string.rs_scanner_frame_portrait
+                                    com.rskusum.scanner.data.FrameOrientation.LANDSCAPE -> R.string.rs_scanner_frame_landscape
+                                    com.rskusum.scanner.data.FrameOrientation.FREE -> R.string.rs_scanner_frame_free
+                                }
+                            )
                         },
                         modifier = Modifier.align(Alignment.CenterEnd).padding(end = 8.dp),
                     )
@@ -512,7 +524,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             onShutter = {
                 when {
                     qrMode -> Unit
-                    !vm.captureAllowed -> toast = "Capturing is complete - tap the pages to review"
+                    !vm.captureAllowed -> toast = context.getString(R.string.rs_scanner_capture_complete)
                     else -> capture(manual = true)
                 }
             },
@@ -658,22 +670,24 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
 }
 
 /** Mode-specific wording for the camera guidance. */
-private class ModeWords(val place: String, val looking: String, val next: String, val done: String)
+private class ModeWords(
+    @androidx.annotation.StringRes val place: Int,
+    @androidx.annotation.StringRes val looking: Int,
+    @androidx.annotation.StringRes val next: Int,
+    @androidx.annotation.StringRes val done: Int = R.string.rs_scanner_scan_complete_review,
+)
 
 private fun modeWords(mode: ScanMode, idStep: ScannerViewModel.IdStep): ModeWords = when (mode) {
-    ScanMode.DOCUMENT -> ModeWords("Place the page inside the frame", "Looking for document", "Ready for next page", "")
-    ScanMode.WHITEBOARD -> ModeWords("Fit the whiteboard inside the frame", "Looking for whiteboard", "Ready for the next board", "")
-    ScanMode.BOOK -> ModeWords(
-        "Line up the book's spine with the dashed line", "Looking for book",
-        "Turn the page", "",
-    )
-    ScanMode.BOOK_COVER -> ModeWords("Fit the book cover inside the frame", "Looking for the book cover", "Ready for the next cover", "")
-    ScanMode.BUSINESS_CARD -> ModeWords("Place the business card inside the frame", "Looking for a business card", "Ready for the next card", "")
-    ScanMode.AI_TEXT -> ModeWords("Place the text inside the frame", "Looking for text", "Point at the next page", "")
+    ScanMode.DOCUMENT -> ModeWords(R.string.rs_scanner_doc_place, R.string.rs_scanner_doc_looking, R.string.rs_scanner_doc_next)
+    ScanMode.WHITEBOARD -> ModeWords(R.string.rs_scanner_wb_place, R.string.rs_scanner_wb_looking, R.string.rs_scanner_wb_next)
+    ScanMode.BOOK -> ModeWords(R.string.rs_scanner_book_place, R.string.rs_scanner_book_looking, R.string.rs_scanner_book_next)
+    ScanMode.BOOK_COVER -> ModeWords(R.string.rs_scanner_cover_place, R.string.rs_scanner_cover_looking, R.string.rs_scanner_cover_next)
+    ScanMode.BUSINESS_CARD -> ModeWords(R.string.rs_scanner_bcard_place, R.string.rs_scanner_bcard_looking, R.string.rs_scanner_bcard_next)
+    ScanMode.AI_TEXT -> ModeWords(R.string.rs_scanner_text_place, R.string.rs_scanner_text_looking, R.string.rs_scanner_text_next)
     ScanMode.ID_CARD -> when (idStep) {
-        ScannerViewModel.IdStep.FRONT -> ModeWords("Place the FRONT of the ID card in the frame", "Looking for the ID card front", "Flip the card", "")
-        ScannerViewModel.IdStep.BACK -> ModeWords("Flip the card - place the BACK side in the frame", "Looking for the ID card back", "Flip the card", "")
-        ScannerViewModel.IdStep.DONE -> ModeWords("", "", "", "ID card complete - tap the thumbnail to review")
+        ScannerViewModel.IdStep.FRONT -> ModeWords(R.string.rs_scanner_id_front_place, R.string.rs_scanner_id_front_looking, R.string.rs_scanner_id_flip)
+        ScannerViewModel.IdStep.BACK -> ModeWords(R.string.rs_scanner_id_back_place, R.string.rs_scanner_id_back_looking, R.string.rs_scanner_id_flip)
+        ScannerViewModel.IdStep.DONE -> ModeWords(R.string.rs_scanner_id_done, R.string.rs_scanner_id_done, R.string.rs_scanner_id_done, R.string.rs_scanner_id_done)
     }
 }
 
@@ -774,8 +788,8 @@ private fun BookOverlay(dividerY: Float, swapped: Boolean) {
             drawCircle(guide, 5.dp.toPx(), Offset(10.dp.toPx(), y))
             drawCircle(guide, 5.dp.toPx(), Offset(size.width - 10.dp.toPx(), y))
         }
-        val top = if (swapped) "PAGE 2" else "PAGE 1"
-        val bottom = if (swapped) "PAGE 1" else "PAGE 2"
+        val top = stringResource(if (swapped) R.string.rs_scanner_page_2 else R.string.rs_scanner_page_1)
+        val bottom = stringResource(if (swapped) R.string.rs_scanner_page_1 else R.string.rs_scanner_page_2)
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
             val h = maxHeight
             // Page badges, turned sideways so they read correctly with the phone held across the book.
@@ -802,8 +816,8 @@ private fun FreeSpineOverlay(spine: com.rskusum.scanner.camera.SpineGuide, swapp
             val w = maxWidth; val h = maxHeight
             val one = if (swapped) spine.second else spine.first
             val two = if (swapped) spine.first else spine.second
-            PageBadge("PAGE 1", Modifier.offset(x = w * one.x - 34.dp, y = h * one.y - 14.dp).rotate(90f))
-            PageBadge("PAGE 2", Modifier.offset(x = w * two.x - 34.dp, y = h * two.y - 14.dp).rotate(90f))
+            PageBadge(stringResource(R.string.rs_scanner_page_1), Modifier.offset(x = w * one.x - 34.dp, y = h * one.y - 14.dp).rotate(90f))
+            PageBadge(stringResource(R.string.rs_scanner_page_2), Modifier.offset(x = w * two.x - 34.dp, y = h * two.y - 14.dp).rotate(90f))
         }
     }
 }
@@ -836,7 +850,7 @@ private fun BookSwapButton(swapped: Boolean, onSwap: () -> Unit, modifier: Modif
     ) {
         Icon(Icons.Filled.SwapVert, contentDescription = null, tint = ScanColors.Marigold, modifier = Modifier.size(18.dp))
         Spacer(Modifier.size(4.dp))
-        Text(if (swapped) "Pages swapped" else "Swap pages", color = Color.White, fontSize = 12.sp)
+        Text(stringResource(if (swapped) R.string.rs_scanner_pages_swapped else R.string.rs_scanner_swap_pages), color = Color.White, fontSize = 12.sp)
     }
 }
 
@@ -881,6 +895,7 @@ private fun HintChip(text: String, modifier: Modifier = Modifier) {
  */
 @Composable
 private fun Diagnostics(analyzer: DocumentAnalyzer, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     var text by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     LaunchedEffect(analyzer) {
@@ -896,8 +911,8 @@ private fun Diagnostics(analyzer: DocumentAnalyzer, modifier: Modifier = Modifie
                 ?: com.rskusum.scanner.vision.EdgeModel.loadError
             isError = err != null || (fps == 0L && ticks >= 3 && !analyzer.paused && !analyzer.qrMode)
             text = when {
-                err != null -> "Detector error: $err"
-                isError -> "No camera frames reaching the detector"
+                err != null -> context.getString(R.string.rs_scanner_detector_error, err)
+                isError -> context.getString(R.string.rs_scanner_no_frames)
                 else -> "$fps fps · ${analyzer.frameSize} · ${analyzer.lastSource}"
             }
         }
@@ -922,9 +937,9 @@ private fun PermissionRationale(onGrant: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Camera access is needed to scan documents.", color = Color.White)
+        Text(stringResource(R.string.rs_scanner_camera_needed), color = Color.White)
         Spacer(Modifier.height(16.dp))
-        Button(onClick = onGrant) { Text("Allow camera") }
+        Button(onClick = onGrant) { Text(stringResource(R.string.rs_scanner_allow_camera)) }
     }
 }
 
@@ -941,24 +956,17 @@ private fun TopBar(qrMode: Boolean, onHome: (() -> Unit)?, onQr: (() -> Unit)?) 
             .padding(start = 16.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // RS Kusum wordmark: "RS" tile + name, left aligned.
-        Box(
-            Modifier
-                .size(30.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(ScanColors.Accent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("RS", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Black)
+        // Brand (fixed, deliberately not a string resource so it can't be overridden).
+        Column {
+            Text("Scan", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(BRAND_LINE, color = ScanColors.AccentBright, fontSize = 11.sp)
         }
-        Spacer(Modifier.size(10.dp))
-        Text("Kusum Scan", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.weight(1f))
         if (onQr != null) {
             IconButton(onClick = onQr) {
                 Icon(
                     Icons.Outlined.QrCodeScanner,
-                    contentDescription = "QR code",
+                    contentDescription = stringResource(R.string.rs_scanner_qr_code),
                     tint = if (qrMode) ScanColors.AccentBright else Color.White,
                     modifier = Modifier.size(26.dp),
                 )
@@ -966,7 +974,7 @@ private fun TopBar(qrMode: Boolean, onHome: (() -> Unit)?, onQr: (() -> Unit)?) 
         }
         if (onHome != null) {
             IconButton(onClick = onHome) {
-                Icon(Icons.Outlined.FolderOpen, contentDescription = "My scans", tint = Color.White, modifier = Modifier.size(26.dp))
+                Icon(Icons.Outlined.FolderOpen, contentDescription = stringResource(R.string.rs_scanner_my_scans), tint = Color.White, modifier = Modifier.size(26.dp))
             }
         }
     }
@@ -996,21 +1004,21 @@ private fun ToolRail(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        RailButton(selected = flash != Flash.OFF, label = when (flash) { Flash.AUTO -> "Auto"; Flash.ON -> "On"; Flash.OFF -> "Off" }, onClick = onFlash) {
+        RailButton(selected = flash != Flash.OFF, label = stringResource(when (flash) { Flash.AUTO -> R.string.rs_scanner_auto; Flash.ON -> R.string.rs_scanner_on; Flash.OFF -> R.string.rs_scanner_off }), onClick = onFlash) {
             Icon(
                 when (flash) {
                     Flash.AUTO -> Icons.Filled.FlashAuto
                     Flash.ON -> Icons.Filled.FlashOn
                     Flash.OFF -> Icons.Filled.FlashOff
                 },
-                "Flash", tint = Color.White, modifier = Modifier.size(22.dp),
+                stringResource(R.string.rs_scanner_flash), tint = Color.White, modifier = Modifier.size(22.dp),
             )
         }
-        RailButton(selected = autoCapture, label = "Auto", onClick = onToggleAuto) {
+        RailButton(selected = autoCapture, label = stringResource(R.string.rs_scanner_auto), onClick = onToggleAuto) {
             Text("A", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black)
         }
-        RailButton(selected = smartFilter, label = "Smart", onClick = onToggleSmart) {
-            Icon(Icons.Filled.AutoAwesome, "Smart filter", tint = Color.White, modifier = Modifier.size(20.dp))
+        RailButton(selected = smartFilter, label = stringResource(R.string.rs_scanner_smart), onClick = onToggleSmart) {
+            Icon(Icons.Filled.AutoAwesome, stringResource(R.string.rs_scanner_smart_filter), tint = Color.White, modifier = Modifier.size(20.dp))
         }
         if (frame != null) {
             Box(Modifier.padding(vertical = 2.dp).size(width = 24.dp, height = 1.dp).background(Color.White.copy(alpha = 0.25f)))
@@ -1082,7 +1090,7 @@ private fun ModeCarousel(modes: List<ScanMode>, selected: ScanMode, onSelect: (S
             ) {
                 Icon(modeIcon(m), contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.size(6.dp))
-                Text(m.label, color = Color.White, fontSize = 14.sp, fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal)
+                Text(stringResource(m.labelRes), color = Color.White, fontSize = 14.sp, fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal)
             }
         }
     }
@@ -1133,8 +1141,8 @@ private fun BottomControls(
                     .padding(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(Icons.Outlined.PhotoLibrary, "Import from gallery", tint = Color.White, modifier = Modifier.size(28.dp))
-                Text("Import", color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
+                Icon(Icons.Outlined.PhotoLibrary, stringResource(R.string.rs_scanner_import_gallery), tint = Color.White, modifier = Modifier.size(28.dp))
+                Text(stringResource(R.string.rs_scanner_import), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
             }
         }
     }
@@ -1173,10 +1181,10 @@ private fun Shutter(progress: Float, capturing: Boolean, autoCapture: Boolean, o
             }
             drawCircle(ScanColors.Accent, (size.minDimension / 2 - 9.dp.toPx()) * press)
         }
-        Icon(Icons.Filled.CameraAlt, contentDescription = "Capture", tint = Color.White, modifier = Modifier.size(28.dp).scale(press))
+        Icon(Icons.Filled.CameraAlt, contentDescription = stringResource(R.string.rs_scanner_capture), tint = Color.White, modifier = Modifier.size(28.dp).scale(press))
         if (autoCapture) {
             Text(
-                "AUTO",
+                stringResource(R.string.rs_scanner_auto_badge),
                 color = Color.White,
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Bold,
@@ -1208,7 +1216,7 @@ private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, count: Int, pro
         ) {
             val thumb = page?.thumbnail
             if (thumb != null) {
-                Image(thumb, contentDescription = "Scanned pages", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                Image(thumb, contentDescription = stringResource(R.string.rs_scanner_scanned_pages), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
             if (processing || (page != null && thumb == null)) {
                 CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
@@ -1238,22 +1246,22 @@ private fun QrResultDialog(text: String, onDismiss: () -> Unit) {
     val isUrl = remember(text) { text.startsWith("http://", true) || text.startsWith("https://", true) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("QR code") },
+        title = { Text(stringResource(R.string.rs_scanner_qr_code)) },
         text = { Text(text) },
         confirmButton = {
             if (isUrl) {
                 TextButton(onClick = {
                     runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(text))) }
                     onDismiss()
-                }) { Text("Open") }
+                }) { Text(stringResource(R.string.rs_scanner_open)) }
             } else {
-                TextButton(onClick = { copy(context, text); onDismiss() }) { Text("Copy") }
+                TextButton(onClick = { copy(context, text); onDismiss() }) { Text(stringResource(R.string.rs_scanner_copy)) }
             }
         },
         dismissButton = {
             Row {
-                if (isUrl) TextButton(onClick = { copy(context, text); onDismiss() }) { Text("Copy") }
-                TextButton(onClick = onDismiss) { Text("Close") }
+                if (isUrl) TextButton(onClick = { copy(context, text); onDismiss() }) { Text(stringResource(R.string.rs_scanner_copy)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.rs_scanner_close)) }
             }
         },
     )
@@ -1262,5 +1270,5 @@ private fun QrResultDialog(text: String, onDismiss: () -> Unit) {
 private fun copy(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     cm.setPrimaryClip(ClipData.newPlainText("QR", text))
-    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, context.getString(R.string.rs_scanner_copied), Toast.LENGTH_SHORT).show()
 }

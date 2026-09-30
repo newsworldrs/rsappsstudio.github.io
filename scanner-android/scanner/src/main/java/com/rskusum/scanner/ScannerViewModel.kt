@@ -160,8 +160,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         if (!captureAllowed) {
             photo.recycle()
             _messages.tryEmit(
-                if (pageLimitReached) "Page limit reached (${options.pageLimit}) - open the scan to review it"
-                else "ID card complete - open the scan to review it"
+                if (pageLimitReached) str(R.string.rs_scanner_page_limit_reached, options.pageLimit)
+                else str(R.string.rs_scanner_id_complete_review)
             )
             return
         }
@@ -183,11 +183,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     if (front == null) {
                         idFront = created[0]
                         idStep = IdStep.BACK
-                        _messages.tryEmit("Front captured - now flip the card and scan the BACK side")
+                        _messages.tryEmit(str(R.string.rs_scanner_id_front_captured))
                     } else {
                         idFront = null
                         idStep = IdStep.DONE
-                        _messages.tryEmit("ID card complete - both sides will be placed on one PDF page")
+                        _messages.tryEmit(str(R.string.rs_scanner_id_complete))
                     }
                     return@launch
                 }
@@ -200,7 +200,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // AI Text: read the new page and open it in the AI Text screen.
                 if (mode.extractText) kept.firstOrNull()?.let { openAiText(it) }
             } catch (r: Rejected) {
-                _messages.tryEmit(r.message ?: "Capture rejected")
+                _messages.tryEmit(r.message ?: str(R.string.rs_scanner_capture_rejected))
             } catch (t: Throwable) {
                 Log.e(TAG, "capture processing failed", t)
             } finally {
@@ -286,7 +286,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             val blank = DocumentDetector.isBlank(fp)
             // In frame mode a real document shows at least two of its edges near the frame.
             val noDocument = if (frame != null) sidesFound == 0 || (sidesFound <= 1 && blank) else sidesFound == 0 && blank
-            if (noDocument) throw Rejected("No document found - place a document inside the frame")
+            if (noDocument) throw Rejected(str(R.string.rs_scanner_no_document))
             // Duplicate check against every page already scanned in this session.
             // Same page as one already in this session? Layout + feature matching: works whatever the
             // crop, tilt, lighting, or if the page was turned sideways / upside down.
@@ -297,7 +297,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 sessionSignatures.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }
             }
             if (duplicate) {
-                throw Rejected("This page is already scanned - place another document")
+                throw Rejected(str(R.string.rs_scanner_already_scanned))
             }
 
             if (mode.splitBook) {
@@ -467,8 +467,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     page.filter = pick.filter
                     page.removeShadow = pick.removeShadow
                     if (pickSmartFilter) {
-                        page.smartLabel = pick.label
-                        _messages.tryEmit("Smart filter: ${pick.label}")
+                        page.smartLabel = pick.label(getApplication())
+                        _messages.tryEmit(str(R.string.rs_scanner_smart_message, page.smartLabel!!))
                     }
                     page.processedFile = file
                     page.thumbnail = thumb
@@ -570,7 +570,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 // Wait for the flattened, cleaned page.
                 androidx.compose.runtime.snapshotFlow { page.rendering }.first { !it }
-                val file = page.processedFile ?: error("The page could not be prepared")
+                val file = page.processedFile ?: error(str(R.string.rs_scanner_page_not_ready))
                 val langs = options.ocrLanguages
                 if (!com.rskusum.scanner.ocr.RsOcr.isReady(getApplication(), langs)) {
                     ocrDownloading = true
@@ -584,9 +584,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             } catch (t: Throwable) {
                 Log.e(TAG, "OCR failed", t)
                 page.ocrError = if (ocrDownloading) {
-                    "Couldn't download the text model - check the internet connection and try again"
+                    str(R.string.rs_scanner_model_download_failed)
                 } else {
-                    t.message ?: "Text recognition failed"
+                    t.message ?: str(R.string.rs_scanner_ocr_failed)
                 }
             } finally {
                 ocrDownloading = false
@@ -730,14 +730,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         if (!options.standalone) return@withContext finishForCaller()
         runCatching {
             val files = pdfPageFiles()
-            require(files.isNotEmpty()) { "Nothing to save" }
+            require(files.isNotEmpty()) { str(R.string.rs_scanner_nothing_to_save) }
             val pdf = store.savePdf(documentName, files, pdfQuality)
             val where = store.exportToDownloads(pdf)
             withContext(Dispatchers.Main) {
                 discardSession()
                 refreshDocuments()
             }
-            "Saved to $where"
+            str(R.string.rs_scanner_saved_to, where)
         }
     }
 
@@ -747,7 +747,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun finishForCaller(): Result<String> = runCatching {
         val pageFiles = pages.mapNotNull { it.processedFile }
-        require(pageFiles.isNotEmpty()) { "Nothing to save" }
+        require(pageFiles.isNotEmpty()) { str(R.string.rs_scanner_nothing_to_save) }
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val outDir = File(getApplication<Application>().filesDir, "rsscanner/scan_$stamp").apply { mkdirs() }
         val pdfUri = if (options.returnPdf) {
@@ -770,14 +770,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             discardSession()
             _results.tryEmit(result)
         }
-        "Done"
+        str(R.string.rs_scanner_done)
     }
 
     suspend fun saveJpegs(): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
             val files = pages.mapNotNull { it.processedFile }
-            require(files.isNotEmpty()) { "Nothing to save" }
-            "Saved ${files.size} image(s) to ${store.exportJpegs(documentName, files)}"
+            require(files.isNotEmpty()) { str(R.string.rs_scanner_nothing_to_save) }
+            getApplication<Application>().resources.getQuantityString(R.plurals.rs_scanner_saved_images, files.size, files.size, store.exportJpegs(documentName, files))
         }
     }
 
@@ -801,7 +801,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun defaultName() = "Scan " + SimpleDateFormat("dd MMM yyyy HH.mm", Locale.getDefault()).format(Date())
+    private fun str(@androidx.annotation.StringRes id: Int, vararg args: Any): String = getApplication<Application>().getString(id, *args)
+
+    private fun defaultName() = str(R.string.rs_scanner_default_name) + " " + SimpleDateFormat("dd MMM yyyy HH.mm", Locale.getDefault()).format(Date())
 
     companion object {
         const val TAG = "ScannerVM"

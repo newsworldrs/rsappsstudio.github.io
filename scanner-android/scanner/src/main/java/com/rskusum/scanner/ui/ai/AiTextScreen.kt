@@ -59,7 +59,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rskusum.scanner.R
 import com.rskusum.scanner.ScannerViewModel
+import androidx.compose.ui.res.stringResource
 import com.rskusum.scanner.data.Page
 import com.rskusum.scanner.ocr.Insight
 import com.rskusum.scanner.ui.ScanColors
@@ -96,13 +98,13 @@ fun AiTextScreen(
             Modifier.fillMaxWidth().height(56.dp).background(ScanColors.Bar).padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White) }
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.rs_scanner_back), tint = Color.White) }
             Icon(Icons.Filled.AutoAwesome, null, tint = ScanColors.AccentBright, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("AI Text", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.rs_scanner_mode_ai_text), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (page.ocrText != null && !page.ocrBusy) {
                 IconButton(onClick = { vm.extractText(page, force = true) }) {
-                    Icon(Icons.Filled.Refresh, "Read again", tint = Color.White)
+                    Icon(Icons.Filled.Refresh, stringResource(R.string.rs_scanner_read_again), tint = Color.White)
                 }
             }
         }
@@ -136,7 +138,7 @@ fun AiTextScreen(
                                 CircularProgressIndicator(Modifier.size(18.dp), color = ScanColors.AccentBright, strokeWidth = 2.dp)
                                 Spacer(Modifier.width(10.dp))
                                 Text(
-                                    if (vm.ocrDownloading) "Downloading the text model (one time)…" else "Reading the text…",
+                                    stringResource(if (vm.ocrDownloading) R.string.rs_scanner_downloading_model else R.string.rs_scanner_reading_text),
                                     color = Color.White, fontSize = 15.sp,
                                 )
                             }
@@ -144,13 +146,13 @@ fun AiTextScreen(
                         page.ocrError != null -> {
                             Text(page.ocrError.orEmpty(), color = Color(0xFFFF8A80), fontSize = 14.sp)
                             Spacer(Modifier.height(6.dp))
-                            OutlinedButton(onClick = { vm.extractText(page, force = true) }) { Text("Try again") }
+                            OutlinedButton(onClick = { vm.extractText(page, force = true) }) { Text(stringResource(R.string.rs_scanner_try_again)) }
                         }
                         insights != null -> {
-                            Text("Looks like", color = ScanColors.TextDim, fontSize = 12.sp)
-                            Text(insights.type, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.rs_scanner_looks_like), color = ScanColors.TextDim, fontSize = 12.sp)
+                            Text(stringResource(insights.type.labelRes), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             Text(
-                                "${insights.words} words · ${insights.lines} lines · ${page.ocrConfidence}% sure",
+                                stringResource(R.string.rs_scanner_text_stats, insights.words, insights.lines, page.ocrConfidence),
                                 color = ScanColors.TextDim, fontSize = 12.sp,
                             )
                         }
@@ -161,7 +163,7 @@ fun AiTextScreen(
             // Key details
             if (insights != null && insights.items.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
-                Text("Key details", color = ScanColors.TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.rs_scanner_key_details), color = ScanColors.TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -173,7 +175,7 @@ fun AiTextScreen(
 
             // Text
             Spacer(Modifier.height(16.dp))
-            Text("Text", color = ScanColors.TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.rs_scanner_tool_text), color = ScanColors.TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
             if (page.ocrText != null) {
                 OutlinedTextField(
@@ -181,7 +183,7 @@ fun AiTextScreen(
                     onValueChange = { text = it; vm.setOcrText(page, it) },
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 8,
-                    placeholder = { Text("No text found on this page", color = ScanColors.TextDim) },
+                    placeholder = { Text(stringResource(R.string.rs_scanner_no_text_found), color = ScanColors.TextDim) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                         focusedBorderColor = ScanColors.AccentBright, unfocusedBorderColor = ScanColors.SurfaceHigh,
@@ -200,15 +202,15 @@ fun AiTextScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val hasText = text.isNotBlank()
-            ActionIcon(Icons.Filled.ContentCopy, "Copy", enabled = hasText) { copy(context, text) }
-            ActionIcon(Icons.Filled.Share, "Share", enabled = hasText) {
+            ActionIcon(Icons.Filled.ContentCopy, stringResource(R.string.rs_scanner_copy), enabled = hasText) { copy(context, text) }
+            ActionIcon(Icons.Filled.Share, stringResource(R.string.rs_scanner_share), enabled = hasText) {
                 runCatching {
                     context.startActivity(
-                        Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Share text"),
+                        Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), context.getString(R.string.rs_scanner_share_text)),
                     )
                 }
             }
-            ActionIcon(Icons.Filled.CameraAlt, "Scan more", enabled = true, onClick = onScanMore)
+            ActionIcon(Icons.Filled.CameraAlt, stringResource(R.string.rs_scanner_scan_more), enabled = true, onClick = onScanMore)
             Spacer(Modifier.weight(1f))
             Button(
                 onClick = onDone,
@@ -217,7 +219,7 @@ fun AiTextScreen(
             ) {
                 Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Done", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.rs_scanner_done), fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -233,7 +235,7 @@ private fun InsightChip(item: Insight, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        Text(item.kind.label, color = ScanColors.Marigold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Text(stringResource(item.kind.labelRes), color = ScanColors.Marigold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         Text(item.value, color = Color.White, fontSize = 14.sp, maxLines = 1)
     }
 }
@@ -266,6 +268,6 @@ private fun act(context: Context, item: Insight) {
 
 private fun copy(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("Scanned text", text))
-    Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+    cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.rs_scanner_scanned_text), text))
+    Toast.makeText(context, context.getString(R.string.rs_scanner_copied), Toast.LENGTH_SHORT).show()
 }

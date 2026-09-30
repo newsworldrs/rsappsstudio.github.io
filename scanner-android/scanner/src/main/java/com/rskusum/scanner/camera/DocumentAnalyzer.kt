@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import com.rskusum.scanner.R
 import com.rskusum.scanner.vision.DocumentDetector
 import com.rskusum.scanner.vision.EdgeModel
 import com.rskusum.scanner.vision.Quad
@@ -104,7 +105,7 @@ class DocumentAnalyzer(
                 }
                 val guide = frame
                 var trackQuad = quad
-                var guidance: String? = null
+                var guidance: Int? = null
                 if (guide != null && frameCount % 3 == 0L) {
                     // Same band search used on the final photo, on the live frame: tells whether a
                     // real page sits in the frame even when the global detectors miss it.
@@ -123,15 +124,23 @@ class DocumentAnalyzer(
                     if (!aligned) {
                         trackQuad = null
                         guidance = when {
-                            ratio < 0.7f -> "Move closer"
-                            ratio > 1.3f -> "Move back"
-                            else -> "Align the page with the frame"
+                            ratio < 0.7f -> R.string.rs_scanner_move_closer
+                            ratio > 1.3f -> R.string.rs_scanner_move_back
+                            else -> R.string.rs_scanner_align_with_frame
                         }
                     }
                 }
-                if (!captureAllowed) guidance = "Scan complete - tap the thumbnail to review"
+                if (!captureAllowed) guidance = R.string.rs_scanner_scan_complete_review
                 val spreadQuad = trackQuad ?: quad
-                if (!bookMode || guide != null || spreadQuad == null) {
+                if (bookMode && guide == null && spreadQuad != null &&
+                    !DocumentDetector.isTallSpread(spreadQuad, gray.cols(), gray.rows())
+                ) {
+                    // Book lying across a portrait screen: small, and split the wrong way. Ask the
+                    // user to turn the phone (the spread must fill the long side), no auto-capture.
+                    trackQuad = null
+                    guidance = R.string.rs_scanner_book_turn_phone
+                }
+                if (!bookMode || guide != null || spreadQuad == null || guidance == R.string.rs_scanner_book_turn_phone) {
                     spine = null
                 } else if (frameCount % 5 == 0L) {
                     spine = liveSpine(gray, spreadQuad)
@@ -158,7 +167,7 @@ class DocumentAnalyzer(
                     if (sig != null && known.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }) {
                         fire = false
                         tracker.onCaptured(true) // mark this scene as done; re-arms when it changes
-                        guidance = "Already scanned - place the next page"
+                        guidance = R.string.rs_scanner_already_scanned_live
                     }
                 }
                 lastQuad = state.quad

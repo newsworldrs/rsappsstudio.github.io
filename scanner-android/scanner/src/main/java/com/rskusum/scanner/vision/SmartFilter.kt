@@ -8,8 +8,10 @@ import kotlin.math.max
 
 /** What the Smart filter picked for a page. */
 data class SmartPick(val filter: ScanFilter, val removeShadow: Boolean) {
-    /** e.g. "Dark text + shadow removal". */
-    val label: String get() = if (removeShadow) "${filter.label} + shadow removal" else filter.label
+    /** e.g. "Dark text + shadow removal", in the current app language. */
+    fun label(context: android.content.Context): String =
+        if (removeShadow) context.getString(com.rskusum.scanner.R.string.rs_scanner_filter_with_shadow, filter.label(context))
+        else filter.label(context)
 }
 
 /** "Smart filter": picks the most suitable filter for a flattened page from simple statistics. */

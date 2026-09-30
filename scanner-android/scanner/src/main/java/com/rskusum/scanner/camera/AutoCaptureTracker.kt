@@ -15,7 +15,7 @@ data class TrackerState(
     /** Guide-frame mode: page detected and matching the frame. */
     val aligned: Boolean = false,
     /** Guide-frame mode: what the user should do, e.g. "Move closer". */
-    val guidance: String? = null,
+    @androidx.annotation.StringRes val guidance: Int? = null,
     /** AI Text mode: live text line boxes (normalized), for the highlight overlay. */
     val textBoxes: List<com.rskusum.scanner.vision.NRect> = emptyList(),
     /** Book mode without a guide frame: the detected spine of the open book. */

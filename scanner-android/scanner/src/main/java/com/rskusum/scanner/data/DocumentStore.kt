@@ -19,10 +19,10 @@ import java.io.FileOutputStream
 import java.io.OutputStream
 
 /** PDF size presets: long side of each page image in pixels and JPEG quality. */
-enum class PdfQuality(val label: String, val maxSide: Int, val jpegQuality: Int) {
-    SMALL("Small file", 1600, 60),        // ~150 dpi A4, smallest for email/WhatsApp
-    BALANCED("Balanced", 2200, 72),       // ~190 dpi A4, sharp text, modest size
-    HIGH("High quality", 3300, 88),       // ~280 dpi A4, for printing
+enum class PdfQuality(@androidx.annotation.StringRes val labelRes: Int, val maxSide: Int, val jpegQuality: Int) {
+    SMALL(com.rskusum.scanner.R.string.rs_scanner_pdf_small, 1600, 60),        // ~150 dpi A4, smallest for email/WhatsApp
+    BALANCED(com.rskusum.scanner.R.string.rs_scanner_pdf_balanced, 2200, 72),  // ~190 dpi A4, sharp text, modest size
+    HIGH(com.rskusum.scanner.R.string.rs_scanner_pdf_high, 3300, 88),          // ~280 dpi A4, for printing
 }
 
 private const val A4_SHORT = 595.28f
@@ -40,7 +40,7 @@ data class SavedDocument(
 class DocumentStore(private val context: Context) {
 
     val dir: File = File(context.filesDir, "documents").apply { mkdirs() }
-    private val publicFolder = "RS Kusum Scanner"
+    private val publicFolder = "RS Apps Studio Scan"
 
     fun list(): List<SavedDocument> =
         (dir.listFiles { f -> f.extension.equals("pdf", true) } ?: emptyArray())
@@ -57,7 +57,7 @@ class DocumentStore(private val context: Context) {
         val file = uniqueFile(sanitize(name), "pdf", into)
         com.tom_roush.pdfbox.pdmodel.PDDocument().use { doc ->
             doc.documentInformation.title = name
-            doc.documentInformation.producer = "RS Kusum Scanner"
+            doc.documentInformation.producer = "Scan - powered by RS Apps Studio"
             for (pf in pageFiles) {
                 val (jpeg, w, h) = compressPage(pf, quality)
                 val image = com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory.createFromByteArray(doc, jpeg)
@@ -123,7 +123,7 @@ class DocumentStore(private val context: Context) {
         }
         intent.type = mime
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        return Intent.createChooser(intent, "Share")
+        return Intent.createChooser(intent, context.getString(com.rskusum.scanner.R.string.rs_scanner_share))
     }
 
     fun openIntent(file: File): Intent =
