@@ -140,7 +140,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private val sessionDir = File(app.filesDir, "session").apply { mkdirs() }
     private val renderDir = File(app.cacheDir, "rendered").apply { mkdirs() }
     /** Full-resolution rendering is memory heavy: one page at a time. */
-    private val renderGate = Semaphore(1)
+    // Two renders at a time: phones have several cores; more would only cost memory.
+    private val renderGate = Semaphore(2)
 
     init {
         refreshDocuments()
@@ -156,19 +157,19 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * @param deviceRotation physical phone orientation at capture (OrientationEventListener
      *   degrees snapped to 0/90/180/270); used to turn book pages upright.
      */
-    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false) {
+    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false): kotlinx.coroutines.Job? {
         if (!captureAllowed) {
             photo.recycle()
             _messages.tryEmit(
                 if (pageLimitReached) str(R.string.rs_scanner_page_limit_reached, options.pageLimit)
                 else str(R.string.rs_scanner_id_complete_review)
             )
-            return
+            return null
         }
         processingCaptures++
         val mode = mode
         val smart = aiAssist
-        viewModelScope.launch {
+        return viewModelScope.launch {
             try {
                 val isId = mode == ScanMode.ID_CARD
                 val front = idFront
@@ -217,7 +218,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     val bmp = withContext(Dispatchers.IO) {
                         runCatching { Images.decodeUri(getApplication(), uri, MAX_PHOTO_SIDE) }.getOrNull()
                     } ?: continue
-                    addPhoto(bmp, null, imported = true)
+                    // One picture at a time, in the chosen order: only one full-size photo in
+                    // memory; its render overlaps with the next picture's detection.
+                    addPhoto(bmp, null, imported = true)?.join()
                 }
             } finally {
                 importing = false
@@ -355,7 +358,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     _messages.tryEmit(str(R.string.rs_scanner_book_single_page))
                     return listOf(
                         Page(file, quad, mode.defaultFilter, mode.forcedAspect, frame = frame, fingerprint = fp)
-                            .also { it.signature = sig; autoUpright(it) }
+                            .also { it.signature = sig; it.uprightPending = true }
                     )
                 }
                 // Open book: two independent A4 pages, each with its own crop outline so they can be
@@ -384,7 +387,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     Page(
                         pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
                         forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
-                    ).also { it.signature = sig; autoUpright(it) }
+                    ).also { it.signature = sig; it.uprightPending = true }
                 }
                 file.delete() // the full spread photo is no longer needed
                 return pagesOut
@@ -393,7 +396,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 Page(
                     file, quad, mode.defaultFilter, aspect, forcedOrientation = if (aspect == null) DocumentDetector.ORIENT_AUTO else mode.pageOrientation,
                     frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide,
-                ).also { it.signature = sig; autoUpright(it) }
+                ).also { it.signature = sig; it.uprightPending = true }
             )
         } catch (r: Rejected) {
             file.delete()
@@ -416,26 +419,24 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
 
     /**
-     * Reads the text direction of the flattened page with the on-device orientation model and
-     * turns the page upright (upside-down or sideways shots), before the first render, so the
-     * thumbnail and every edit screen already show it the right way up. Modes with a fixed page
-     * orientation (ID card, whiteboard) only get the 180 degree fix.
+     * Reads the text direction of the flattened page (text lines for any script, headlines, the
+     * on-device orientation model) and returns the rotation that turns it upright, or null to
+     * keep it. Modes with a fixed page orientation (ID card, whiteboard, book pages) only get the
+     * 180 degree fix. Runs inside the first render, on the page that is flattened anyway.
      */
-    private fun autoUpright(page: Page) {
-        try {
+    private fun uprightTurn(page: Page, flat: Mat): Int? {
+        return try {
             val model = com.rskusum.scanner.vision.OrientationModel.get(getApplication())
-            val bmp = Images.decodeFile(page.originalFile, 2000) ?: return
-            val rgb = Images.toRgbMat(bmp)
-            bmp.recycle()
-            val flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 1600, forcedOrientation = page.forcedOrientation)
-            rgb.release()
+            val s = minOf(1.0, 1600.0 / maxOf(flat.cols(), flat.rows()))
+            val small = Mat()
+            Imgproc.resize(flat, small, org.opencv.core.Size(flat.cols() * s, flat.rows() * s), 0.0, 0.0, Imgproc.INTER_AREA)
             val fixedOrientation = page.forcedOrientation != DocumentDetector.ORIENT_AUTO
-            // Text lines give the axis for any script, headlines / the model the direction.
-            val turn = com.rskusum.scanner.vision.TextOrientation.uprightRotation(flat, model, allowQuarter = !fixedOrientation)
-            flat.release()
-            if (turn == 180 || (!fixedOrientation && turn != 0)) page.rotation = turn
+            val turn = com.rskusum.scanner.vision.TextOrientation.uprightRotation(small, model, allowQuarter = !fixedOrientation)
+            small.release()
+            if (turn == 180 || (!fixedOrientation && turn != 0)) turn else null
         } catch (t: Throwable) {
             Log.e(TAG, "auto orientation failed", t)
+            null
         }
     }
 
@@ -627,8 +628,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, forcedOrientation = page.forcedOrientation)
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = RENDER_MAX_SIDE, forcedOrientation = page.forcedOrientation)
         rgb.release()
+        if (page.uprightPending) {
+            page.uprightPending = false
+            uprightTurn(page, flat)?.let { page.rotation = it }
+        }
         if (page.bookHalf >= 0) {
             val half = flat.cols() / 2
             val roi = if (page.bookHalf == 0) Rect(0, 0, half, flat.rows()) else Rect(half, 0, flat.cols() - half, flat.rows())
@@ -947,7 +952,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val TAG = "ScannerVM"
-        const val MAX_PHOTO_SIDE = 4800
+        const val MAX_PHOTO_SIDE = 4000
+        /** Rendered page size: the largest PDF quality (HIGH) uses 3300 px, the viewer 3000 px. */
+        private const val RENDER_MAX_SIDE = 3300
         /** Fingerprint correlation above which a capture counts as the same page (tested: same >= 0.976, different <= 0.75). */
         const val DUPLICATE_SIMILARITY = 0.88
     }

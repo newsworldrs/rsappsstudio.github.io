@@ -40,6 +40,8 @@ class Page(
     /** What the Smart filter chose for this page (null = picked by the user). */
     var smartLabel by mutableStateOf<String?>(null)
     var rotation by mutableIntStateOf(0)
+    /** Text orientation still to be checked (done by the first render, on the page it flattens anyway). */
+    @Volatile var uprightPending = false
     /** Layout + feature signature of the page at capture, for "same page again?" checks. */
     var signature: com.rskusum.scanner.vision.PageSignature? = null
     var processedFile by mutableStateOf<File?>(null)

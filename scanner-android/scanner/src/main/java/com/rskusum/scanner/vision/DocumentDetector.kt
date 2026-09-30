@@ -375,19 +375,19 @@ object DocumentDetector {
      * nearby edges at two search widths, the learned-model detection ([edgeMap]) and the classic
      * detector - each refined on the full photo, then ranked by [scoreQuad].
      */
-    fun autoDetect(gray: Mat, edgeMap: Mat?, priors: List<Quad>): Quad? {
+    fun autoDetect(gray: Mat, edgeMap: Mat?, priors: List<Quad>, fast: Boolean = false): Quad? {
         val cands = ArrayList<Quad>()
         // Generic priors so there is always a starting outline, even without a guide frame.
-        val allPriors = priors + listOf(Quad.inset(0.06f), Quad.inset(0.14f))
+        val allPriors = priors + if (fast) listOf(Quad.inset(0.08f)) else listOf(Quad.inset(0.06f), Quad.inset(0.14f))
         for (prior in allPriors) {
-            for (bf in doubleArrayOf(0.085, 0.16)) {
+            for (bf in if (fast) doubleArrayOf(0.12) else doubleArrayOf(0.085, 0.16)) {
                 val snap = snapToQuad(gray, prior, bandFraction = bf)
                 if (snap.sidesFound >= 2) cands += refine(gray, snap.quad)
             }
         }
         edgeMap?.let { m -> detectFromEdgeMap(m)?.let { cands += refine(gray, it) } }
         detect(gray, 640)?.let { cands += refine(gray, it) }
-        detect(gray, 1000)?.let { cands += refine(gray, it) }
+        if (!fast) detect(gray, 1000)?.let { cands += refine(gray, it) }
         var best: Quad? = null
         var bestScore = 0.0
         for (q in cands) {
@@ -759,7 +759,8 @@ object DocumentDetector {
      */
     fun detectImported(gray: Mat, edgeMap: Mat?): ImportResult {
         val whole = ImportResult(Quad.FULL, true)
-        val q = autoDetect(gray, edgeMap, emptyList()) ?: return whole
+        // Lighter search than for camera photos: most gallery pictures are already cropped.
+        val q = autoDetect(gray, edgeMap, emptyList(), fast = true) ?: return whole
         val scale = min(1.0, 500.0 / max(gray.cols(), gray.rows()))
         val sm = Mat()
         Imgproc.resize(gray, sm, Size(gray.cols() * scale, gray.rows() * scale), 0.0, 0.0, Imgproc.INTER_AREA)
