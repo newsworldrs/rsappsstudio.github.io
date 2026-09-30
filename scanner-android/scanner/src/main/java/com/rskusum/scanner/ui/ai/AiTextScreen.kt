@@ -215,7 +215,8 @@ fun AiTextScreen(
             Button(
                 onClick = onDone,
                 enabled = !page.ocrBusy,
-                colors = ButtonDefaults.buttonColors(containerColor = ScanColors.Accent),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White),
+                modifier = Modifier.background(ScanColors.Gradient, RoundedCornerShape(50)),
             ) {
                 Icon(Icons.Filled.Check, null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))

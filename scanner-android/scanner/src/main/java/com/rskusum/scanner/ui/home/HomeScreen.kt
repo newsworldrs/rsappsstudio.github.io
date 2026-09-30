@@ -30,6 +30,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -94,8 +95,10 @@ fun HomeScreen(vm: ScannerViewModel, onScan: () -> Unit) {
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = onScan,
-                containerColor = ScanColors.Accent,
+                containerColor = Color.Transparent,
                 contentColor = Color.White,
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp, 0.dp, 0.dp),
+                modifier = Modifier.background(ScanColors.Gradient, RoundedCornerShape(16.dp)),
                 icon = { Icon(Icons.Outlined.DocumentScanner, null) },
                 text = { Text(if (vm.pages.isEmpty()) stringResource(R.string.rs_scanner_scan) else stringResource(R.string.rs_scanner_resume_scan, vm.pages.size)) },
             )

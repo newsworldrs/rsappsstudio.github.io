@@ -193,7 +193,8 @@ fun ReviewScreen(
                         // Embedded without a PDF there is no size to choose: finish right away.
                         onClick = { if (vm.options.standalone || vm.options.returnPdf) choosingSize = true else doSave(asJpeg = false) },
                         enabled = !saving && vm.pages.isNotEmpty(),
-                        colors = ButtonDefaults.buttonColors(containerColor = ScanColors.Accent),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White),
+                        modifier = Modifier.background(ScanColors.Gradient, RoundedCornerShape(50)),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                     ) { Text(stringResource(if (vm.options.standalone) R.string.rs_scanner_save_pdf else R.string.rs_scanner_done), fontWeight = FontWeight.SemiBold) }
                     Box {
@@ -408,7 +409,7 @@ private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(ScanColors.Accent)
+                    .background(ScanColors.Gradient)
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }

@@ -485,7 +485,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                             .align(Alignment.TopCenter)
                             .padding(top = 58.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(ScanColors.Accent)
+                            .background(ScanColors.Gradient)
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }
@@ -711,7 +711,7 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
     var last by remember { mutableStateOf<Quad?>(null) }
     if (quad != null) last = quad
     val q = last ?: return
-    val color = if (phase == CapturePhase.NEXT_PAGE) Color(0xFF34C759) else ScanColors.Accent
+    val color = if (phase == CapturePhase.NEXT_PAGE) ScanColors.AccentBright else ScanColors.Accent
     Canvas(Modifier.fillMaxSize()) {
         val pts = q.points.map { Offset(it.x * size.width, it.y * size.height) }
         val path = Path().apply {
@@ -720,7 +720,8 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
             close()
         }
         drawPath(path, color.copy(alpha = 0.22f * alpha))
-        drawPath(path, color.copy(alpha = alpha), style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
+        val brush = if (phase == CapturePhase.NEXT_PAGE) androidx.compose.ui.graphics.SolidColor(color) else ScanColors.Gradient
+        drawPath(path, brush, alpha = alpha, style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
         pts.forEach {
             drawCircle(Color.White.copy(alpha = alpha), 7.dp.toPx(), it)
             drawCircle(color.copy(alpha = alpha), 5.dp.toPx(), it)
@@ -811,7 +812,7 @@ private fun TextBoxesOverlay(boxes: List<com.rskusum.scanner.vision.NRect>) {
  */
 @Composable
 private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = false) {
-    val color = if (aligned) Color(0xFF34C759) else Color.White
+    val color = if (aligned) ScanColors.AccentBright else Color.White
     Canvas(Modifier.fillMaxSize()) {
         val l = frame.tl.x * size.width
         val t = frame.tl.y * size.height

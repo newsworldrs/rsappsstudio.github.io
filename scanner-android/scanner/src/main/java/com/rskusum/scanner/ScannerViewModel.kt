@@ -363,7 +363,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // Detach the pages: each gets its OWN upright image cut at the spine, so crop,
                 // filters and eraser only ever see that one page. Book pages are always portrait.
                 val pagesOut = listOf(first, second).mapIndexed { i, q ->
-                    val (pageFile, pageQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
+                    val (pageFile, halfQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
+                    // Second pass: find this page's own edges in its detached image.
+                    val pageQuad = autoCropBookPage(pageFile, halfQuad)
                     Page(
                         pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
                         forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
@@ -451,6 +453,78 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         Images.saveJpeg(crop, file, 95)
         crop.recycle()
         return file to orderQuad(pts)
+    }
+
+    /**
+     * Auto crop of one detached book page: its outer three edges are searched again in the page's
+     * own image (snapped near the split outline at two widths, the learned edge model and the
+     * classic detector compete, ranked by edge support). The spine side stays on the cut, its
+     * corners slid along it to meet the new top/bottom (or side) edges.
+     */
+    private fun autoCropBookPage(file: File, q: Quad): Quad {
+        val bmp = Images.decodeFile(file, 2000) ?: return q
+        val gray = Images.toGrayMat(bmp)
+        val prob = runCatching { edgeProbability(bmp) }.getOrNull()
+        bmp.recycle()
+        try {
+            val cands = ArrayList<Quad>()
+            for (bf in doubleArrayOf(0.085, 0.16)) {
+                val snap = DocumentDetector.snapToQuad(gray, q, bandFraction = bf)
+                if (snap.sidesFound >= 2) cands += DocumentDetector.refine(gray, snap.quad)
+            }
+            DocumentDetector.autoDetect(gray, prob, listOf(q))?.let { cands += it }
+            val spine = spineSide(q)
+            var best = q
+            var bestScore = DocumentDetector.scoreQuad(gray, q)
+            for (c0 in cands) {
+                val c = if (spine >= 0) keepSpine(c0, q, spine) else c0
+                if (c.distanceTo(q) > 0.3f || c.area() < q.area() * 0.45f) continue
+                val sc = DocumentDetector.scoreQuad(gray, c)
+                if (sc > bestScore + 0.02) { best = c; bestScore = sc }
+            }
+            return best
+        } catch (t: Throwable) {
+            Log.e(TAG, "book page auto crop failed", t)
+            return q
+        } finally {
+            gray.release()
+            prob?.release()
+        }
+    }
+
+    /** Index of the side (0 top, 1 right, 2 bottom, 3 left) lying on the picture border = the spine cut. */
+    private fun spineSide(q: Quad): Int {
+        val p = q.points
+        fun border(pt: com.rskusum.scanner.vision.NPoint) = floatArrayOf(pt.y, 1 - pt.x, 1 - pt.y, pt.x)
+        var best = -1; var bestD = 0.02f
+        for (i in 0 until 4) {
+            val a = border(p[i]); val b = border(p[(i + 1) % 4])
+            for (k in 0 until 4) {
+                val d = maxOf(a[k], b[k])
+                if (d < bestD) { bestD = d; best = i }
+            }
+        }
+        return best
+    }
+
+    /** [c] with its side [side] put back on the spine line of [q] (corners where the adjacent sides meet it). */
+    private fun keepSpine(c: Quad, q: Quad, side: Int): Quad {
+        val cp = c.points; val qp = q.points
+        val s0 = qp[side]; val s1 = qp[(side + 1) % 4]
+        fun meet(a: com.rskusum.scanner.vision.NPoint, b: com.rskusum.scanner.vision.NPoint, fallback: com.rskusum.scanner.vision.NPoint): com.rskusum.scanner.vision.NPoint {
+            val d1x = b.x - a.x; val d1y = b.y - a.y
+            val d2x = s1.x - s0.x; val d2y = s1.y - s0.y
+            val den = d1x * d2y - d1y * d2x
+            if (kotlin.math.abs(den) < 1e-6f) return fallback
+            val t = ((s0.x - a.x) * d2y - (s0.y - a.y) * d2x) / den
+            val r = com.rskusum.scanner.vision.NPoint(a.x + d1x * t, a.y + d1y * t)
+            return if (r.x in -0.05f..1.05f && r.y in -0.05f..1.05f) com.rskusum.scanner.vision.NPoint(r.x.coerceIn(0f, 1f), r.y.coerceIn(0f, 1f)) else fallback
+        }
+        val i0 = side; val i1 = (side + 1) % 4
+        // Corner i0 is on the side from cp[i0-1]; corner i1 is on the side to cp[i1+1].
+        val n0 = meet(cp[(i0 + 3) % 4], cp[i0], s0)
+        val n1 = meet(cp[(i1 + 1) % 4], cp[i1], s1)
+        return c.with(i0, n0).with(i1, n1)
     }
 
     /** Orders 4 points clockwise from the one nearest the top-left corner. */
