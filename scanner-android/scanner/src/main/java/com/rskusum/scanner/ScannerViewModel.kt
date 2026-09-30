@@ -443,9 +443,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     renderGate.withPermit { render(page, pickSmartFilter) }
                 }
                 if (result != null) {
-                    val (file, thumb, filter) = result
+                    val (file, thumb, pick) = result
                     page.processedFile?.takeIf { it != file }?.delete()
-                    page.filter = filter
+                    page.filter = pick.filter
+                    page.removeShadow = pick.removeShadow
+                    if (pickSmartFilter) {
+                        page.smartLabel = pick.label
+                        _messages.tryEmit("Smart filter: ${pick.label}")
+                    }
                     page.processedFile = file
                     page.thumbnail = thumb
                     page.version++
@@ -458,8 +463,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Warps + enhances the original. Returns (file, thumbnail, filter used). */
-    private fun render(page: Page, pickSmartFilter: Boolean): Triple<File, ImageBitmap, ScanFilter>? {
+    /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
+    private fun render(page: Page, pickSmartFilter: Boolean): Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>? {
         val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
@@ -473,8 +478,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             flat = sub
         }
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val filter = if (pickSmartFilter) SmartFilter.choose(flat) else page.filter
-        val enhanced = ImageEnhancer.apply(flat, filter)
+        val pick = if (pickSmartFilter) SmartFilter.pick(flat) else com.rskusum.scanner.vision.SmartPick(page.filter, page.removeShadow)
+        val enhanced = ImageEnhancer.apply(flat, pick.filter, pick.removeShadow)
         flat.release()
         com.rskusum.scanner.vision.Eraser.apply(enhanced, page.erasures.toList())
         val out = Images.toBitmap(enhanced)
@@ -482,7 +487,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
         Images.saveJpeg(out, file, 95)
         val thumb = Images.scaleDown(out, 360).asImageBitmap()
-        return Triple(file, thumb, filter)
+        return Triple(file, thumb, pick)
     }
 
     /** Small previews of every filter for the filter strip. */
@@ -498,8 +503,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             val sub = Mat(flat, roi).clone(); flat.release(); flat = sub
         }
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val map = ScanFilter.entries.associateWith { f ->
-            val m = ImageEnhancer.apply(flat, f)
+        val map = ScanFilter.choices.associateWith { f ->
+            val m = ImageEnhancer.apply(flat, f, page.removeShadow)
             val b = Images.toBitmap(m).asImageBitmap()
             m.release()
             b
@@ -579,14 +584,34 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Page editing ----------------------------------------------------------------------
 
+    @Suppress("DEPRECATION")
     fun setFilter(page: Page, filter: ScanFilter) {
+        // The old "No shadow" filter = Auto colour with shadow removal switched on.
+        if (filter == ScanFilter.NO_SHADOW) {
+            setFilter(page, ScanFilter.AUTO); setRemoveShadow(page, true); return
+        }
         if (page.filter == filter) return
         page.filter = filter
+        page.smartLabel = null
         launchRender(page)
     }
 
-    fun applyFilterToAll(filter: ScanFilter) {
-        pages.forEach { setFilter(it, filter) }
+    /** Shadow removal on/off for [page]; kept together with whatever filter is selected. */
+    fun setRemoveShadow(page: Page, on: Boolean) {
+        if (page.removeShadow == on) return
+        page.removeShadow = on
+        page.smartLabel = null
+        launchRender(page)
+    }
+
+    /** Same filter (and shadow-removal setting) on every page of the scan. */
+    fun applyFilterToAll(filter: ScanFilter, removeShadow: Boolean? = null) {
+        pages.forEach { p ->
+            val changed = p.filter != filter || (removeShadow != null && p.removeShadow != removeShadow)
+            p.filter = filter
+            if (removeShadow != null) p.removeShadow = removeShadow
+            if (changed) { p.smartLabel = null; launchRender(p) }
+        }
     }
 
     fun rotate(page: Page) {
@@ -614,7 +639,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = maxSide, forcedOrientation = page.forcedOrientation)
         rgb.release()
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val enhanced = ImageEnhancer.apply(flat, page.filter)
+        val enhanced = ImageEnhancer.apply(flat, page.filter, page.removeShadow)
         flat.release()
         Images.toBitmap(enhanced).also { enhanced.release() }
     }

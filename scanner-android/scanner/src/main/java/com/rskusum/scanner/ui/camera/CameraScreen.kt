@@ -429,6 +429,29 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     )
                 }
                 toast?.let { HintChip(it, Modifier.align(Alignment.Center)) }
+                // Smart filter on: show what it picked for the latest page.
+                if (granted && !qrMode && vm.aiAssist) {
+                    val last = vm.pages.lastOrNull()
+                    val what = when {
+                        last == null -> "waiting for the first page"
+                        last.smartLabel != null -> last.smartLabel!!
+                        else -> "choosing…"
+                    }
+                    Row(
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 8.dp, top = if (vm.mode == ScanMode.ID_CARD) 92.dp else 58.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ScanColors.Bar.copy(alpha = 0.8f))
+                            .border(1.dp, ScanColors.Marigold, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.AutoAwesome, null, tint = ScanColors.Marigold, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.size(6.dp))
+                        Text("Smart: $what", color = Color.White, fontSize = 12.sp)
+                    }
+                }
                 if (granted && !qrMode) {
                     ToolRail(
                         flash = flash,
@@ -444,7 +467,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                         smartFilter = vm.aiAssist,
                         onToggleSmart = {
                             vm.aiAssist = !vm.aiAssist
-                            toast = if (vm.aiAssist) "Smart filter: best look picked for each page" else "Smart filter off"
+                            toast = if (vm.aiAssist) "Smart filter ON - the best filter (and shadow removal) is picked for every page" else "Smart filter off"
                         },
                         frame = vm.orientation,
                         onFrame = {

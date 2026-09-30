@@ -35,6 +35,10 @@ class Page(
 ) {
     var quad by mutableStateOf(quad)
     var filter by mutableStateOf(filter)
+    /** Shadow / uneven-lighting removal, applied before [filter] (works with every filter). */
+    var removeShadow by mutableStateOf(false)
+    /** What the Smart filter chose for this page (null = picked by the user). */
+    var smartLabel by mutableStateOf<String?>(null)
     var rotation by mutableIntStateOf(0)
     /** Layout + feature signature of the page at capture, for "same page again?" checks. */
     var signature: com.rskusum.scanner.vision.PageSignature? = null

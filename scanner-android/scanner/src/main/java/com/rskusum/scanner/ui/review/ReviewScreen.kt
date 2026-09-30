@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.outlined.AutoFixNormal
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.TextSnippet
+import androidx.compose.material.icons.outlined.WbShade
+import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -231,8 +234,9 @@ fun ReviewScreen(
                 ) { i ->
                     vm.pages.getOrNull(i)?.let { PageView(it) }
                 }
+                val smart = vm.pages.getOrNull(pagerState.currentPage)?.smartLabel
                 Text(
-                    "${pagerState.currentPage + 1} / ${vm.pages.size}",
+                    "${pagerState.currentPage + 1} / ${vm.pages.size}" + (smart?.let { "  ·  ✨ Smart: $it" } ?: ""),
                     color = Color.White,
                     fontSize = 13.sp,
                     modifier = Modifier
@@ -347,15 +351,58 @@ private fun PageView(page: Page) {
 
 @Composable
 private fun FilterStrip(vm: ScannerViewModel, page: Page) {
-    val previews by produceState<Map<ScanFilter, ImageBitmap>>(emptyMap(), page.id, page.quad, page.rotation) {
+    val previews by produceState<Map<ScanFilter, ImageBitmap>>(emptyMap(), page.id, page.quad, page.rotation, page.removeShadow) {
         value = vm.filterPreviews(page)
     }
+    val context = LocalContext.current
     Column {
+        // Shadow removal is its own switch: it stays on whatever filter is chosen.
+        Row(
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(if (page.removeShadow) ScanColors.Accent else ScanColors.SurfaceHigh)
+                    .clickable { vm.setRemoveShadow(page, !page.removeShadow) }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.WbShade, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (page.removeShadow) "Shadow removed ✓" else "Remove shadow", color = Color.White, fontSize = 13.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(1.dp, ScanColors.AccentBright, RoundedCornerShape(20.dp))
+                    .clickable {
+                        vm.applyFilterToAll(page.filter, page.removeShadow)
+                        val what = if (page.removeShadow) "${page.filter.label} + shadow removal" else page.filter.label
+                        Toast.makeText(context, "$what applied to all ${vm.pages.size} pages", Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.DoneAll, null, tint = ScanColors.AccentBright, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Apply to all", color = ScanColors.AccentBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        page.smartLabel?.let {
+            Text(
+                "✨ Smart filter picked: $it",
+                color = ScanColors.Marigold, fontSize = 12.sp,
+                modifier = Modifier.padding(start = 14.dp, top = 6.dp),
+            )
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(ScanFilter.entries.toList()) { f ->
+            items(ScanFilter.choices) { f ->
                 val selected = page.filter == f
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -374,14 +421,10 @@ private fun FilterStrip(vm: ScannerViewModel, page: Page) {
                         else CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(f.label, color = if (selected) ScanColors.Accent else Color.White, fontSize = 12.sp)
+                    Text(f.label, color = if (selected) ScanColors.AccentBright else Color.White, fontSize = 12.sp)
                 }
             }
         }
-        TextButton(
-            onClick = { vm.applyFilterToAll(page.filter) },
-            modifier = Modifier.align(Alignment.End).padding(end = 8.dp),
-        ) { Text("Apply to all pages", color = ScanColors.Accent) }
     }
 }
 
