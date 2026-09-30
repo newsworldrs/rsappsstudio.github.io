@@ -156,7 +156,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * @param deviceRotation physical phone orientation at capture (OrientationEventListener
      *   degrees snapped to 0/90/180/270); used to turn book pages upright.
      */
-    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0) {
+    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false) {
         if (!captureAllowed) {
             photo.recycle()
             _messages.tryEmit(
@@ -174,7 +174,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val front = idFront
                 val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
-                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap) }
+                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported) }
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
@@ -217,7 +217,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     val bmp = withContext(Dispatchers.IO) {
                         runCatching { Images.decodeUri(getApplication(), uri, MAX_PHOTO_SIDE) }.getOrNull()
                     } ?: continue
-                    addPhoto(bmp, null)
+                    addPhoto(bmp, null, imported = true)
                 }
             } finally {
                 importing = false
@@ -231,6 +231,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private fun createPages(
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
         idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false,
+        imported: Boolean = false,
     ): List<Page> {
         val photoW = photo.width
         val photoH = photo.height
@@ -239,43 +240,68 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val gray = Images.toGrayMat(photo)
         try {
             var sidesFound = 4
-            val quad = if (frame != null) {
-                // Guided frame: edges are searched only near the frame sides on the full-res photo,
-                // then line-fitted; undetectable sides fall back to the frame + 1%.
-                val snap = DocumentDetector.snapToQuad(gray, frame)
-                sidesFound = snap.sidesFound
-                val snapped = DocumentDetector.refine(gray, snap.quad)
-                if (snap.sidesFound >= 4) {
-                    snapped
-                } else {
-                    // Some sides missing: let every detector compete (scored on real edge support)
-                    // and take a better outline if it still matches the frame.
-                    val alt = DocumentDetector.autoDetect(gray, null, listOf(snapped, frame))
-                    if (alt != null && alt.distanceTo(frame) < 0.15f &&
-                        DocumentDetector.scoreQuad(gray, alt) > DocumentDetector.scoreQuad(gray, snapped) + 0.05
-                    ) alt else snapped
+            var aspect = mode.forcedAspect
+            val quad = when {
+                imported -> {
+                    // Gallery picture: usually already cropped - the picture borders are the page
+                    // unless a real page lying on a surface is found (see detectImported).
+                    val prob = edgeProbability(photo)
+                    val r = try { DocumentDetector.detectImported(gray, prob) } finally { prob?.release() }
+                    if (r.wholeImage) aspect = null // keep the picture's own proportions
+                    r.quad
                 }
-            } else {
-                // Free mode: the learned edge model, the classic detector (two scales) and the live
-                // outline all compete; each is refined on the full photo and ranked by how well its
-                // four sides lie on real edges - the best one wins (not simply the first found).
-                val prob = com.rskusum.scanner.vision.EdgeModel.get(getApplication())?.let { model ->
-                    val rgb = Images.toRgbMat(photo)
-                    model.run(rgb).also { rgb.release() }
+                frame != null -> {
+                    // Guided frame: edges are searched near the frame sides on the full-res photo,
+                    // then line-fitted; undetectable sides fall back to the frame + 1%.
+                    val snap = DocumentDetector.snapToQuad(gray, frame)
+                    sidesFound = snap.sidesFound
+                    val snapped = DocumentDetector.refine(gray, snap.quad)
+                    if (snap.sidesFound >= 4) {
+                        snapped
+                    } else {
+                        // Some sides missing: a wider search, the live outline, the learned edge
+                        // model and the classic detector all compete, scored on real edge support.
+                        val wide = DocumentDetector.snapToQuad(gray, frame, bandFraction = 0.16)
+                        val prob = edgeProbability(photo)
+                        val alt = try {
+                            DocumentDetector.autoDetect(gray, prob, listOfNotNull(snapped, hint, frame))
+                        } finally {
+                            prob?.release()
+                        }
+                        val cands = listOfNotNull(
+                            if (wide.sidesFound > snap.sidesFound) DocumentDetector.refine(gray, wide.quad) else null,
+                            hint?.let { DocumentDetector.refine(gray, it) },
+                            alt,
+                        ).filter { it.distanceTo(frame) < 0.2f && it.area() > frame.area() * 0.35f }
+                        var best = snapped
+                        var bestScore = DocumentDetector.scoreQuad(gray, snapped) + 0.03
+                        for (c in cands) {
+                            val sc = DocumentDetector.scoreQuad(gray, c)
+                            if (sc > bestScore) { best = c; bestScore = sc }
+                        }
+                        if (best !== snapped && bestScore >= 0.45) sidesFound = maxOf(sidesFound, 3)
+                        best
+                    }
                 }
-                val best = try {
-                    DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint))
-                } finally {
-                    prob?.release()
-                }
-                when {
-                    best != null -> best
-                    else -> {
-                        val detected = DocumentDetector.detect(gray, 640, prev = hint) ?: DocumentDetector.detect(gray, 1000, prev = hint)
-                        when {
-                            detected != null -> DocumentDetector.refine(gray, detected)
-                            hint != null -> DocumentDetector.refine(gray, hint)
-                            else -> { sidesFound = 0; Quad.FULL }
+                else -> {
+                    // Free mode: the learned edge model, the classic detector (two scales) and the live
+                    // outline all compete; each is refined on the full photo and ranked by how well its
+                    // four sides lie on real edges - the best one wins (not simply the first found).
+                    val prob = edgeProbability(photo)
+                    val best = try {
+                        DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint))
+                    } finally {
+                        prob?.release()
+                    }
+                    when {
+                        best != null -> best
+                        else -> {
+                            val detected = DocumentDetector.detect(gray, 640, prev = hint) ?: DocumentDetector.detect(gray, 1000, prev = hint)
+                            when {
+                                detected != null -> DocumentDetector.refine(gray, detected)
+                                hint != null -> DocumentDetector.refine(gray, hint)
+                                else -> { sidesFound = 0; Quad.FULL }
+                            }
                         }
                     }
                 }
@@ -285,7 +311,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             val fp = DocumentDetector.fingerprint(gray, quad)
             val blank = DocumentDetector.isBlank(fp)
             // In frame mode a real document shows at least two of its edges near the frame.
-            val noDocument = if (frame != null) sidesFound == 0 || (sidesFound <= 1 && blank) else sidesFound == 0 && blank
+            val noDocument = if (imported) false else if (frame != null) sidesFound == 0 || (sidesFound <= 1 && blank) else sidesFound == 0 && blank
             if (noDocument) throw Rejected(str(R.string.rs_scanner_no_document))
             // Duplicate check against every page already scanned in this session.
             // Same page as one already in this session? Layout + feature matching: works whatever the
@@ -301,11 +327,27 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             if (mode.splitBook) {
+                // The outline may hold only one page of the open book: complete the spread from it.
+                var spread = DocumentDetector.expandToSpread(gray, quad)
+                // Two pages or one? Text lines of an open book run across the spine.
+                var twoPages = if (spread !== quad) true else DocumentDetector.isTwoPageSpread(gray, quad)
+                if (twoPages == false && frame != null && quad.area() < frame.area() * 0.7f &&
+                    DocumentDetector.isTwoPageSpread(gray, frame) != false
+                ) {
+                    // The book is lined up with the frame but the edges found belong to one page.
+                    spread = frame; twoPages = true
+                }
+                if (twoPages == false) {
+                    // Only one page is in the picture: keep it whole instead of cutting it in half.
+                    _messages.tryEmit(str(R.string.rs_scanner_book_single_page))
+                    return listOf(
+                        Page(file, quad, mode.defaultFilter, mode.forcedAspect, frame = frame, fingerprint = fp)
+                            .also { it.signature = sig; autoUpright(it) }
+                    )
+                }
                 // Open book: two independent A4 pages, each with its own crop outline so they can be
                 // cropped/edited separately. With the phone held across the book (spread taller than
                 // wide in the photo) each half is turned upright using the phone's orientation.
-                // Free mode: the detectors may have found only one page - complete the open book.
-                val spread = if (frame == null) DocumentDetector.expandToSpread(gray, quad) else quad
                 // Cut at the real spine (gutter shadow / blank band), not just the geometric middle.
                 val spine = DocumentDetector.findSpine(gray, spread)
                 val (a, b) = DocumentDetector.splitSpread(spread, photoW, photoH, spine)
@@ -315,20 +357,24 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val first = if (swap) b else a
                 val second = if (swap) a else b
                 // Phone held across the book: halves are sideways - turn them upright. Default is
-                // the phone's top pointing left (matching the sideways page labels).
+                // the phone's top pointing left (matching the sideways page labels); a wrong guess
+                // is upside down, which the orientation model fixes.
                 val turn = if (!acrossBook) 0 else if (deviceRotation == 90) 90 else 270
                 // Detach the pages: each gets its OWN upright image cut at the spine, so crop,
-                // filters and eraser only ever see that one page.
+                // filters and eraser only ever see that one page. Book pages are always portrait.
                 val pagesOut = listOf(first, second).mapIndexed { i, q ->
                     val (pageFile, pageQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
-                    Page(pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect, fingerprint = fp).also { it.signature = sig; autoUpright(it) }
+                    Page(
+                        pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
+                        forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
+                    ).also { it.signature = sig; autoUpright(it) }
                 }
                 file.delete() // the full spread photo is no longer needed
                 return pagesOut
             }
             return listOf(
                 Page(
-                    file, quad, mode.defaultFilter, mode.forcedAspect, forcedOrientation = mode.pageOrientation,
+                    file, quad, mode.defaultFilter, aspect, forcedOrientation = if (aspect == null) DocumentDetector.ORIENT_AUTO else mode.pageOrientation,
                     frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide,
                 ).also { it.signature = sig; autoUpright(it) }
             )
@@ -340,6 +386,13 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             photo.recycle()
         }
     }
+
+    /** Page-edge probability map of the learned edge model (null when the model is unavailable). */
+    private fun edgeProbability(photo: Bitmap): Mat? =
+        com.rskusum.scanner.vision.EdgeModel.get(getApplication())?.let { model ->
+            val rgb = Images.toRgbMat(photo)
+            model.run(rgb).also { rgb.release() }
+        }
 
     /**
      * Reads the text direction of the flattened page with the on-device orientation model and

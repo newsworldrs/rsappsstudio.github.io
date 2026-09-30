@@ -679,6 +679,137 @@ object DocumentDetector {
         return best
     }
 
+    /**
+     * Open book (two pages) or a single page? The text lines of an open book run along the
+     * spread's long side (across the spine), on a single page they run along its short side.
+     * Measured from the ink profiles of the flattened outline, half by half.
+     * @return true = two-page spread, false = one page, null = not enough text to tell.
+     */
+    fun isTwoPageSpread(gray: Mat, quad: Quad): Boolean? {
+        val w = gray.cols(); val h = gray.rows()
+        val tall = isTallSpread(quad, w, h)
+        val n = 600
+        val src = MatOfPoint2f(*quad.points.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray())
+        val dst = MatOfPoint2f(Point(0.0, 0.0), Point(n.toDouble(), 0.0), Point(n.toDouble(), n.toDouble()), Point(0.0, n.toDouble()))
+        val m = Imgproc.getPerspectiveTransform(src, dst)
+        val flat = Mat()
+        Imgproc.warpPerspective(gray, flat, m, Size(n.toDouble(), n.toDouble()), Imgproc.INTER_AREA)
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(flat, ink, 1.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, 25, 12.0)
+        val px = ByteArray(n * n)
+        ink.get(0, 0, px)
+        src.release(); dst.release(); m.release(); flat.release(); ink.release()
+        var total = 0
+        for (b in px) total += b
+        if (total < n * n * 0.005) return null
+
+        fun energy(p: FloatArray): Double {
+            val s = smooth1d(p, 5.0)
+            var e = 0.0
+            for (i in p.indices) { val d = p[i] - s[i]; e += d * d }
+            return e / p.size
+        }
+        // Profiles of each half (split across the long side), inner 80% only (no page edges).
+        var eRows = 0.0; var eCols = 0.0
+        val half = n / 2
+        for (k in 0..1) {
+            val x0 = if (tall) 0 else k * half; val x1 = if (tall) n else x0 + half
+            val y0 = if (tall) k * half else 0; val y1 = if (tall) y0 + half else n
+            val ix0 = x0 + (x1 - x0) / 10; val ix1 = x1 - (x1 - x0) / 10
+            val iy0 = y0 + (y1 - y0) / 10; val iy1 = y1 - (y1 - y0) / 10
+            val rows = FloatArray(iy1 - iy0); val cols = FloatArray(ix1 - ix0)
+            for (y in iy0 until iy1) for (x in ix0 until ix1) {
+                val v = px[y * n + x].toFloat()
+                rows[y - iy0] += v; cols[x - ix0] += v
+            }
+            for (i in rows.indices) rows[i] /= cols.size
+            for (i in cols.indices) cols[i] /= rows.size
+            eRows += energy(rows); eCols += energy(cols)
+        }
+        // Rows alternate text / gap = lines run along x. The split runs along x unless tall.
+        val alongSplit = if (tall) eCols else eRows
+        val acrossSplit = if (tall) eRows else eCols
+        val r = alongSplit / acrossSplit.coerceAtLeast(1e-9)
+        debugLog?.invoke("spread lines ratio=%.2f".format(r))
+        return when {
+            r > 1.6 -> true
+            r < 1 / 1.6 -> false
+            else -> null
+        }
+    }
+
+    /** Outline to use for an image picked from the gallery (see [detectImported]). */
+    class ImportResult(val quad: Quad, val wholeImage: Boolean)
+
+    /**
+     * Gallery images are often already cropped: the page fills the picture and runs into its
+     * borders, so any shape found inside (a photo, a table, a box) is NOT the page. The detected
+     * outline is used only when it really is a page lying on some surface: brighter paper inside,
+     * a clearly darker surface outside on most of its sides. Otherwise the picture borders are the
+     * page corners.
+     */
+    fun detectImported(gray: Mat, edgeMap: Mat?): ImportResult {
+        val whole = ImportResult(Quad.FULL, true)
+        val q = autoDetect(gray, edgeMap, emptyList()) ?: return whole
+        val scale = min(1.0, 500.0 / max(gray.cols(), gray.rows()))
+        val sm = Mat()
+        Imgproc.resize(gray, sm, Size(gray.cols() * scale, gray.rows() * scale), 0.0, 0.0, Imgproc.INTER_AREA)
+        Imgproc.medianBlur(sm, sm, 5)
+        val w = sm.cols(); val h = sm.rows()
+        val pix = ByteArray(w * h)
+        sm.get(0, 0, pix)
+        sm.release()
+        fun at(x: Double, y: Double): Int {
+            val xi = x.toInt(); val yi = y.toInt()
+            return if (xi in 0 until w && yi in 0 until h) pix[yi * w + xi].toInt() and 0xFF else -1
+        }
+        // Paper level = 95th percentile brightness.
+        val hist = IntArray(256)
+        for (b in pix) hist[b.toInt() and 0xFF]++
+        var acc = 0; var paper = 255
+        for (v in 255 downTo 0) { acc += hist[v]; if (acc >= pix.size * 0.05) { paper = v; break } }
+
+        val p = q.points.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }
+        val cx = p.sumOf { it.x } / 4; val cy = p.sumOf { it.y } / 4
+        val d = 0.025 * max(w, h)
+        var usable = 0; var votes = 0
+        for (i in 0 until 4) {
+            val a = p[i]; val b = p[(i + 1) % 4]
+            val (nx, ny) = outwardNormal(a, b, cx, cy)
+            val ins = ArrayList<Int>(); val outs = ArrayList<Int>()
+            for (j in 0 until 24) {
+                val t = 0.15 + 0.7 * j / 23
+                val x = a.x + (b.x - a.x) * t; val y = a.y + (b.y - a.y) * t
+                val iv = at(x - nx * d, y - ny * d); val ov = at(x + nx * d, y + ny * d)
+                if (iv >= 0 && ov >= 0) { ins += iv; outs += ov }
+            }
+            if (outs.size < 8) continue // side on the picture border
+            usable++
+            ins.sort(); outs.sort()
+            val inside = ins[ins.size / 2]; val outside = outs[outs.size / 2]
+            // Page side: paper inside, a darker surface (not more paper) outside.
+            if (inside - outside >= 4 && outside <= paper - max(8, paper / 20)) votes++
+        }
+        debugLog?.invoke("import usable=$usable votes=$votes paper=$paper area=${q.area()}")
+        val pageOnSurface = usable >= 2 && votes >= kotlin.math.ceil(usable * 0.6).toInt()
+        return when {
+            pageOnSurface -> ImportResult(snapToBorders(q, 0.015f), false)
+            usable < 2 && q.area() >= 0.6f -> ImportResult(snapToBorders(q, 0.03f), true)
+            else -> whole
+        }
+    }
+
+    /** Corners within [margin] of the picture border are moved onto it. */
+    fun snapToBorders(q: Quad, margin: Float): Quad {
+        fun s(v: Float) = when {
+            v < margin -> 0f
+            v > 1 - margin -> 1f
+            else -> v
+        }
+        fun c(p: NPoint) = NPoint(s(p.x), s(p.y))
+        return Quad(c(q.tl), c(q.tr), c(q.br), c(q.bl))
+    }
+
     private fun clampQuad(q: Quad): Quad {
         fun c(p: NPoint) = NPoint(p.x.coerceIn(0f, 1f), p.y.coerceIn(0f, 1f))
         return Quad(c(q.tl), c(q.tr), c(q.br), c(q.bl))

@@ -153,6 +153,9 @@ private enum class Flash(val mode: Int) {
     fun next() = entries[(ordinal + 1) % entries.size]
 }
 
+/** Gyroscope speed (rad/s x 1000) below which the phone counts as steady for the shutter. */
+private const val STEADY_SHAKE = 150
+
 @Composable
 fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> Unit)? = null) {
     val context = LocalContext.current
@@ -182,7 +185,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     // Camera zoom (pinch on the preview or the 1x / 2x chips): get the page to fill the frame
     // without moving the phone closer.
     var zoom by remember { mutableFloatStateOf(1f) }
-    val maxZoom = 4f
+    // Above 2x most phones only crop the sensor (digital zoom): fewer pixels = blurry text.
+    val maxZoom = 2f
     var qrMode by remember { mutableStateOf(false) }
     var qrText by remember { mutableStateOf<String?>(null) }
     var capturing by remember { mutableStateOf(false) }
@@ -206,6 +210,24 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         }
         if (listener.canDetectOrientation()) listener.enable()
         onDispose { listener.disable() }
+    }
+
+    // Hand shake (gyroscope, rad/s x 1000, smoothed): the shutter waits for a steady moment so the
+    // photo is not motion-blurred.
+    val shake = remember { java.util.concurrent.atomic.AtomicInteger(0) }
+    DisposableEffect(Unit) {
+        val sm = context.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager
+        val gyro = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_GYROSCOPE)
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(e: android.hardware.SensorEvent) {
+                val v = e.values
+                val speed = kotlin.math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]) * 1000f
+                shake.set((shake.get() * 0.6f + speed * 0.4f).toInt())
+            }
+            override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) = Unit
+        }
+        if (gyro != null) sm?.registerListener(listener, gyro, android.hardware.SensorManager.SENSOR_DELAY_GAME)
+        onDispose { sm?.unregisterListener(listener) }
     }
 
     fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?) {
@@ -261,7 +283,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         fun shoot() {
             if (shot) return
             shot = true
-            takePhoto(ic, hint, frame)
+            // Wait (at most 0.8 s) until the phone is steady, then shoot.
+            scope.launch {
+                val until = SystemClock.elapsedRealtime() + 800
+                while (shake.get() > STEADY_SHAKE && SystemClock.elapsedRealtime() < until) kotlinx.coroutines.delay(30)
+                takePhoto(ic, hint, frame)
+            }
         }
         val cam = holder.camera
         val pv = holder.previewView
