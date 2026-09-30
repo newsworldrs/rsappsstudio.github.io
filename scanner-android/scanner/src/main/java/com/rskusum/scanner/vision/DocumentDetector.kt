@@ -655,26 +655,35 @@ object DocumentDetector {
      */
     fun expandToSpread(gray: Mat, quad: Quad, maxDim: Int = 1000): Quad {
         fun beyond(a: NPoint, b: NPoint) = NPoint(2 * b.x - a.x, 2 * b.y - a.y) // b + (b - a)
+        // (whole spread, the added other page)
         val cands = listOf(
-            Quad(quad.tl, beyond(quad.tl, quad.tr), beyond(quad.bl, quad.br), quad.bl),   // other page on the right
-            Quad(beyond(quad.tr, quad.tl), quad.tr, quad.br, beyond(quad.br, quad.bl)),   // on the left
-            Quad(quad.tl, quad.tr, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl)),   // below
-            Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.br, quad.bl),   // above
+            Quad(quad.tl, beyond(quad.tl, quad.tr), beyond(quad.bl, quad.br), quad.bl) to
+                Quad(quad.tr, beyond(quad.tl, quad.tr), beyond(quad.bl, quad.br), quad.br),   // other page on the right
+            Quad(beyond(quad.tr, quad.tl), quad.tr, quad.br, beyond(quad.br, quad.bl)) to
+                Quad(beyond(quad.tr, quad.tl), quad.tl, quad.bl, beyond(quad.br, quad.bl)),   // on the left
+            Quad(quad.tl, quad.tr, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl)) to
+                Quad(quad.bl, quad.br, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl)),   // below
+            Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.br, quad.bl) to
+                Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.tr, quad.tl),   // above
         )
         val baseScore = scoreQuad(gray, quad, maxDim)
         var best = quad
-        var bestScore = 0.0
-        for (c in cands) {
+        var bestRank = 0.0
+        for ((c, other) in cands) {
             // The other page must be (almost entirely) in the picture.
             if (c.points.any { it.x < -0.06f || it.x > 1.06f || it.y < -0.06f || it.y > 1.06f }) continue
             val snap = snapToQuad(gray, clampQuad(c), maxDim = maxDim, bandFraction = 0.06)
-            if (snap.sidesFound < 3) continue
-            val q = snap.quad
+            val q = if (snap.sidesFound >= 3) snap.quad else clampQuad(c)
+            if (q.area() <= quad.area() * 1.5f) continue
             val sc = scoreQuad(gray, q, maxDim)
-            debugLog?.invoke("spread cand score=%.3f base=%.3f sides=%d".format(sc, baseScore, snap.sidesFound))
-            if (sc >= 0.45 && sc >= baseScore * 0.85 && q.area() > quad.area() * 1.5 && sc > bestScore) {
-                best = q; bestScore = sc
-            }
+            val edgesOk = snap.sidesFound >= 3 && sc >= 0.45 && sc >= baseScore * 0.85
+            // Text evidence: the added part holds a page of text and the whole reads as an open book
+            // (works when the other page's edges are faint, e.g. against a light surface).
+            val textOk = !edgesOk && isTwoPageSpread(gray, clampQuad(other)) == false && isTwoPageSpread(gray, q) == true
+            debugLog?.invoke("spread cand score=%.3f base=%.3f sides=%d text=%b".format(sc, baseScore, snap.sidesFound, textOk))
+            if (!edgesOk && !textOk) continue
+            val rank = sc + if (edgesOk) 1.0 else 0.0
+            if (rank > bestRank) { best = q; bestRank = rank }
         }
         return best
     }

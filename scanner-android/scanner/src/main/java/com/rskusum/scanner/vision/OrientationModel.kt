@@ -36,6 +36,20 @@ class OrientationModel private constructor(private val interpreter: Interpreter)
      */
     @Synchronized
     fun uprightRotation(rgb: Mat): Int {
+        val p = probabilities(rgb) ?: return 0
+        val best = p.indices.maxBy { p[it] }
+        val conf = p[best]
+        if (best == 0 || conf < MIN_CONFIDENCE) return 0
+        // Content turned N degrees clockwise -> rotate (360 - N) clockwise to make it upright.
+        return (360 - best * 90) % 360
+    }
+
+    /**
+     * Average class probabilities [0, 90, 180, 270] (content turned clockwise) over the crops that
+     * show something readable, or null when none does.
+     */
+    @Synchronized
+    fun probabilities(rgb: Mat): FloatArray? {
         val sum = FloatArray(4)
         var votes = 0
         // Two scales x three positions along the page's long side: small text and big headings
@@ -58,13 +72,9 @@ class OrientationModel private constructor(private val interpreter: Interpreter)
             }
             small.release()
         }
-        if (votes == 0) return 0
-        val best = sum.indices.maxBy { sum[it] }
-        val conf = sum[best] / votes
-        Log.d("OrientationModel", "votes=$votes probs=${sum.map { it / votes }} -> ${best * 90} ($conf)")
-        if (best == 0 || conf < MIN_CONFIDENCE) return 0
-        // Content turned N degrees clockwise -> rotate (360 - N) clockwise to make it upright.
-        return (360 - best * 90) % 360
+        if (votes == 0) return null
+        Log.d("OrientationModel", "votes=$votes probs=${sum.map { it / votes }}")
+        return FloatArray(4) { sum[it] / votes }
     }
 
     private fun classify(crop: Mat): FloatArray {

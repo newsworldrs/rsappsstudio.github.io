@@ -333,6 +333,13 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // outline looks like one page, try to complete the open book from it.
                 var spread = quad
                 var twoPages = DocumentDetector.isTwoPageSpread(gray, quad)
+                if (twoPages != true && hint != null) {
+                    // The live outline showed the whole open book: use it when it really holds two pages.
+                    val live = DocumentDetector.refine(gray, hint)
+                    if (live.area() > quad.area() * 1.4f && DocumentDetector.isTwoPageSpread(gray, live) == true) {
+                        spread = live; twoPages = true
+                    }
+                }
                 if (twoPages != true) {
                     val expanded = DocumentDetector.expandToSpread(gray, quad)
                     if (expanded !== quad) { spread = expanded; twoPages = true }
@@ -416,15 +423,16 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun autoUpright(page: Page) {
         try {
-            val model = com.rskusum.scanner.vision.OrientationModel.get(getApplication()) ?: return
-            val bmp = Images.decodeFile(page.originalFile, 1600) ?: return
+            val model = com.rskusum.scanner.vision.OrientationModel.get(getApplication())
+            val bmp = Images.decodeFile(page.originalFile, 2000) ?: return
             val rgb = Images.toRgbMat(bmp)
             bmp.recycle()
-            val flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 1200, forcedOrientation = page.forcedOrientation)
+            val flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 1600, forcedOrientation = page.forcedOrientation)
             rgb.release()
-            val turn = model.uprightRotation(flat)
-            flat.release()
             val fixedOrientation = page.forcedOrientation != DocumentDetector.ORIENT_AUTO
+            // Text lines give the axis for any script, headlines / the model the direction.
+            val turn = com.rskusum.scanner.vision.TextOrientation.uprightRotation(flat, model, allowQuarter = !fixedOrientation)
+            flat.release()
             if (turn == 180 || (!fixedOrientation && turn != 0)) page.rotation = turn
         } catch (t: Throwable) {
             Log.e(TAG, "auto orientation failed", t)
