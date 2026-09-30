@@ -485,7 +485,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                             .align(Alignment.TopCenter)
                             .padding(top = 58.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(ScanColors.Gradient)
+                            .background(ScanColors.Accent)
                             .padding(horizontal = 12.dp, vertical = 4.dp),
                     )
                 }
@@ -711,7 +711,7 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
     var last by remember { mutableStateOf<Quad?>(null) }
     if (quad != null) last = quad
     val q = last ?: return
-    val color = if (phase == CapturePhase.NEXT_PAGE) ScanColors.AccentBright else ScanColors.Accent
+    val color = if (phase == CapturePhase.NEXT_PAGE) Color(0xFF34C759) else ScanColors.Accent
     Canvas(Modifier.fillMaxSize()) {
         val pts = q.points.map { Offset(it.x * size.width, it.y * size.height) }
         val path = Path().apply {
@@ -720,8 +720,7 @@ private fun QuadOverlay(quad: Quad?, phase: CapturePhase) {
             close()
         }
         drawPath(path, color.copy(alpha = 0.22f * alpha))
-        val brush = if (phase == CapturePhase.NEXT_PAGE) androidx.compose.ui.graphics.SolidColor(color) else ScanColors.Gradient
-        drawPath(path, brush, alpha = alpha, style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
+        drawPath(path, color.copy(alpha = alpha), style = Stroke(3.dp.toPx(), join = StrokeJoin.Round))
         pts.forEach {
             drawCircle(Color.White.copy(alpha = alpha), 7.dp.toPx(), it)
             drawCircle(color.copy(alpha = alpha), 5.dp.toPx(), it)
@@ -768,7 +767,7 @@ private fun ZoomChips(zoom: Float, onZoom: (Float) -> Unit, modifier: Modifier =
                 Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(if (active) ScanColors.Accent else Color.Transparent)
+                    .background(ScanColors.buttonBackground(active))
                     .clickable { onZoom(level) },
                 contentAlignment = Alignment.Center,
             ) {
@@ -812,7 +811,7 @@ private fun TextBoxesOverlay(boxes: List<com.rskusum.scanner.vision.NRect>) {
  */
 @Composable
 private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = false) {
-    val color = if (aligned) ScanColors.AccentBright else Color.White
+    val color = if (aligned) Color(0xFF34C759) else Color.White
     Canvas(Modifier.fillMaxSize()) {
         val l = frame.tl.x * size.width
         val t = frame.tl.y * size.height
@@ -1129,7 +1128,7 @@ private fun RailButton(selected: Boolean, label: String?, onClick: () -> Unit, c
             Modifier
                 .size(40.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(if (selected) ScanColors.Accent else Color.Transparent)
+                .background(ScanColors.buttonBackground(selected))
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) { content() }
@@ -1169,8 +1168,7 @@ private fun ModeCarousel(modes: List<ScanMode>, selected: ScanMode, onSelect: (S
             Row(
                 Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (isSel) ScanColors.Accent else ScanColors.SurfaceHigh)
-                    .border(1.dp, if (isSel) ScanColors.AccentBright else Color.Transparent, RoundedCornerShape(12.dp))
+                    .background(ScanColors.buttonBackground(isSel, ScanColors.SurfaceHigh))
                     .clickable { onSelect(m) }
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1266,7 +1264,7 @@ private fun Shutter(progress: Float, capturing: Boolean, autoCapture: Boolean, o
                     style = Stroke(track, cap = StrokeCap.Round),
                 )
             }
-            drawCircle(ScanColors.Accent, (size.minDimension / 2 - 9.dp.toPx()) * press)
+            drawCircle(ScanColors.Gradient, (size.minDimension / 2 - 9.dp.toPx()) * press)
         }
         Icon(Icons.Filled.CameraAlt, contentDescription = stringResource(R.string.rs_scanner_capture), tint = Color.White, modifier = Modifier.size(28.dp).scale(press))
         if (autoCapture) {

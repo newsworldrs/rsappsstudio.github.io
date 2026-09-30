@@ -409,7 +409,7 @@ private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(ScanColors.Gradient)
+                    .background(ScanColors.Accent)
                     .padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
@@ -431,7 +431,7 @@ private fun FilterStrip(vm: ScannerViewModel, page: Page) {
             Row(
                 Modifier
                     .clip(RoundedCornerShape(20.dp))
-                    .background(if (page.removeShadow) ScanColors.Accent else ScanColors.SurfaceHigh)
+                    .background(ScanColors.buttonBackground(page.removeShadow, ScanColors.SurfaceHigh))
                     .clickable { vm.setRemoveShadow(page, !page.removeShadow) }
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,

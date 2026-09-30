@@ -306,8 +306,7 @@ private fun ModeChip(label: String, selected: Boolean, modifier: Modifier = Modi
     Box(
         modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(if (selected) ScanColors.Accent else ScanColors.SurfaceHigh)
-            .border(1.dp, if (selected) ScanColors.AccentBright else Color.Transparent, RoundedCornerShape(12.dp))
+            .background(ScanColors.buttonBackground(selected, ScanColors.SurfaceHigh))
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
