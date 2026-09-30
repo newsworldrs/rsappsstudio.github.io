@@ -38,7 +38,7 @@ A complete document scanner for Android apps, and a ready-made scanner app (`com
   * Rotate.
   * Filters: Auto color, Original, No shadow, Light text, Grayscale, B&W, Whiteboard.
   * Eraser: "marks only" keeps printed text; "everything" wipes the area.
-* **Output:** a compressed PDF (built with PDFBox) and/or one JPEG per page.
+* **Output:** a compressed PDF (built-in PDF writer, no PDF library needed) and/or one JPEG per page.
 * **AI Text mode:** the live camera highlights the text lines on the page. Each capture is then read on the device and opens in an AI Text screen showing:
   * the editable text,
   * the detected document type (invoice, receipt, letter, ID, resume, exam paper, …),
@@ -114,7 +114,6 @@ Your app **does not** need to use Jetpack Compose. The scanner brings its own sc
        implementation("androidx.camera:camera-view:1.4.1")
        implementation("org.opencv:opencv:4.12.0")
        implementation("org.tensorflow:tensorflow-lite:2.16.1")
-       implementation("com.tom-roush:pdfbox-android:2.0.27.0")
        implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0") // needs maven("https://jitpack.io")
    }
    ```
@@ -302,6 +301,25 @@ In AI Text mode, the user points the camera at a page and the text lines are hig
 **Done** returns everything to your app. `ScanResult.text` is also filled when the user read pages with the **Text** tool in any other mode.
 
 For key details and the document type on your own text, call `TextInsights.analyze(text)`. It runs offline.
+
+### Your app's language
+
+All text the scanner shows is in `scanner/src/main/res/values/rs_scanner_strings.xml`. Every name starts with `rs_scanner_`. English is included.
+
+To show the scanner in another language, add the same names to your app, for example `app/src/main/res/values-hi/rs_scanner_strings.xml`. Android then picks the language from the phone's settings automatically; there is no language code to set anywhere.
+
+```xml
+<resources>
+    <string name="rs_scanner_doc_place">पेज को फ्रेम के अंदर रखें</string>
+    <!-- … the other rs_scanner_ strings … -->
+</resources>
+```
+
+To change a wording in English, override the same name in your app's `values/` folder. The "powered by RS Apps Studio" line is part of the scanner and is not a string resource.
+
+### PDF tools in your own app
+
+The library writes its PDFs itself and does not include a PDF library. If your app needs PDF tools (merge, split, protect…), add a PDF library to your app yourself, for example `com.tom-roush:pdfbox-android`. The scanner doesn't depend on it.
 
 ### More ways to use it
 

@@ -48,29 +48,19 @@ class DocumentStore(private val context: Context) {
             .map { SavedDocument(it, it.nameWithoutExtension, it.lastModified(), it.length(), pageCount(it)) }
 
     /**
-     * Writes the pages as a PDF into the library with Apache PDFBox. Every page image is
-     * downscaled and JPEG-compressed per [quality] *before* embedding (the JPEG is embedded as-is,
-     * no second re-compression), which keeps files small. Returns the file.
+     * Writes the pages as a PDF. Every page image is downscaled and JPEG-compressed per [quality]
+     * *before* embedding and then embedded as-is (no second re-compression), which keeps files
+     * small. Pages are A4 wide (A4 long side for landscape pages); height follows the page aspect.
+     * Uses the built-in [JpegPdfWriter] - no PDF library needed. Returns the file.
      */
     fun savePdf(name: String, pageFiles: List<File>, quality: PdfQuality = PdfQuality.BALANCED, into: File = dir): File {
-        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
         val file = uniqueFile(sanitize(name), "pdf", into)
-        com.tom_roush.pdfbox.pdmodel.PDDocument().use { doc ->
-            doc.documentInformation.title = name
-            doc.documentInformation.producer = "Scan - powered by RS Apps Studio"
-            for (pf in pageFiles) {
-                val (jpeg, w, h) = compressPage(pf, quality)
-                val image = com.tom_roush.pdfbox.pdmodel.graphics.image.JPEGFactory.createFromByteArray(doc, jpeg)
-                // A4 width (or height for landscape) in points; height follows the page aspect.
-                val landscape = w > h
-                val pw = if (landscape) A4_LONG else A4_SHORT
-                val ph = pw * h / w
-                val page = com.tom_roush.pdfbox.pdmodel.PDPage(com.tom_roush.pdfbox.pdmodel.common.PDRectangle(pw, ph))
-                doc.addPage(page)
-                com.tom_roush.pdfbox.pdmodel.PDPageContentStream(doc, page).use { cs -> cs.drawImage(image, 0f, 0f, pw, ph) }
-            }
-            doc.save(file)
+        val pages = pageFiles.map { pf ->
+            val (jpeg, w, h) = compressPage(pf, quality)
+            val pw = if (w > h) A4_LONG else A4_SHORT
+            JpegPdfWriter.PageImage(jpeg, w, h, pw, pw * h / w)
         }
+        JpegPdfWriter.write(file, pages, title = name, producer = "Scan - powered by RS Apps Studio")
         return file
     }
 
