@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="search"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_search"
+        android:shortcutShortLabel="@string/shortcut_search_short"
+        android:shortcutLongLabel="@string/shortcut_search_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="whocaller://search"
+            android:targetPackage="com.rskusum.whocaller.debug"
+            android:targetClass="com.rskusum.whocaller.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="calls"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_calls"
+        android:shortcutShortLabel="@string/shortcut_calls_short"
+        android:shortcutLongLabel="@string/shortcut_calls_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="whocaller://calls"
+            android:targetPackage="com.rskusum.whocaller.debug"
+            android:targetClass="com.rskusum.whocaller.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="protection"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_protection"
+        android:shortcutShortLabel="@string/shortcut_protection_short"
+        android:shortcutLongLabel="@string/shortcut_protection_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="whocaller://protection"
+            android:targetPackage="com.rskusum.whocaller.debug"
+            android:targetClass="com.rskusum.whocaller.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="blocked"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_blocked"
+        android:shortcutShortLabel="@string/shortcut_blocked_short"
+        android:shortcutLongLabel="@string/shortcut_blocked_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="whocaller://blocked"
+            android:targetPackage="com.rskusum.whocaller.debug"
+            android:targetClass="com.rskusum.whocaller.MainActivity" />
+    </shortcut>
+</shortcuts>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="perm_setup_title">Set up protection</string>
+    <string name="perm_setup_subtitle">Choose what WhoCaller can use. You can change this any time in Settings. Everything you skip can be turned on later.</string>
+    <string name="perm_setup_done">Continue</string>
+    <string name="perm_setup_skip_all">Skip for now</string>
+
+    <string name="perm_explain">Explain</string>
+    <string name="perm_allow">Allow</string>
+    <string name="perm_not_now">Not now</string>
+    <string name="perm_granted">Allowed</string>
+    <string name="perm_open_settings">Open settings</string>
+    <string name="perm_skipped">Skipped</string>
+    <string name="perm_got_it">Got it</string>
+
+    <string name="perm_caller_id_title">Caller Identification</string>
+    <string name="perm_caller_id_summary">Required for identifying incoming calls.</string>
+    <string name="perm_caller_id_explain">WhoCaller asks Android to make it your caller ID &amp; spam app. Android then shows WhoCaller the number of incoming calls from people who aren\'t in your contacts, so it can identify them and warn you about suspected spam. WhoCaller can\'t listen to or record calls. On Android 9 and older, this uses the phone state permission instead.</string>
+    <string name="perm_caller_id_denied">Without this, WhoCaller can\'t identify or block calls as they arrive. You can still search numbers manually.</string>
+
+    <string name="perm_call_history_title">Call History</string>
+    <string name="perm_call_history_summary">Used to display your recent calls.</string>
+    <string name="perm_call_history_explain">WhoCaller reads your call log on this device to show recent calls with caller names and spam labels. Your call history is never uploaded.</string>
+    <string name="perm_call_history_denied">Recent calls won\'t be shown. Caller ID and search still work.</string>
+
+    <string name="perm_contacts_title">Contacts</string>
+    <string name="perm_contacts_summary">Used to identify numbers already saved on your device.</string>
+    <string name="perm_contacts_explain">WhoCaller checks your contacts on this device so people you know are never labelled as unknown or spam. Your contacts are not uploaded to WhoCaller servers.</string>
+    <string name="perm_contacts_denied">Saved contacts can\'t be recognised, and \"Block unknown callers\" stays off.</string>
+
+    <string name="perm_notifications_title">Notifications</string>
+    <string name="perm_notifications_summary">Used for caller alerts and spam warnings.</string>
+    <string name="perm_notifications_explain">WhoCaller shows who is calling and warns you about suspected spam using notifications. You can switch individual alert types off in Settings.</string>
+    <string name="perm_notifications_denied">You won\'t see caller alerts during calls.</string>
+</resources>

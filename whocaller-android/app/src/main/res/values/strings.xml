@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">WhoCaller</string>
+    <string name="developer_name" translatable="false">RS APPS STUDIO</string>
+    <string name="splash_tagline">Know who\'s calling.\nStay protected.</string>
+    <string name="app_description">WhoCaller helps you identify unknown callers, detect suspicious calls, search phone numbers and protect yourself from unwanted communication.</string>
+
+    <string name="widget_label">WhoCaller</string>
+    <string name="widget_search">Search Number</string>
+    <string name="widget_recent_spam">Recent Spam</string>
+    <string name="widget_no_recent_spam">No spam blocked recently</string>
+    <string name="widget_protection_active">Protection Active</string>
+    <string name="widget_protection_setup">Protection Setup Required</string>
+    <string name="widget_description">Search numbers and see your protection status.</string>
+
+    <string name="shortcut_search_short">Search</string>
+    <string name="shortcut_search_long">Search Number</string>
+    <string name="shortcut_calls_short">Calls</string>
+    <string name="shortcut_calls_long">Recent Calls</string>
+    <string name="shortcut_protection_short">Protection</string>
+    <string name="shortcut_protection_long">Spam Protection</string>
+    <string name="shortcut_blocked_short">Blocked</string>
+    <string name="shortcut_blocked_long">Blocked Numbers</string>
+</resources>

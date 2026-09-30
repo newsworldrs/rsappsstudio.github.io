@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_teal">#006A62</color>
+    <color name="brand_teal_dark">#00504A</color>
+    <color name="splash_background">#FAFDFB</color>
+    <color name="launcher_background">#006A62</color>
+    <color name="widget_background">#F0FAF8</color>
+    <color name="widget_text">#191C1C</color>
+    <color name="widget_text_secondary">#3F4947</color>
+    <color name="widget_active">#1B6D3B</color>
+    <color name="widget_warning">#8A5100</color>
+</resources>

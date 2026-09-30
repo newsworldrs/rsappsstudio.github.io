@@ -1,0 +1,17 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.jks
+*.keystore
+# Never commit secrets or per-developer config
+keystore.properties
+.env
+app/google-services.json
+*.p12
+*.pem
