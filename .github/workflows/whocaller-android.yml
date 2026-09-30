@@ -62,6 +62,7 @@ jobs:
           path: |
             whocaller-android/**/build/reports/**
             whocaller-android/**/build/test-results/**
+            whocaller-android/core/database/schemas/**
           retention-days: 7
 
       - uses: actions/upload-artifact@v4

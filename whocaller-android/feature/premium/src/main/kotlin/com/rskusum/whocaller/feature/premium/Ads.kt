@@ -53,10 +53,16 @@ interface AdsManager {
     fun Banner(modifier: Modifier)
 }
 
+/** Remote switch for ads (e.g. Firebase Remote Config), so ads can be turned off without a release. */
+interface AdsPolicy {
+    val remoteAdsEnabled: StateFlow<Boolean>
+}
+
 @Singleton
 class AdMobAdsManager @Inject constructor(
     @ApplicationContext private val context: Context,
     premiumRepository: PremiumRepository,
+    adsPolicy: AdsPolicy,
     @Named(BANNER_UNIT_ID) private val bannerUnitId: String,
 ) : AdsManager {
 
@@ -65,8 +71,12 @@ class AdMobAdsManager @Inject constructor(
     private val initStarted = AtomicBoolean(false)
     private val consentInformation: ConsentInformation = UserMessagingPlatform.getConsentInformation(context)
 
-    override val adsEnabled: StateFlow<Boolean> = combine(premiumRepository.isPremium, sdkReady) { premium, ready ->
-        !premium && ready && bannerUnitId.isNotBlank()
+    override val adsEnabled: StateFlow<Boolean> = combine(
+        premiumRepository.isPremium,
+        sdkReady,
+        adsPolicy.remoteAdsEnabled,
+    ) { premium, ready, remote ->
+        !premium && ready && remote && bannerUnitId.isNotBlank()
     }.stateIn(scope, SharingStarted.Eagerly, false)
 
     override fun initialize(activity: Activity) {

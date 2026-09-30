@@ -13,6 +13,8 @@ import com.rskusum.whocaller.firebase.FirebaseAppCheckTokenProvider
 import com.rskusum.whocaller.firebase.FirebaseAuthRepository
 import com.rskusum.whocaller.firebase.FirebaseCrashReporter
 import com.rskusum.whocaller.firebase.FirebasePhoneAuthGateway
+import com.rskusum.whocaller.firebase.FirebaseRemoteFlags
+import com.rskusum.whocaller.feature.premium.AdsPolicy
 import com.rskusum.whocaller.feature.premium.AdMobAdsManager
 import com.rskusum.whocaller.feature.profile.PhoneAuthGateway
 import dagger.Binds
@@ -31,6 +33,7 @@ abstract class AppBindingsModule {
     @Binds abstract fun auth(impl: FirebaseAuthRepository): AuthRepository
     @Binds abstract fun appCheck(impl: FirebaseAppCheckTokenProvider): AppCheckTokenProvider
     @Binds abstract fun phoneAuth(impl: FirebasePhoneAuthGateway): PhoneAuthGateway
+    @Binds abstract fun adsPolicy(impl: FirebaseRemoteFlags): AdsPolicy
 }
 
 @Module
