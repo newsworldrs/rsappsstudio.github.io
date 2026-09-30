@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: whocaller-${{ github.ref }}
@@ -72,3 +72,15 @@ jobs:
             whocaller-android/app/build/outputs/apk/debug/*.apk
             whocaller-android/app/build/outputs/apk/release/*.apk
           retention-days: 14
+
+      - name: Publish test APK as a GitHub release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk WhoCaller-debug.apk
+          gh release delete whocaller-latest --yes --cleanup-tag || true
+          gh release create whocaller-latest WhoCaller-debug.apk \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "WhoCaller (latest test build)" \
+            --notes "Debug build from ${GITHUB_SHA::7} for testing on a physical device (package com.rskusum.whocaller.debug). Uses the built-in development backend: only fictional demo numbers such as +1 202-555-0142 return data."
