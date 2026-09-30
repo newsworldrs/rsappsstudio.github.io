@@ -7,6 +7,7 @@ import com.rskusum.whocaller.core.common.result.AppError
 import com.rskusum.whocaller.core.common.result.AppResult
 import com.rskusum.whocaller.core.domain.usecase.ReportNumberUseCase
 import com.rskusum.whocaller.core.model.ReportReason
+import com.rskusum.whocaller.core.testing.*
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

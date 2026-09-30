@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="label_contact">Contact</string>
+    <string name="label_verified_business">Entreprise vérifiée</string>
+    <string name="label_business">Entreprise</string>
+    <string name="label_person">Personne</string>
+    <string name="label_suspected_spam">Spam suspecté</string>
+    <string name="label_possible_scam">Arnaque possible</string>
+    <string name="label_telemarketing">Télémarketing</string>
+    <string name="label_hidden">Numéro masqué</string>
+    <string name="label_unknown">Inconnu</string>
+    <string name="category_safe">Sûr</string>
+    <string name="category_unknown">Inconnu</string>
+    <string name="category_telemarketing">Télémarketing</string>
+    <string name="category_spam">Spam</string>
+    <string name="category_scam">Arnaque</string>
+    <string name="category_fraud">Fraude</string>
+    <string name="category_robocall">Appel automatisé</string>
+    <string name="category_business">Entreprise</string>
+    <string name="risk_low">Risque faible</string>
+    <string name="risk_moderate">Risque modéré</string>
+    <string name="risk_high">Risque élevé</string>
+    <string name="risk_very_high">Risque très élevé</string>
+    <string name="action_call">Appeler</string>
+    <string name="action_message">Message</string>
+    <string name="action_search">Rechercher</string>
+    <string name="action_block">Bloquer</string>
+    <string name="action_unblock">Débloquer</string>
+    <string name="action_report">Signaler</string>
+    <string name="action_share">Partager</string>
+    <string name="action_save_contact">Enregistrer le contact</string>
+    <string name="action_cancel">Annuler</string>
+    <string name="action_back">Retour</string>
+    <string name="action_close">Fermer</string>
+    <string name="action_retry">Réessayer</string>
+    <string name="error_not_found">Aucune identité trouvée</string>
+    <string name="error_server">Nous n\'avons pas pu identifier ce numéro. Réessayez plus tard ou recherchez-le manuellement.</string>
+    <string name="unknown_number">Numéro inconnu</string>
+    <string name="private_number">Numéro masqué</string>
+    <string name="channel_caller_alerts">Alertes d\'appel</string>
+    <string name="channel_spam_alerts">Alertes spam</string>
+    <string name="channel_security">Sécurité</string>
+    <string name="channel_general">Général</string>
+</resources>

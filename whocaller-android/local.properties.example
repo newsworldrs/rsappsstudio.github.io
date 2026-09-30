@@ -1,0 +1,16 @@
+# Copy to local.properties (git-ignored). Everything except sdk.dir is optional.
+sdk.dir=/path/to/Android/Sdk
+
+# Backend (HTTPS only). Leave empty to use the dev backend in debug builds.
+WHOCALLER_API_BASE_URL=
+
+# "Continue with Google": OAuth 2.0 *web* client ID from Google Cloud / Firebase Auth.
+WHOCALLER_GOOGLE_WEB_CLIENT_ID=
+
+# AdMob. Defaults are Google's public test IDs (test ads only).
+WHOCALLER_ADMOB_APP_ID=
+WHOCALLER_ADMOB_BANNER_ID=
+
+# Hosted legal pages.
+WHOCALLER_PRIVACY_URL=https://www.rsappsstudio.com/whocaller/privacy
+WHOCALLER_TERMS_URL=https://www.rsappsstudio.com/whocaller/terms

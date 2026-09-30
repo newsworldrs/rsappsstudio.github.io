@@ -1,4 +1,4 @@
-package com.rskusum.whocaller.core.domain
+package com.rskusum.whocaller.core.testing
 
 import com.rskusum.whocaller.core.common.analytics.AnalyticsEvent
 import com.rskusum.whocaller.core.common.analytics.AnalyticsTracker

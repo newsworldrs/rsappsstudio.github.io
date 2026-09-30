@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="splash_tagline">Ketahui siapa yang menelepon.\nTetap terlindungi.</string>
+    <string name="onboarding_1_title">Ketahui siapa yang menelepon</string>
+    <string name="onboarding_1_body">Kenali penelepon tak dikenal sebelum menjawab.</string>
+    <string name="onboarding_2_title">Blokir panggilan yang tidak diinginkan</string>
+    <string name="onboarding_2_body">Lindungi diri dari spam dan nomor mencurigakan.</string>
+    <string name="onboarding_3_title">Cari nomor apa pun</string>
+    <string name="onboarding_3_body">Temukan informasi nomor telepon dengan WhoCaller.</string>
+    <string name="onboarding_4_title">Privasi Anda penting</string>
+    <string name="onboarding_4_body">Kontak dan informasi pribadi Anda tetap dalam kendali Anda.</string>
+    <string name="onboarding_continue">Lanjutkan</string>
+    <string name="onboarding_skip">Lewati</string>
+    <string name="onboarding_get_started">Mulai</string>
+    <string name="nav_home">Beranda</string>
+    <string name="nav_search">Cari</string>
+    <string name="nav_calls">Panggilan</string>
+    <string name="nav_protection">Perlindungan</string>
+    <string name="nav_settings">Setelan</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="home_greeting_morning">ਸ਼ੁਭ ਸਵੇਰ, %1$s</string>
+    <string name="home_greeting_afternoon">ਸਤ ਸ੍ਰੀ ਅਕਾਲ, %1$s</string>
+    <string name="home_greeting_evening">ਸ਼ੁਭ ਸ਼ਾਮ, %1$s</string>
+    <string name="home_default_name">ਵਰਤੋਂਕਾਰ</string>
+    <string name="home_search_hint">ਫ਼ੋਨ ਨੰਬਰ ਖੋਜੋ</string>
+    <string name="home_action_search">ਨੰਬਰ ਖੋਜੋ</string>
+    <string name="home_action_calls">ਹਾਲੀਆ ਕਾਲਾਂ</string>
+    <string name="home_action_spam">ਸਪੈਮ ਸੁਰੱਖਿਆ</string>
+    <string name="home_action_blocked">ਬਲੌਕ ਕੀਤੇ ਨੰਬਰ</string>
+    <string name="home_stat_identified">ਪਛਾਣੀਆਂ ਕਾਲਾਂ</string>
+    <string name="home_stat_blocked">ਬਲੌਕ ਕੀਤਾ ਸਪੈਮ</string>
+    <string name="home_stat_reported">ਰਿਪੋਰਟ ਕੀਤੇ ਨੰਬਰ</string>
+    <string name="home_protection_active">ਸੁਰੱਖਿਆ ਚਾਲੂ ਹੈ</string>
+    <string name="home_protection_setup">ਸੁਰੱਖਿਆ ਸੈਟਅੱਪ ਲੋੜੀਂਦਾ ਹੈ</string>
+    <string name="home_syncing">ਸੁਰੱਖਿਆ ਡਾਟਾ ਸਿੰਕ ਹੋ ਰਿਹਾ ਹੈ…</string>
+</resources>

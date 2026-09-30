@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="label_contact">جهة اتصال</string>
+    <string name="label_verified_business">نشاط تجاري موثّق</string>
+    <string name="label_business">نشاط تجاري</string>
+    <string name="label_person">شخص</string>
+    <string name="label_suspected_spam">مشتبه بأنه مزعج</string>
+    <string name="label_possible_scam">احتيال محتمل</string>
+    <string name="label_telemarketing">تسويق هاتفي</string>
+    <string name="label_hidden">رقم خاص</string>
+    <string name="label_unknown">غير معروف</string>
+    <string name="category_safe">آمن</string>
+    <string name="category_unknown">غير معروف</string>
+    <string name="category_telemarketing">تسويق هاتفي</string>
+    <string name="category_spam">مزعج</string>
+    <string name="category_scam">احتيال</string>
+    <string name="category_fraud">غش</string>
+    <string name="category_robocall">مكالمة آلية</string>
+    <string name="category_business">نشاط تجاري</string>
+    <string name="risk_low">خطر منخفض</string>
+    <string name="risk_moderate">خطر متوسط</string>
+    <string name="risk_high">خطر مرتفع</string>
+    <string name="risk_very_high">خطر مرتفع جدًا</string>
+    <string name="action_call">اتصال</string>
+    <string name="action_message">رسالة</string>
+    <string name="action_search">بحث</string>
+    <string name="action_block">حظر</string>
+    <string name="action_unblock">إلغاء الحظر</string>
+    <string name="action_report">إبلاغ</string>
+    <string name="action_share">مشاركة</string>
+    <string name="action_save_contact">حفظ جهة الاتصال</string>
+    <string name="action_cancel">إلغاء</string>
+    <string name="action_back">رجوع</string>
+    <string name="action_close">إغلاق</string>
+    <string name="action_retry">إعادة المحاولة</string>
+    <string name="error_not_found">لم يتم العثور على هوية</string>
+    <string name="error_server">تعذّر التعرّف على هذا الرقم. حاول لاحقًا أو ابحث يدويًا.</string>
+    <string name="unknown_number">رقم غير معروف</string>
+    <string name="private_number">رقم خاص</string>
+    <string name="channel_caller_alerts">تنبيهات المتصل</string>
+    <string name="channel_spam_alerts">تنبيهات الإزعاج</string>
+    <string name="channel_security">الأمان</string>
+    <string name="channel_general">عام</string>
+</resources>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="label_contact">ਸੰਪਰਕ</string>
+    <string name="label_verified_business">ਪ੍ਰਮਾਣਿਤ ਕਾਰੋਬਾਰ</string>
+    <string name="label_business">ਕਾਰੋਬਾਰ</string>
+    <string name="label_person">ਵਿਅਕਤੀ</string>
+    <string name="label_suspected_spam">ਸ਼ੱਕੀ ਸਪੈਮ</string>
+    <string name="label_possible_scam">ਸੰਭਾਵੀ ਧੋਖਾ</string>
+    <string name="label_telemarketing">ਟੈਲੀਮਾਰਕੀਟਿੰਗ</string>
+    <string name="label_hidden">ਨਿੱਜੀ ਨੰਬਰ</string>
+    <string name="label_unknown">ਅਣਜਾਣ</string>
+    <string name="category_safe">ਸੁਰੱਖਿਅਤ</string>
+    <string name="category_unknown">ਅਣਜਾਣ</string>
+    <string name="category_telemarketing">ਟੈਲੀਮਾਰਕੀਟਿੰਗ</string>
+    <string name="category_spam">ਸਪੈਮ</string>
+    <string name="category_scam">ਧੋਖਾ</string>
+    <string name="category_fraud">ਜਾਲਸਾਜ਼ੀ</string>
+    <string name="category_robocall">ਰੋਬੋਕਾਲ</string>
+    <string name="category_business">ਕਾਰੋਬਾਰ</string>
+    <string name="risk_low">ਘੱਟ ਖ਼ਤਰਾ</string>
+    <string name="risk_moderate">ਦਰਮਿਆਨਾ ਖ਼ਤਰਾ</string>
+    <string name="risk_high">ਵੱਧ ਖ਼ਤਰਾ</string>
+    <string name="risk_very_high">ਬਹੁਤ ਵੱਧ ਖ਼ਤਰਾ</string>
+    <string name="action_call">ਕਾਲ ਕਰੋ</string>
+    <string name="action_message">ਸੁਨੇਹਾ</string>
+    <string name="action_search">ਖੋਜੋ</string>
+    <string name="action_block">ਬਲੌਕ ਕਰੋ</string>
+    <string name="action_unblock">ਅਨਬਲੌਕ ਕਰੋ</string>
+    <string name="action_report">ਰਿਪੋਰਟ ਕਰੋ</string>
+    <string name="action_share">ਸਾਂਝਾ ਕਰੋ</string>
+    <string name="action_save_contact">ਸੰਪਰਕ ਸੰਭਾਲੋ</string>
+    <string name="action_cancel">ਰੱਦ ਕਰੋ</string>
+    <string name="action_back">ਵਾਪਸ</string>
+    <string name="action_close">ਬੰਦ ਕਰੋ</string>
+    <string name="action_retry">ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ</string>
+    <string name="error_not_found">ਕੋਈ ਪਛਾਣ ਨਹੀਂ ਮਿਲੀ</string>
+    <string name="error_server">ਅਸੀਂ ਇਸ ਨੰਬਰ ਦੀ ਪਛਾਣ ਨਹੀਂ ਕਰ ਸਕੇ। ਬਾਅਦ ਵਿੱਚ ਕੋਸ਼ਿਸ਼ ਕਰੋ ਜਾਂ ਖੁਦ ਖੋਜੋ।</string>
+    <string name="unknown_number">ਅਣਜਾਣ ਨੰਬਰ</string>
+    <string name="private_number">ਨਿੱਜੀ ਨੰਬਰ</string>
+    <string name="channel_caller_alerts">ਕਾਲਰ ਅਲਰਟ</string>
+    <string name="channel_spam_alerts">ਸਪੈਮ ਅਲਰਟ</string>
+    <string name="channel_security">ਸੁਰੱਖਿਆ</string>
+    <string name="channel_general">ਆਮ</string>
+</resources>

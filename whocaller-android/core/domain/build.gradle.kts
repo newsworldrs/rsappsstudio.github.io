@@ -8,6 +8,7 @@ dependencies {
     implementation(libs.dagger)
     ksp(libs.dagger.compiler)
 
+    testImplementation(projects.core.testing)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }

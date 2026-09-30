@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="home_greeting_morning">صباح الخير، %1$s</string>
+    <string name="home_greeting_afternoon">مساء الخير، %1$s</string>
+    <string name="home_greeting_evening">مساء الخير، %1$s</string>
+    <string name="home_default_name">المستخدم</string>
+    <string name="home_search_hint">ابحث عن رقم هاتف</string>
+    <string name="home_action_search">البحث عن رقم</string>
+    <string name="home_action_calls">المكالمات الأخيرة</string>
+    <string name="home_action_spam">الحماية من الإزعاج</string>
+    <string name="home_action_blocked">الأرقام المحظورة</string>
+    <string name="home_stat_identified">مكالمات تم التعرف عليها</string>
+    <string name="home_stat_blocked">رسائل مزعجة محظورة</string>
+    <string name="home_stat_reported">أرقام تم الإبلاغ عنها</string>
+    <string name="home_protection_active">الحماية مفعّلة</string>
+    <string name="home_protection_setup">يلزم إعداد الحماية</string>
+    <string name="home_syncing">جارٍ مزامنة بيانات الحماية…</string>
+</resources>

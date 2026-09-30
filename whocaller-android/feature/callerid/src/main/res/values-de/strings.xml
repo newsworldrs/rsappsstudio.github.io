@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="callerid_identified_title">WhoCaller hat einen Anrufer erkannt</string>
+    <string name="callerid_verified_business">Verifiziertes Unternehmen</string>
+    <string name="callerid_suspected_spam">⚠ Spamverdacht</string>
+    <string name="callerid_possible_scam">⚠ Möglicher Betrug</string>
+    <string name="callerid_scam_detail">Mehrere Meldungen deuten auf verdächtige Aktivität hin.</string>
+    <string name="callerid_blocked_title">Spam-Anruf blockiert</string>
+</resources>

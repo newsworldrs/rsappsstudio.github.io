@@ -31,6 +31,7 @@ include(":core:data")
 include(":core:ui")
 include(":core:permissions")
 include(":core:security")
+include(":core:testing")
 
 // Features. Each owns its screens and ViewModels; the app module wires navigation.
 include(":feature:home")

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="splash_tagline">कौन कॉल कर रहा है, जानें।\nसुरक्षित रहें।</string>
+    <string name="onboarding_1_title">जानें कौन कॉल कर रहा है</string>
+    <string name="onboarding_1_body">जवाब देने से पहले अनजान कॉलर की पहचान करें।</string>
+    <string name="onboarding_2_title">अनचाही कॉल ब्लॉक करें</string>
+    <string name="onboarding_2_body">स्पैम और संदिग्ध नंबरों से खुद को बचाएँ।</string>
+    <string name="onboarding_3_title">कोई भी नंबर खोजें</string>
+    <string name="onboarding_3_body">WhoCaller से फ़ोन नंबरों की जानकारी पाएँ।</string>
+    <string name="onboarding_4_title">आपकी निजता मायने रखती है</string>
+    <string name="onboarding_4_body">आपके संपर्क और निजी जानकारी आपके नियंत्रण में रहती है।</string>
+    <string name="onboarding_continue">जारी रखें</string>
+    <string name="onboarding_skip">छोड़ें</string>
+    <string name="onboarding_get_started">शुरू करें</string>
+    <string name="nav_home">होम</string>
+    <string name="nav_search">खोजें</string>
+    <string name="nav_calls">कॉल</string>
+    <string name="nav_protection">सुरक्षा</string>
+    <string name="nav_settings">सेटिंग्स</string>
+</resources>

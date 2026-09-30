@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="callerid_identified_title">تعرّف WhoCaller على المتصل</string>
+    <string name="callerid_verified_business">نشاط تجاري موثّق</string>
+    <string name="callerid_suspected_spam">⚠ رسالة مزعجة مشتبه بها</string>
+    <string name="callerid_possible_scam">⚠ احتيال محتمل</string>
+    <string name="callerid_scam_detail">تشير بلاغات متعددة إلى نشاط مريب.</string>
+    <string name="callerid_blocked_title">تم حظر مكالمة مزعجة</string>
+</resources>

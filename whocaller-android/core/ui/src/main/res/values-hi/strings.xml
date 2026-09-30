@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="label_contact">संपर्क</string>
+    <string name="label_verified_business">सत्यापित व्यवसाय</string>
+    <string name="label_business">व्यवसाय</string>
+    <string name="label_person">व्यक्ति</string>
+    <string name="label_suspected_spam">संदिग्ध स्पैम</string>
+    <string name="label_possible_scam">संभावित धोखाधड़ी</string>
+    <string name="label_telemarketing">टेलीमार्केटिंग</string>
+    <string name="label_hidden">निजी नंबर</string>
+    <string name="label_unknown">अज्ञात</string>
+    <string name="category_safe">सुरक्षित</string>
+    <string name="category_unknown">अज्ञात</string>
+    <string name="category_telemarketing">टेलीमार्केटिंग</string>
+    <string name="category_spam">स्पैम</string>
+    <string name="category_scam">धोखाधड़ी</string>
+    <string name="category_fraud">जालसाज़ी</string>
+    <string name="category_robocall">रोबोकॉल</string>
+    <string name="category_business">व्यवसाय</string>
+    <string name="risk_low">कम जोखिम</string>
+    <string name="risk_moderate">मध्यम जोखिम</string>
+    <string name="risk_high">उच्च जोखिम</string>
+    <string name="risk_very_high">बहुत उच्च जोखिम</string>
+    <string name="action_call">कॉल करें</string>
+    <string name="action_message">संदेश</string>
+    <string name="action_search">खोजें</string>
+    <string name="action_block">ब्लॉक करें</string>
+    <string name="action_unblock">अनब्लॉक करें</string>
+    <string name="action_report">रिपोर्ट करें</string>
+    <string name="action_share">शेयर करें</string>
+    <string name="action_save_contact">संपर्क सहेजें</string>
+    <string name="action_cancel">रद्द करें</string>
+    <string name="action_back">वापस</string>
+    <string name="action_close">बंद करें</string>
+    <string name="action_retry">फिर कोशिश करें</string>
+    <string name="error_not_found">कोई पहचान नहीं मिली</string>
+    <string name="error_server">हम इस नंबर की पहचान नहीं कर सके। बाद में दोबारा कोशिश करें या खुद खोजें।</string>
+    <string name="unknown_number">अज्ञात नंबर</string>
+    <string name="private_number">निजी नंबर</string>
+    <string name="channel_caller_alerts">कॉलर अलर्ट</string>
+    <string name="channel_spam_alerts">स्पैम अलर्ट</string>
+    <string name="channel_security">सुरक्षा</string>
+    <string name="channel_general">सामान्य</string>
+</resources>

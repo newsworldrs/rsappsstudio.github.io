@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="callerid_identified_title">WhoCaller ने इनकमिंग कॉलर की पहचान की</string>
+    <string name="callerid_verified_business">सत्यापित व्यवसाय</string>
+    <string name="callerid_suspected_spam">⚠ संदिग्ध स्पैम</string>
+    <string name="callerid_possible_scam">⚠ संभावित धोखाधड़ी</string>
+    <string name="callerid_scam_detail">कई रिपोर्ट संदिग्ध गतिविधि दर्शाती हैं।</string>
+    <string name="callerid_blocked_title">स्पैम कॉल ब्लॉक की गई</string>
+</resources>

@@ -15,6 +15,7 @@ import com.rskusum.whocaller.core.model.DecisionReason
 import com.rskusum.whocaller.core.model.IdentityType
 import com.rskusum.whocaller.core.model.InfoSource
 import com.rskusum.whocaller.core.model.SpamCategory
+import com.rskusum.whocaller.core.testing.*
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
