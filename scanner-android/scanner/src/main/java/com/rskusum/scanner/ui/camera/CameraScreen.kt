@@ -629,13 +629,9 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
 
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-                // Highest 4:3 resolution the camera offers: sharper text in the final scan.
-                .setResolutionSelector(
-                    ResolutionSelector.Builder()
-                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-                        .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
-                        .build()
-                )
+                // ~12 MP 4:3: full sensor detail on normal cameras. The maximum of 50-200 MP sensors
+                // is a slow re-mosaiced shot that is softer and makes processing much slower.
+                .setResolutionSelector(selector(Size(4000, 3000), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
                 .setFlashMode(flashMode)
                 .build()
 

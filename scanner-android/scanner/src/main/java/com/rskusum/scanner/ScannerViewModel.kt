@@ -251,30 +251,32 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     r.quad
                 }
                 frame != null -> {
-                    // Guided frame: edges are searched near the frame sides on the full-res photo,
-                    // then line-fitted; undetectable sides fall back to the frame + 1%.
+                    // Guided frame: edges are searched near the frame sides on the full-res photo.
                     val snap = DocumentDetector.snapToQuad(gray, frame)
                     sidesFound = snap.sidesFound
                     val snapped = DocumentDetector.refine(gray, snap.quad)
-                    if (snap.sidesFound >= 4) {
+                    val snappedScore = DocumentDetector.scoreQuad(gray, snapped)
+                    if (snap.sidesFound >= 4 && snappedScore >= 0.6) {
                         snapped
                     } else {
-                        // Some sides missing: a wider search, the live outline, the learned edge
-                        // model and the classic detector all compete, scored on real edge support.
-                        val wide = DocumentDetector.snapToQuad(gray, frame, bandFraction = 0.16)
+                        // The page doesn't sit on the frame all round (smaller, larger or shifted):
+                        // search the page itself - the learned edge model, the classic detector and
+                        // the live outline compete; the frame is only a starting hint.
                         val prob = edgeProbability(photo)
                         val alt = try {
-                            DocumentDetector.autoDetect(gray, prob, listOfNotNull(snapped, hint, frame))
+                            DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint, frame))
                         } finally {
                             prob?.release()
                         }
-                        val cands = listOfNotNull(
-                            if (wide.sidesFound > snap.sidesFound) DocumentDetector.refine(gray, wide.quad) else null,
-                            hint?.let { DocumentDetector.refine(gray, it) },
-                            alt,
-                        ).filter { it.distanceTo(frame) < 0.2f && it.area() > frame.area() * 0.35f }
+                        val fx0 = frame.points.minOf { it.x } - 0.1f; val fx1 = frame.points.maxOf { it.x } + 0.1f
+                        val fy0 = frame.points.minOf { it.y } - 0.1f; val fy1 = frame.points.maxOf { it.y } + 0.1f
+                        val cands = listOfNotNull(hint?.let { DocumentDetector.refine(gray, it) }, alt).filter { c ->
+                            val cx = c.points.map { it.x }.average().toFloat(); val cy = c.points.map { it.y }.average().toFloat()
+                            cx in fx0..fx1 && cy in fy0..fy1 && c.area() > frame.area() * 0.2f
+                        }
+                        // Sides that fell back to the frame have no edge under them: no bonus then.
                         var best = snapped
-                        var bestScore = DocumentDetector.scoreQuad(gray, snapped) + 0.03
+                        var bestScore = snappedScore + if (snap.sidesFound >= 4) 0.03 else 0.0
                         for (c in cands) {
                             val sc = DocumentDetector.scoreQuad(gray, c)
                             if (sc > bestScore) { best = c; bestScore = sc }
@@ -327,10 +329,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             }
 
             if (mode.splitBook) {
-                // The outline may hold only one page of the open book: complete the spread from it.
-                var spread = DocumentDetector.expandToSpread(gray, quad)
-                // Two pages or one? Text lines of an open book run across the spine.
-                var twoPages = if (spread !== quad) true else DocumentDetector.isTwoPageSpread(gray, quad)
+                // Two pages or one? Text lines of an open book run across the spine. When the
+                // outline looks like one page, try to complete the open book from it.
+                var spread = quad
+                var twoPages = DocumentDetector.isTwoPageSpread(gray, quad)
+                if (twoPages != true) {
+                    val expanded = DocumentDetector.expandToSpread(gray, quad)
+                    if (expanded !== quad) { spread = expanded; twoPages = true }
+                }
                 if (twoPages == false && frame != null && quad.area() < frame.area() * 0.7f &&
                     DocumentDetector.isTwoPageSpread(gray, frame) != false
                 ) {
@@ -363,9 +369,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // Detach the pages: each gets its OWN upright image cut at the spine, so crop,
                 // filters and eraser only ever see that one page. Book pages are always portrait.
                 val pagesOut = listOf(first, second).mapIndexed { i, q ->
-                    val (pageFile, halfQuad) = detachBookPage(photo, q, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
-                    // Second pass: find this page's own edges in its detached image.
-                    val pageQuad = autoCropBookPage(pageFile, halfQuad)
+                    // Second pass: this page's own outer edges, searched again around its half
+                    // (the spine side stays on the cut).
+                    val spineAt = if (acrossBook) (if (q === a) 2 else 0) else (if (q === a) 1 else 3)
+                    val cropped = autoCropBookPage(gray, q, spineAt)
+                    val (pageFile, pageQuad) = detachBookPage(photo, cropped, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
                     Page(
                         pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
                         forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
@@ -392,7 +400,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     /** Page-edge probability map of the learned edge model (null when the model is unavailable). */
     private fun edgeProbability(photo: Bitmap): Mat? =
         com.rskusum.scanner.vision.EdgeModel.get(getApplication())?.let { model ->
-            val rgb = Images.toRgbMat(photo)
+            // The model sees 256x256: convert a small copy, not the full photo.
+            val f = minOf(1f, 768f / maxOf(photo.width, photo.height))
+            val small = Bitmap.createScaledBitmap(photo, maxOf(1, (photo.width * f).toInt()), maxOf(1, (photo.height * f).toInt()), true)
+            val rgb = Images.toRgbMat(small)
+            if (small !== photo) small.recycle()
             model.run(rgb).also { rgb.release() }
         }
 
@@ -456,55 +468,28 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Auto crop of one detached book page: its outer three edges are searched again in the page's
-     * own image (snapped near the split outline at two widths, the learned edge model and the
-     * classic detector compete, ranked by edge support). The spine side stays on the cut, its
-     * corners slid along it to meet the new top/bottom (or side) edges.
+     * Auto crop of one book page inside the spread photo: its outer three edges are snapped to the
+     * real page edges near the split outline [q] (two search widths, ranked by edge support). The
+     * spine side ([spine]: 0 top, 1 right, 2 bottom, 3 left) stays on the split line, its corners
+     * slid along it to meet the new edges.
      */
-    private fun autoCropBookPage(file: File, q: Quad): Quad {
-        val bmp = Images.decodeFile(file, 2000) ?: return q
-        val gray = Images.toGrayMat(bmp)
-        val prob = runCatching { edgeProbability(bmp) }.getOrNull()
-        bmp.recycle()
-        try {
-            val cands = ArrayList<Quad>()
-            for (bf in doubleArrayOf(0.085, 0.16)) {
-                val snap = DocumentDetector.snapToQuad(gray, q, bandFraction = bf)
-                if (snap.sidesFound >= 2) cands += DocumentDetector.refine(gray, snap.quad)
-            }
-            DocumentDetector.autoDetect(gray, prob, listOf(q))?.let { cands += it }
-            val spine = spineSide(q)
+    private fun autoCropBookPage(gray: Mat, q: Quad, spine: Int): Quad {
+        return try {
             var best = q
             var bestScore = DocumentDetector.scoreQuad(gray, q)
-            for (c0 in cands) {
-                val c = if (spine >= 0) keepSpine(c0, q, spine) else c0
-                if (c.distanceTo(q) > 0.3f || c.area() < q.area() * 0.45f) continue
+            for (bf in doubleArrayOf(0.06, 0.12)) {
+                val snap = DocumentDetector.snapToQuad(gray, q, bandFraction = bf)
+                if (snap.sidesFound < 2) continue
+                val c = keepSpine(DocumentDetector.refine(gray, snap.quad), q, spine)
+                if (c.distanceTo(q) > 0.25f || c.area() < q.area() * 0.5f) continue
                 val sc = DocumentDetector.scoreQuad(gray, c)
                 if (sc > bestScore + 0.02) { best = c; bestScore = sc }
             }
-            return best
+            best
         } catch (t: Throwable) {
             Log.e(TAG, "book page auto crop failed", t)
-            return q
-        } finally {
-            gray.release()
-            prob?.release()
+            q
         }
-    }
-
-    /** Index of the side (0 top, 1 right, 2 bottom, 3 left) lying on the picture border = the spine cut. */
-    private fun spineSide(q: Quad): Int {
-        val p = q.points
-        fun border(pt: com.rskusum.scanner.vision.NPoint) = floatArrayOf(pt.y, 1 - pt.x, 1 - pt.y, pt.x)
-        var best = -1; var bestD = 0.02f
-        for (i in 0 until 4) {
-            val a = border(p[i]); val b = border(p[(i + 1) % 4])
-            for (k in 0 until 4) {
-                val d = maxOf(a[k], b[k])
-                if (d < bestD) { bestD = d; best = i }
-            }
-        }
-        return best
     }
 
     /** [c] with its side [side] put back on the spine line of [q] (corners where the adjacent sides meet it). */
@@ -587,6 +572,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         page.rendering = true
         viewModelScope.launch {
             try {
+                // A quick small preview first, so the thumbnail shows up at once.
+                if (page.thumbnail == null) {
+                    withContext(Dispatchers.Default) { runCatching { quickThumbnail(page) }.getOrNull() }
+                        ?.let { if (page.thumbnail == null) page.thumbnail = it }
+                }
                 val result = withContext(Dispatchers.Default) {
                     renderGate.withPermit { render(page, pickSmartFilter) }
                 }
@@ -609,6 +599,19 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 page.rendering = false
             }
         }
+    }
+
+    /** Flattened page at thumbnail size, without filters (shown until the full render is done). */
+    private fun quickThumbnail(page: Page): ImageBitmap? {
+        val bmp = Images.decodeFile(page.originalFile, 1000) ?: return null
+        val rgb = Images.toRgbMat(bmp)
+        bmp.recycle()
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 360, forcedOrientation = page.forcedOrientation)
+        rgb.release()
+        rotate(flat, page.rotation)?.let { flat.release(); flat = it }
+        val out = Images.toBitmap(flat)
+        flat.release()
+        return out.asImageBitmap()
     }
 
     /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
