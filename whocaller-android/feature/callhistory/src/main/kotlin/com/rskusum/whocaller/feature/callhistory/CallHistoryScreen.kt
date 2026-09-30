@@ -188,16 +188,16 @@ fun CallHistoryScreen(
 
 @Composable
 private fun CallList(viewModel: CallHistoryViewModel, onSelect: (CallLogEntry) -> Unit) {
-    val items = viewModel.calls.collectAsLazyPagingItems()
+    val pagingItems = viewModel.calls.collectAsLazyPagingItems()
     val context = LocalContext.current
     when {
-        items.loadState.refresh is LoadState.Loading && items.itemCount == 0 -> LoadingState()
-        items.loadState.refresh is LoadState.Error && items.itemCount == 0 -> ErrorState(AppError.STORAGE) { items.retry() }
-        items.itemCount == 0 && items.loadState.refresh is LoadState.NotLoading ->
+        pagingItems.loadState.refresh is LoadState.Loading && pagingItems.itemCount == 0 -> LoadingState()
+        pagingItems.loadState.refresh is LoadState.Error && pagingItems.itemCount == 0 -> ErrorState(AppError.STORAGE) { pagingItems.retry() }
+        pagingItems.itemCount == 0 && pagingItems.loadState.refresh is LoadState.NotLoading ->
             EmptyState(icon = Icons.Outlined.History, title = stringResource(R.string.calls_empty))
         else -> LazyColumn(Modifier.fillMaxSize()) {
-            items(count = items.itemCount, key = items.itemKey { it.id }) { index ->
-                val entry = items[index] ?: return@items
+            items(count = pagingItems.itemCount, key = pagingItems.itemKey { it.id }) { index ->
+                val entry = pagingItems[index] ?: return@items
                 CallRow(context, entry, onClick = { onSelect(entry) })
             }
         }
