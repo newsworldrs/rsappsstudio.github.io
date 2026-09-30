@@ -304,10 +304,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // Open book: two independent A4 pages, each with its own crop outline so they can be
                 // cropped/edited separately. With the phone held across the book (spread taller than
                 // wide in the photo) each half is turned upright using the phone's orientation.
+                // Free mode: the detectors may have found only one page - complete the open book.
+                val spread = if (frame == null) DocumentDetector.expandToSpread(gray, quad) else quad
                 // Cut at the real spine (gutter shadow / blank band), not just the geometric middle.
-                val spine = DocumentDetector.findSpine(gray, quad)
-                val (a, b) = DocumentDetector.splitSpread(quad, photoW, photoH, spine)
-                val (sw, sh) = DocumentDetector.naiveSize(quad, photoW, photoH)
+                val spine = DocumentDetector.findSpine(gray, spread)
+                val (a, b) = DocumentDetector.splitSpread(spread, photoW, photoH, spine)
+                val (sw, sh) = DocumentDetector.naiveSize(spread, photoW, photoH)
                 val acrossBook = sh > sw
                 // Page 1 = top (or left) half as shown on screen, unless the user swapped the order.
                 val first = if (swap) b else a

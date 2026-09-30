@@ -37,6 +37,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -176,6 +179,10 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     DisposableEffect(Unit) { onDispose { captureExecutor.shutdown(); sound.release() } }
 
     var flash by remember { mutableStateOf(Flash.AUTO) }
+    // Camera zoom (pinch on the preview or the 1x / 2x chips): get the page to fill the frame
+    // without moving the phone closer.
+    var zoom by remember { mutableFloatStateOf(1f) }
+    val maxZoom = 4f
     var qrMode by remember { mutableStateOf(false) }
     var qrText by remember { mutableStateOf<String?>(null) }
     var capturing by remember { mutableStateOf(false) }
@@ -353,8 +360,26 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     .fillMaxWidth()
                     .aspectRatio(3f / 4f)
                     .clipToBounds()
+                    .pointerInput(Unit) {
+                        // Two fingers: zoom the camera (consumed, so it doesn't switch modes).
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                if (event.changes.count { it.pressed } >= 2) {
+                                    zoom = (zoom * event.calculateZoom()).coerceIn(1f, maxZoom)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }
                     .pointerModeSwipe(vm)
             ) {
+                LaunchedEffect(zoom) {
+                    val cam = holder.camera ?: return@LaunchedEffect
+                    val max = cam.cameraInfo.zoomState.value?.maxZoomRatio ?: maxZoom
+                    runCatching { cam.cameraControl.setZoomRatio(zoom.coerceAtMost(max)) }
+                }
                 if (granted) {
                     CameraPreview(holder, analyzer, flash.mode)
                     val guide = vm.guideFrame
@@ -499,6 +524,13 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     )
                 }
                 if (granted) Diagnostics(analyzer, Modifier.align(Alignment.BottomEnd).padding(8.dp))
+                if (granted && !qrMode) {
+                    ZoomChips(
+                        zoom = zoom,
+                        onZoom = { zoom = it },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                    )
+                }
 
                 Box(
                     Modifier
@@ -688,6 +720,33 @@ private fun modeWords(mode: ScanMode, idStep: ScannerViewModel.IdStep): ModeWord
         ScannerViewModel.IdStep.FRONT -> ModeWords(R.string.rs_scanner_id_front_place, R.string.rs_scanner_id_front_looking, R.string.rs_scanner_id_flip)
         ScannerViewModel.IdStep.BACK -> ModeWords(R.string.rs_scanner_id_back_place, R.string.rs_scanner_id_back_looking, R.string.rs_scanner_id_flip)
         ScannerViewModel.IdStep.DONE -> ModeWords(R.string.rs_scanner_id_done, R.string.rs_scanner_id_done, R.string.rs_scanner_id_done, R.string.rs_scanner_id_done)
+    }
+}
+
+/** 1x / 2x zoom chips; the active one shows the exact zoom (e.g. 1.6x after pinching). */
+@Composable
+private fun ZoomChips(zoom: Float, onZoom: (Float) -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .clip(RoundedCornerShape(50))
+            .background(ScanColors.Bar.copy(alpha = 0.7f))
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        listOf(1f, 2f).forEach { level ->
+            val active = if (level == 1f) zoom < 1.95f else zoom >= 1.95f
+            val text = if (active) String.format(java.util.Locale.US, "%.1fx", zoom).replace(".0x", "x") else "${level.toInt()}x"
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(if (active) ScanColors.Accent else Color.Transparent)
+                    .clickable { onZoom(level) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(text, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 

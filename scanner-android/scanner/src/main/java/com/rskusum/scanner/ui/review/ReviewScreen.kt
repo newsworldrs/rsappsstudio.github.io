@@ -79,6 +79,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.rskusum.scanner.R
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -228,14 +240,19 @@ fun ReviewScreen(
             if (vm.pages.isEmpty()) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
             } else {
+                var pageZoomed by remember { mutableStateOf(false) }
                 HorizontalPager(
                     state = pagerState,
                     contentPadding = PaddingValues(horizontal = 28.dp, vertical = 20.dp),
                     pageSpacing = 16.dp,
                     key = { i -> vm.pages.getOrNull(i)?.id ?: i },
+                    // While a page is zoomed in, one finger moves around the page instead of paging.
+                    userScrollEnabled = !pageZoomed,
                     modifier = Modifier.fillMaxSize(),
                 ) { i ->
-                    vm.pages.getOrNull(i)?.let { PageView(it) }
+                    vm.pages.getOrNull(i)?.let { p ->
+                        PageView(p, onZoomed = { z -> if (i == pagerState.currentPage) pageZoomed = z })
+                    }
                 }
                 val smart = vm.pages.getOrNull(pagerState.currentPage)?.smartLabel
                 Text(
@@ -319,18 +336,64 @@ fun ReviewScreen(
 }
 
 @Composable
-private fun PageView(page: Page) {
+private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
     val image by produceState<ImageBitmap?>(null, page.version, page.processedFile) {
         val f = page.processedFile
-        value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 2200)?.asImageBitmap() }
+        value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 3000)?.asImageBitmap() }
     }
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    // Zoom: pinch (up to 5x), drag to move while zoomed, double-tap to zoom in / back out.
+    var scale by remember(page.id) { mutableFloatStateOf(1f) }
+    var offset by remember(page.id) { mutableStateOf(Offset.Zero) }
+    DisposableEffect(page.id) { onDispose { onZoomed(false) } }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .pointerInput(page.id) {
+                detectTapGestures(onDoubleTap = { tap ->
+                    if (scale > 1.05f) {
+                        scale = 1f; offset = Offset.Zero
+                    } else {
+                        scale = 2.5f
+                        val c = Offset(size.width / 2f, size.height / 2f)
+                        val max = Offset(size.width * (scale - 1) / 2f, size.height * (scale - 1) / 2f)
+                        val o = (c - tap) * (scale - 1)
+                        offset = Offset(o.x.coerceIn(-max.x, max.x), o.y.coerceIn(-max.y, max.y))
+                    }
+                    onZoomed(scale > 1.05f)
+                })
+            }
+            .pointerInput(page.id) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val fingers = event.changes.count { it.pressed }
+                        // Two fingers always zoom; one finger pans only while zoomed (otherwise it
+                        // swipes to the next page).
+                        if (fingers >= 2 || scale > 1.01f) {
+                            scale = (scale * event.calculateZoom()).coerceIn(1f, 5f)
+                            val max = Offset(size.width * (scale - 1) / 2f, size.height * (scale - 1) / 2f)
+                            val o = offset + event.calculatePan()
+                            offset = if (scale <= 1.01f) Offset.Zero else Offset(o.x.coerceIn(-max.x, max.x), o.y.coerceIn(-max.y, max.y))
+                            onZoomed(scale > 1.01f)
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
         image?.let {
             Image(
                 it,
                 contentDescription = stringResource(R.string.rs_scanner_page),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
+                    .graphicsLayer {
+                        scaleX = scale; scaleY = scale
+                        translationX = offset.x; translationY = offset.y
+                    }
                     .shadow(8.dp)
                     .background(Color.White),
             )

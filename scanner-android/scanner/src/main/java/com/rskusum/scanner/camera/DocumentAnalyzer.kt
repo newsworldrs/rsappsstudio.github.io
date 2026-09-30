@@ -92,45 +92,79 @@ class DocumentAnalyzer(
                 }
                 val scene = DocumentDetector.sceneSignature(gray)
                 val prev = tracker.currentAnchor
+                val guide = frame
                 var quad: Quad? = null
-                if (edgeModel != null) {
+                // In frame mode, while the page sits in the frame, the frame search below does the
+                // work: skip the (slow) whole-image detectors to keep the preview analysis fast.
+                val needGlobal = guide == null || snappedQuad == null
+                if (needGlobal && edgeModel != null) {
                     val prob = edgeModel.run(rgb)
                     quad = DocumentDetector.detectFromEdgeMap(prob, prev)
                     prob.release()
                     if (quad != null) lastSource = "ml"
                 }
-                if (quad == null) {
+                if (needGlobal && quad == null) {
                     quad = DocumentDetector.detect(gray, prev = prev)
                     lastSource = if (quad != null) "cv" else "-"
                 }
-                val guide = frame
+                if (!needGlobal) lastSource = "frame"
                 var trackQuad = quad
                 var guidance: Int? = null
-                if (guide != null && frameCount % 3 == 0L) {
-                    // Same band search used on the final photo, on the live frame: tells whether a
-                    // real page sits in the frame even when the global detectors miss it.
-                    val snap = DocumentDetector.snapToQuad(gray, guide, maxDim = 720)
+                if (guide != null && frameCount % 2 == 0L) {
+                    // Frame mode: look for the page's edges near each side of the frame (the same
+                    // band search used on the final photo). Sides that aren't found are completed
+                    // from the found ones and the frame, so 2 real sides (or 2-3 corners) are
+                    // enough - the page is in place even if a global detector sees only part of it
+                    // (e.g. one page of an open book). A wider band catches a page larger than the
+                    // frame (user very close).
+                    var snap = DocumentDetector.snapToQuad(gray, guide, maxDim = 720)
+                    if (snap.sidesFound < 2) {
+                        val wide = DocumentDetector.snapToQuad(gray, guide, maxDim = 720, bandFraction = 0.16)
+                        if (wide.sidesFound > snap.sidesFound) snap = wide
+                    }
                     frameSides = snap.sidesFound
-                    if (quad == null && snap.sidesFound >= 3) snappedQuad = snap.quad
-                    else if (snap.sidesFound < 3) snappedQuad = null
+                    snappedQuad = when {
+                        snap.sidesFound >= 3 -> snap.quad
+                        // Only two sides: accept when there is real content (not an empty table).
+                        snap.sidesFound == 2 && !DocumentDetector.isBlank(DocumentDetector.fingerprint(gray, snap.quad)) -> snap.quad
+                        else -> null
+                    }
                 }
                 if (guide == null) { frameSides = 0; snappedQuad = null }
-                if (guide != null && quad == null) trackQuad = snappedQuad
-                if (guide != null && trackQuad != null) {
-                    val q = trackQuad
-                    // Only a page lined up with the guide frame counts for auto-capture.
-                    val ratio = q.area() / guide.area()
-                    val aligned = q.distanceTo(guide) < ALIGN_TOLERANCE
-                    if (!aligned) {
+                if (guide != null) {
+                    val snapped = snappedQuad
+                    if (snapped != null) {
+                        // Page is in the frame: track the frame-snapped outline (stable from frame
+                        // to frame, so "Hold steady" doesn't keep restarting).
+                        trackQuad = snapped
+                    } else {
                         trackQuad = null
-                        guidance = when {
-                            ratio < 0.7f -> R.string.rs_scanner_move_closer
-                            ratio > 1.3f -> R.string.rs_scanner_move_back
-                            else -> R.string.rs_scanner_align_with_frame
+                        // Nothing near the frame: only then use the global detection for advice.
+                        val q = quad
+                        if (q != null) {
+                            val ratio = q.area() / guide.area()
+                            guidance = when {
+                                ratio < 0.45f -> R.string.rs_scanner_move_closer
+                                ratio > 1.35f -> R.string.rs_scanner_move_back
+                                else -> R.string.rs_scanner_align_with_frame
+                            }
                         }
                     }
                 }
                 if (!captureAllowed) guidance = R.string.rs_scanner_scan_complete_review
+                // Book, Free mode: if only one page was found, complete the open book around it.
+                if (bookMode && guide == null && quad != null) {
+                    val cached = spreadCache
+                    val expanded = if (cached != null && cached.first.distanceTo(quad) < 0.04f && frameCount % 6 != 0L) {
+                        cached.second
+                    } else {
+                        DocumentDetector.expandToSpread(gray, quad, maxDim = 640).also { spreadCache = quad to it }
+                    }
+                    if (trackQuad === quad) trackQuad = expanded
+                    quad = expanded
+                } else {
+                    spreadCache = null
+                }
                 val spreadQuad = trackQuad ?: quad
                 if (bookMode && guide == null && spreadQuad != null &&
                     !DocumentDetector.isTallSpread(spreadQuad, gray.cols(), gray.rows())
@@ -187,6 +221,8 @@ class DocumentAnalyzer(
     }
 
     private var snappedQuad: Quad? = null
+    /** Book / Free mode: last (detected page, completed spread), reused while the page doesn't move. */
+    private var spreadCache: Pair<Quad, Quad>? = null
 
     /** Spine line + centres of the two halves of the spread in [q]. */
     private fun liveSpine(gray: Mat, q: Quad): SpineGuide {

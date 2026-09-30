@@ -647,6 +647,43 @@ object DocumentDetector {
         }
     }
 
+    /**
+     * Open book seen as ONE page? Completes the spread from that page: the outline is mirrored
+     * across each of its four sides (the missing corners are drawn from the found ones), each
+     * candidate is snapped to real edges and scored; a candidate wins only when its edges are
+     * really there (a full spread mirrored runs off the book and scores low, so it stays as is).
+     */
+    fun expandToSpread(gray: Mat, quad: Quad, maxDim: Int = 1000): Quad {
+        fun beyond(a: NPoint, b: NPoint) = NPoint(2 * b.x - a.x, 2 * b.y - a.y) // b + (b - a)
+        val cands = listOf(
+            Quad(quad.tl, beyond(quad.tl, quad.tr), beyond(quad.bl, quad.br), quad.bl),   // other page on the right
+            Quad(beyond(quad.tr, quad.tl), quad.tr, quad.br, beyond(quad.br, quad.bl)),   // on the left
+            Quad(quad.tl, quad.tr, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl)),   // below
+            Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.br, quad.bl),   // above
+        )
+        val baseScore = scoreQuad(gray, quad, maxDim)
+        var best = quad
+        var bestScore = 0.0
+        for (c in cands) {
+            // The other page must be (almost entirely) in the picture.
+            if (c.points.any { it.x < -0.06f || it.x > 1.06f || it.y < -0.06f || it.y > 1.06f }) continue
+            val snap = snapToQuad(gray, clampQuad(c), maxDim = maxDim, bandFraction = 0.06)
+            if (snap.sidesFound < 3) continue
+            val q = snap.quad
+            val sc = scoreQuad(gray, q, maxDim)
+            debugLog?.invoke("spread cand score=%.3f base=%.3f sides=%d".format(sc, baseScore, snap.sidesFound))
+            if (sc >= 0.45 && sc >= baseScore * 0.85 && q.area() > quad.area() * 1.5 && sc > bestScore) {
+                best = q; bestScore = sc
+            }
+        }
+        return best
+    }
+
+    private fun clampQuad(q: Quad): Quad {
+        fun c(p: NPoint) = NPoint(p.x.coerceIn(0f, 1f), p.y.coerceIn(0f, 1f))
+        return Quad(c(q.tl), c(q.tr), c(q.br), c(q.bl))
+    }
+
     /** True when an open book is split into top/bottom halves (spread taller than wide in the image). */
     fun isTallSpread(quad: Quad, imgW: Int, imgH: Int): Boolean {
         val (w, h) = naiveSize(quad, imgW, imgH)
