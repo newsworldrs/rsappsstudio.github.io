@@ -69,7 +69,8 @@ class SettingsRepositoryImpl @Inject constructor(
         p[Keys.PERMISSION_SETUP] = s.permissionSetupCompleted
         p[Keys.THEME] = s.themeMode.name
         p[Keys.DYNAMIC_COLOR] = s.dynamicColor
-        if (s.defaultRegion == null) p.remove(Keys.REGION) else p[Keys.REGION] = s.defaultRegion
+        val region = s.defaultRegion
+        if (region == null) p.remove(Keys.REGION) else p[Keys.REGION] = region
         p[Keys.CALLER_ID] = s.callerIdEnabled
         p[Keys.SPAM_PROTECTION] = s.spamProtectionEnabled
         p[Keys.AUTO_BLOCK] = s.autoBlockHighRisk

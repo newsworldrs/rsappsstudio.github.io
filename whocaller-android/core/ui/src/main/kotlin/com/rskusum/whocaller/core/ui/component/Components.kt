@@ -6,6 +6,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.Switch
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -265,6 +271,42 @@ fun WarningBanner(title: String, message: String?, severe: Boolean, modifier: Mo
 @Composable
 fun PrimaryWideButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(onClick = onClick, enabled = enabled, modifier = modifier.fillMaxWidth().height(52.dp)) { Text(text) }
+}
+
+/** Accessible switch row: the whole row toggles and is announced as a switch. */
+@Composable
+fun SettingSwitch(
+    title: String,
+    description: String?,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = description?.let { { Text(it) } },
+        trailingContent = { Switch(checked = checked, onCheckedChange = null, enabled = enabled) },
+        modifier = modifier.toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+    )
+}
+
+/** Clickable navigation row. */
+@Composable
+fun NavigationRow(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = subtitle?.let { { Text(it) } },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+        modifier = modifier.clickable(onClick = onClick),
+    )
 }
 
 @Preview

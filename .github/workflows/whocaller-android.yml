@@ -41,7 +41,7 @@ jobs:
           ! git grep -nE 'AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|"private_key_id"' -- . ':!*.md'
 
       - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: ./gradlew --no-daemon assembleDebug
 
       - name: Unit tests
         run: ./gradlew --no-daemon --continue testDebugUnitTest :core:model:test :core:common:test :core:domain:test :core:network:test

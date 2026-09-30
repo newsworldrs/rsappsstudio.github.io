@@ -1,0 +1,149 @@
+package com.rskusum.whocaller.feature.callerid
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.telecom.Call
+import android.telecom.CallScreeningService
+import android.telecom.TelecomManager
+import android.telephony.TelephonyManager
+import com.rskusum.whocaller.core.common.analytics.CrashReporter
+import com.rskusum.whocaller.core.domain.caller.CallerIdentificationManager
+import com.rskusum.whocaller.core.domain.repository.SettingsRepository
+import com.rskusum.whocaller.core.model.CallDecision
+import com.rskusum.whocaller.core.model.CallerResult
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Orchestrates screening of one call: identification (time-boxed), response, and alert.
+ * Shared by the Android 10+ CallScreeningService and the Android 8–9 broadcast fallback.
+ */
+@Singleton
+class CallScreeningManager @Inject constructor(
+    private val identificationManager: CallerIdentificationManager,
+    private val settingsRepository: SettingsRepository,
+    private val notifier: CallerAlertNotifier,
+    private val crashReporter: CrashReporter,
+) {
+    /**
+     * @param canBlock false on Android 8–9, where apps can't reject calls without being the dialer.
+     * @return the result, or null if identification failed or ran out of time (the call is then allowed).
+     */
+    suspend fun screen(rawNumber: String?, canBlock: Boolean): CallerResult? {
+        val result = try {
+            withTimeoutOrNull(TOTAL_BUDGET_MS) { identificationManager.identify(rawNumber) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            crashReporter.recordNonFatal(e, "call_screening")
+            null
+        } ?: return null
+
+        val effective = if (!canBlock && result.decision == CallDecision.BLOCK) {
+            // Can't reject on this OS version: warn instead.
+            result.copy(decision = CallDecision.WARN)
+        } else {
+            result
+        }
+        val settings = runCatching { settingsRepository.current() }.getOrNull()
+        if (settings != null && (settings.callerIdEnabled || effective.decision != CallDecision.ALLOW)) {
+            notifier.buildAlert(effective)?.let { notifier.post(it, settings.disabledNotificationCategories) }
+        }
+        return effective
+    }
+
+    companion object {
+        /** Telecom allows ~5 s; answer well before that. */
+        const val TOTAL_BUDGET_MS = 4_000L
+    }
+}
+
+/**
+ * Android 10+ call screening. Telecom binds this service only after the user grants the
+ * call-screening role and only for callers who aren't in the user's contacts.
+ */
+@AndroidEntryPoint
+class WhoCallerScreeningService : CallScreeningService() {
+
+    @Inject lateinit var screeningManager: CallScreeningManager
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    override fun onScreenCall(callDetails: Call.Details) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            callDetails.callDirection != Call.Details.DIRECTION_INCOMING
+        ) {
+            respondToCall(callDetails, CallScreeningService.CallResponse.Builder().build())
+            return
+        }
+        val number = callDetails.handle?.schemeSpecificPart
+        val hidden = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            callDetails.handlePresentation != TelecomManager.PRESENTATION_ALLOWED
+
+        scope.launch {
+            val result = screeningManager.screen(if (hidden) null else number, canBlock = true)
+            val response = if (result?.decision == CallDecision.BLOCK) {
+                CallScreeningService.CallResponse.Builder()
+                    .setDisallowCall(true)
+                    .setRejectCall(true)
+                    .setSkipCallLog(false)
+                    .setSkipNotification(true)
+                    .build()
+            } else {
+                CallScreeningService.CallResponse.Builder().build()
+            }
+            try {
+                respondToCall(callDetails, response)
+            } catch (_: Exception) {
+                // The call may already have ended.
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
+}
+
+/**
+ * Android 8–9 fallback. Enabled only on API < 29 (see values-v29/bools.xml). Identifies the caller
+ * and shows a notification; it cannot block (that needs the default-dialer role on these versions).
+ */
+@AndroidEntryPoint
+class LegacyPhoneStateReceiver : BroadcastReceiver() {
+
+    @Inject lateinit var screeningManager: CallScreeningManager
+
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
+        if (intent.getStringExtra(TelephonyManager.EXTRA_STATE) != TelephonyManager.EXTRA_STATE_RINGING) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return
+        @Suppress("DEPRECATION")
+        val number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+        // Android 9 sends the broadcast twice; only the one carrying the number (needs READ_CALL_LOG) is useful.
+        if (number.isNullOrBlank() && Build.VERSION.SDK_INT == Build.VERSION_CODES.P) return
+
+        val pending = goAsync()
+        receiverScope.launch {
+            try {
+                screeningManager.screen(number, canBlock = false)
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    private companion object {
+        val receiverScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    }
+}
