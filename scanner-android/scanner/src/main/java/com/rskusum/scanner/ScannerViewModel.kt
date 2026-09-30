@@ -244,23 +244,40 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // then line-fitted; undetectable sides fall back to the frame + 1%.
                 val snap = DocumentDetector.snapToQuad(gray, frame)
                 sidesFound = snap.sidesFound
-                DocumentDetector.refine(gray, snap.quad)
-            } else {
-                // Learned edge model on the sharp still first, then the classic detector at two scales.
-                val model = com.rskusum.scanner.vision.EdgeModel.get(getApplication())
-                val fromModel = model?.let {
-                    val rgb = Images.toRgbMat(photo)
-                    val prob = it.run(rgb)
-                    rgb.release()
-                    DocumentDetector.detectFromEdgeMap(prob, hint).also { prob.release() }
+                val snapped = DocumentDetector.refine(gray, snap.quad)
+                if (snap.sidesFound >= 4) {
+                    snapped
+                } else {
+                    // Some sides missing: let every detector compete (scored on real edge support)
+                    // and take a better outline if it still matches the frame.
+                    val alt = DocumentDetector.autoDetect(gray, null, listOf(snapped, frame))
+                    if (alt != null && alt.distanceTo(frame) < 0.15f &&
+                        DocumentDetector.scoreQuad(gray, alt) > DocumentDetector.scoreQuad(gray, snapped) + 0.05
+                    ) alt else snapped
                 }
-                val detected = fromModel
-                    ?: DocumentDetector.detect(gray, 640, prev = hint)
-                    ?: DocumentDetector.detect(gray, 1000, prev = hint)
+            } else {
+                // Free mode: the learned edge model, the classic detector (two scales) and the live
+                // outline all compete; each is refined on the full photo and ranked by how well its
+                // four sides lie on real edges - the best one wins (not simply the first found).
+                val prob = com.rskusum.scanner.vision.EdgeModel.get(getApplication())?.let { model ->
+                    val rgb = Images.toRgbMat(photo)
+                    model.run(rgb).also { rgb.release() }
+                }
+                val best = try {
+                    DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint))
+                } finally {
+                    prob?.release()
+                }
                 when {
-                    detected != null -> DocumentDetector.refine(gray, detected)
-                    hint != null -> DocumentDetector.refine(gray, hint)
-                    else -> { sidesFound = 0; Quad.FULL }
+                    best != null -> best
+                    else -> {
+                        val detected = DocumentDetector.detect(gray, 640, prev = hint) ?: DocumentDetector.detect(gray, 1000, prev = hint)
+                        when {
+                            detected != null -> DocumentDetector.refine(gray, detected)
+                            hint != null -> DocumentDetector.refine(gray, hint)
+                            else -> { sidesFound = 0; Quad.FULL }
+                        }
+                    }
                 }
             }
 
