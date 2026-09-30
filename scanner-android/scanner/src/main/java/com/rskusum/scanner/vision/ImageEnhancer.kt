@@ -14,11 +14,23 @@ import kotlin.math.pow
 enum class ScanFilter(val label: String) {
     AUTO("Auto color"),
     ORIGINAL("Original"),
+    /** Faded print / light photocopies: every stroke dark, bold and sharp on pure white. */
+    DARK_TEXT("Dark text"),
     LIGHT_TEXT("Light text"),
     GRAYSCALE("Grayscale"),
     BW("B&W"),
     WHITEBOARD("Whiteboard"),
-    NO_SHADOW("No shadow"),
+    /**
+     * Old "No shadow" filter, kept so existing code compiles. Shadow removal is now a separate
+     * switch that works with every filter ([ImageEnhancer.apply] `removeShadow`).
+     */
+    @Deprecated("Use removeShadow = true with any filter")
+    NO_SHADOW("No shadow");
+
+    companion object {
+        /** Filters offered in the UI, in display order. */
+        val choices: List<ScanFilter> = listOf(AUTO, ORIGINAL, DARK_TEXT, LIGHT_TEXT, GRAYSCALE, BW, WHITEBOARD)
+    }
 }
 
 /**
@@ -29,9 +41,34 @@ enum class ScanFilter(val label: String) {
  */
 object ImageEnhancer {
 
-    /** @param rgb 8UC3 RGB. @return new 8UC3 RGB mat. */
-    fun apply(rgb: Mat, filter: ScanFilter): Mat = when (filter) {
+    /**
+     * @param rgb 8UC3 RGB.
+     * @param removeShadow first remove shadows / uneven lighting (colours kept), then apply [filter].
+     *   Works with every filter, including Original.
+     * @return new 8UC3 RGB mat.
+     */
+    @Suppress("DEPRECATION")
+    fun apply(rgb: Mat, filter: ScanFilter, removeShadow: Boolean = false): Mat {
+        if (!removeShadow || filter == ScanFilter.NO_SHADOW) return applyFilter(rgb, filter)
+        val flat = removeShadows(rgb)
+        return try { applyFilter(flat, filter) } finally { flat.release() }
+    }
+
+    /**
+     * Shadow removal on its own: a fine illumination model that follows hard shadow edges (phone /
+     * hand shadows) lifts shaded paper to white; ink colours and contrast are kept.
+     */
+    fun removeShadows(rgb: Mat): Mat {
+        val n = normalize(rgb, kernelDiv = 18, floor = 0.3)
+        val s = stretch(n, 0.002, 252.0)
+        n.release()
+        return s
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyFilter(rgb: Mat, filter: ScanFilter): Mat = when (filter) {
         ScanFilter.ORIGINAL -> rgb.clone()
+        ScanFilter.DARK_TEXT -> darkText(rgb)
         ScanFilter.AUTO -> {
             // Gentle: even out lighting, whiten paper, keep natural ink and photo colours.
             val n = normalize(rgb)
@@ -41,14 +78,7 @@ object ImageEnhancer {
             sharpen(s, 0.3)
             s
         }
-        ScanFilter.NO_SHADOW -> {
-            // Finer, deeper illumination model that follows hard shadow edges (phone/hand
-            // shadows) and lifts even dark shade to paper white; colours and contrast untouched.
-            val n = normalize(rgb, kernelDiv = 18, floor = 0.3)
-            val s = stretch(n, 0.002, 252.0)
-            n.release()
-            s
-        }
+        ScanFilter.NO_SHADOW -> removeShadows(rgb)
         ScanFilter.WHITEBOARD -> {
             val n = normalize(rgb)
             val s = stretch(n, 0.03, 232.0)
@@ -79,6 +109,36 @@ object ImageEnhancer {
     }
 
     // ---------------------------------------------------------------------------------------
+
+    /**
+     * Dark text: lighting evened out, paper grain / bleed-through smoothed (edge-preserving), paper
+     * mapped to pure white, faint strokes pushed to near black (gamma), sharpened and slightly
+     * thickened. Turns a faded photocopy into crisp black-on-white text.
+     */
+    private fun darkText(rgb: Mat): Mat {
+        val n = normalize(rgb, kernelDiv = 18, floor = 0.3)
+        val g = Mat()
+        Imgproc.cvtColor(n, g, Imgproc.COLOR_RGB2GRAY)
+        n.release()
+        val smooth = Mat()
+        Imgproc.bilateralFilter(g, smooth, 5, 30.0, 5.0)
+        g.release()
+        val ink = percentile(smooth, 0.01)
+        val paper = percentile(smooth, 0.60)
+        val white = min(245.0, paper - 14.0)
+        val lo = min(ink, 140.0)
+        val a = 255.0 / max(1.0, white - lo)
+        val out = Mat()
+        smooth.convertTo(out, -1, a, -lo * a)
+        smooth.release()
+        gamma(out, 2.2)
+        sharpen(out, 1.0)
+        // Slightly bolder strokes (thin faded lines become solid).
+        val k = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(2.0, 2.0))
+        Imgproc.erode(out, out, k)
+        k.release()
+        return toRgb(out)
+    }
 
     /** Divide by estimated background illumination. */
     private fun normalize(rgb: Mat, kernelDiv: Int = 25, floor: Double = 0.55): Mat {

@@ -282,6 +282,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         analyzer.autoCapture = vm.autoCapture
         analyzer.qrMode = qrMode
         analyzer.textMode = vm.mode.extractText && !qrMode
+        analyzer.bookMode = vm.mode == ScanMode.BOOK && !qrMode
         analyzer.paused = qrText != null
         analyzer.frame = if (qrMode) null else vm.guideFrame
         analyzer.knownPages = vm.sessionSignatures
@@ -364,8 +365,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     // Book guide: dashed divider across the whole preview, sideways
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
-                        val divider = guide?.let { (it.tl.y + it.br.y) / 2f } ?: 0.5f
-                        BookOverlay(divider, vm.bookSwap)
+                        if (guide != null) {
+                            BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap)
+                        } else {
+                            // Free mode: the spine line follows the book the camera actually sees.
+                            state.spine?.let { FreeSpineOverlay(it, vm.bookSwap) }
+                        }
                         BookSwapButton(
                             swapped = vm.bookSwap,
                             onSwap = {
@@ -429,6 +434,29 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     )
                 }
                 toast?.let { HintChip(it, Modifier.align(Alignment.Center)) }
+                // Smart filter on: show what it picked for the latest page.
+                if (granted && !qrMode && vm.aiAssist) {
+                    val last = vm.pages.lastOrNull()
+                    val what = when {
+                        last == null -> "waiting for the first page"
+                        last.smartLabel != null -> last.smartLabel!!
+                        else -> "choosing…"
+                    }
+                    Row(
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 8.dp, top = if (vm.mode == ScanMode.ID_CARD) 92.dp else 58.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ScanColors.Bar.copy(alpha = 0.8f))
+                            .border(1.dp, ScanColors.Marigold, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Filled.AutoAwesome, null, tint = ScanColors.Marigold, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.size(6.dp))
+                        Text("Smart: $what", color = Color.White, fontSize = 12.sp)
+                    }
+                }
                 if (granted && !qrMode) {
                     ToolRail(
                         flash = flash,
@@ -444,7 +472,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                         smartFilter = vm.aiAssist,
                         onToggleSmart = {
                             vm.aiAssist = !vm.aiAssist
-                            toast = if (vm.aiAssist) "Smart filter: best look picked for each page" else "Smart filter off"
+                            toast = if (vm.aiAssist) "Smart filter ON - the best filter (and shadow removal) is picked for every page" else "Smart filter off"
                         },
                         frame = vm.orientation,
                         onFrame = {
@@ -753,6 +781,29 @@ private fun BookOverlay(dividerY: Float, swapped: Boolean) {
             // Page badges, turned sideways so they read correctly with the phone held across the book.
             PageBadge(top, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 14.dp).rotate(90f))
             PageBadge(bottom, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 14.dp).rotate(90f))
+        }
+    }
+}
+
+/** Free-mode book guide: detected spine line across the spread + PAGE 1 / PAGE 2 on the halves. */
+@Composable
+private fun FreeSpineOverlay(spine: com.rskusum.scanner.camera.SpineGuide, swapped: Boolean) {
+    val guide = ScanColors.Marigold
+    Box(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize()) {
+            val a = Offset(spine.a.x * size.width, spine.a.y * size.height)
+            val b = Offset(spine.b.x * size.width, spine.b.y * size.height)
+            drawLine(guide.copy(alpha = 0.3f), a, b, 12.dp.toPx(), cap = StrokeCap.Round)
+            drawLine(guide, a, b, 2.5.dp.toPx(), cap = StrokeCap.Round)
+            drawCircle(guide, 5.dp.toPx(), a)
+            drawCircle(guide, 5.dp.toPx(), b)
+        }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+            val w = maxWidth; val h = maxHeight
+            val one = if (swapped) spine.second else spine.first
+            val two = if (swapped) spine.first else spine.second
+            PageBadge("PAGE 1", Modifier.offset(x = w * one.x - 34.dp, y = h * one.y - 14.dp).rotate(90f))
+            PageBadge("PAGE 2", Modifier.offset(x = w * two.x - 34.dp, y = h * two.y - 14.dp).rotate(90f))
         }
     }
 }

@@ -92,7 +92,7 @@ This is a complete **Android document scanner library**, which you can use free 
 
 ```kotlin
 // settings.gradle.kts → repositories { maven("https://jitpack.io") }
-implementation("com.github.newsworldrs:rsappsstudio.github.io:1.2.1")
+implementation("com.github.newsworldrs:rsappsstudio.github.io:1.3.0")
 
 val scanner = rememberLauncherForActivityResult(ScanDocument()) { result ->
     result?.pdfUri   // finished PDF

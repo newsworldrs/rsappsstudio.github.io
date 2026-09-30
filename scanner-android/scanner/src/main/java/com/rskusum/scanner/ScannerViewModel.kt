@@ -244,23 +244,40 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // then line-fitted; undetectable sides fall back to the frame + 1%.
                 val snap = DocumentDetector.snapToQuad(gray, frame)
                 sidesFound = snap.sidesFound
-                DocumentDetector.refine(gray, snap.quad)
-            } else {
-                // Learned edge model on the sharp still first, then the classic detector at two scales.
-                val model = com.rskusum.scanner.vision.EdgeModel.get(getApplication())
-                val fromModel = model?.let {
-                    val rgb = Images.toRgbMat(photo)
-                    val prob = it.run(rgb)
-                    rgb.release()
-                    DocumentDetector.detectFromEdgeMap(prob, hint).also { prob.release() }
+                val snapped = DocumentDetector.refine(gray, snap.quad)
+                if (snap.sidesFound >= 4) {
+                    snapped
+                } else {
+                    // Some sides missing: let every detector compete (scored on real edge support)
+                    // and take a better outline if it still matches the frame.
+                    val alt = DocumentDetector.autoDetect(gray, null, listOf(snapped, frame))
+                    if (alt != null && alt.distanceTo(frame) < 0.15f &&
+                        DocumentDetector.scoreQuad(gray, alt) > DocumentDetector.scoreQuad(gray, snapped) + 0.05
+                    ) alt else snapped
                 }
-                val detected = fromModel
-                    ?: DocumentDetector.detect(gray, 640, prev = hint)
-                    ?: DocumentDetector.detect(gray, 1000, prev = hint)
+            } else {
+                // Free mode: the learned edge model, the classic detector (two scales) and the live
+                // outline all compete; each is refined on the full photo and ranked by how well its
+                // four sides lie on real edges - the best one wins (not simply the first found).
+                val prob = com.rskusum.scanner.vision.EdgeModel.get(getApplication())?.let { model ->
+                    val rgb = Images.toRgbMat(photo)
+                    model.run(rgb).also { rgb.release() }
+                }
+                val best = try {
+                    DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint))
+                } finally {
+                    prob?.release()
+                }
                 when {
-                    detected != null -> DocumentDetector.refine(gray, detected)
-                    hint != null -> DocumentDetector.refine(gray, hint)
-                    else -> { sidesFound = 0; Quad.FULL }
+                    best != null -> best
+                    else -> {
+                        val detected = DocumentDetector.detect(gray, 640, prev = hint) ?: DocumentDetector.detect(gray, 1000, prev = hint)
+                        when {
+                            detected != null -> DocumentDetector.refine(gray, detected)
+                            hint != null -> DocumentDetector.refine(gray, hint)
+                            else -> { sidesFound = 0; Quad.FULL }
+                        }
+                    }
                 }
             }
 
@@ -287,7 +304,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // Open book: two independent A4 pages, each with its own crop outline so they can be
                 // cropped/edited separately. With the phone held across the book (spread taller than
                 // wide in the photo) each half is turned upright using the phone's orientation.
-                val (a, b) = DocumentDetector.splitSpread(quad, photoW, photoH)
+                // Cut at the real spine (gutter shadow / blank band), not just the geometric middle.
+                val spine = DocumentDetector.findSpine(gray, quad)
+                val (a, b) = DocumentDetector.splitSpread(quad, photoW, photoH, spine)
                 val (sw, sh) = DocumentDetector.naiveSize(quad, photoW, photoH)
                 val acrossBook = sh > sw
                 // Page 1 = top (or left) half as shown on screen, unless the user swapped the order.
@@ -443,9 +462,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     renderGate.withPermit { render(page, pickSmartFilter) }
                 }
                 if (result != null) {
-                    val (file, thumb, filter) = result
+                    val (file, thumb, pick) = result
                     page.processedFile?.takeIf { it != file }?.delete()
-                    page.filter = filter
+                    page.filter = pick.filter
+                    page.removeShadow = pick.removeShadow
+                    if (pickSmartFilter) {
+                        page.smartLabel = pick.label
+                        _messages.tryEmit("Smart filter: ${pick.label}")
+                    }
                     page.processedFile = file
                     page.thumbnail = thumb
                     page.version++
@@ -458,8 +482,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Warps + enhances the original. Returns (file, thumbnail, filter used). */
-    private fun render(page: Page, pickSmartFilter: Boolean): Triple<File, ImageBitmap, ScanFilter>? {
+    /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
+    private fun render(page: Page, pickSmartFilter: Boolean): Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>? {
         val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
@@ -473,8 +497,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             flat = sub
         }
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val filter = if (pickSmartFilter) SmartFilter.choose(flat) else page.filter
-        val enhanced = ImageEnhancer.apply(flat, filter)
+        val pick = if (pickSmartFilter) SmartFilter.pick(flat) else com.rskusum.scanner.vision.SmartPick(page.filter, page.removeShadow)
+        val enhanced = ImageEnhancer.apply(flat, pick.filter, pick.removeShadow)
         flat.release()
         com.rskusum.scanner.vision.Eraser.apply(enhanced, page.erasures.toList())
         val out = Images.toBitmap(enhanced)
@@ -482,7 +506,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
         Images.saveJpeg(out, file, 95)
         val thumb = Images.scaleDown(out, 360).asImageBitmap()
-        return Triple(file, thumb, filter)
+        return Triple(file, thumb, pick)
     }
 
     /** Small previews of every filter for the filter strip. */
@@ -498,8 +522,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             val sub = Mat(flat, roi).clone(); flat.release(); flat = sub
         }
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val map = ScanFilter.entries.associateWith { f ->
-            val m = ImageEnhancer.apply(flat, f)
+        val map = ScanFilter.choices.associateWith { f ->
+            val m = ImageEnhancer.apply(flat, f, page.removeShadow)
             val b = Images.toBitmap(m).asImageBitmap()
             m.release()
             b
@@ -579,14 +603,34 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Page editing ----------------------------------------------------------------------
 
+    @Suppress("DEPRECATION")
     fun setFilter(page: Page, filter: ScanFilter) {
+        // The old "No shadow" filter = Auto colour with shadow removal switched on.
+        if (filter == ScanFilter.NO_SHADOW) {
+            setFilter(page, ScanFilter.AUTO); setRemoveShadow(page, true); return
+        }
         if (page.filter == filter) return
         page.filter = filter
+        page.smartLabel = null
         launchRender(page)
     }
 
-    fun applyFilterToAll(filter: ScanFilter) {
-        pages.forEach { setFilter(it, filter) }
+    /** Shadow removal on/off for [page]; kept together with whatever filter is selected. */
+    fun setRemoveShadow(page: Page, on: Boolean) {
+        if (page.removeShadow == on) return
+        page.removeShadow = on
+        page.smartLabel = null
+        launchRender(page)
+    }
+
+    /** Same filter (and shadow-removal setting) on every page of the scan. */
+    fun applyFilterToAll(filter: ScanFilter, removeShadow: Boolean? = null) {
+        pages.forEach { p ->
+            val changed = p.filter != filter || (removeShadow != null && p.removeShadow != removeShadow)
+            p.filter = filter
+            if (removeShadow != null) p.removeShadow = removeShadow
+            if (changed) { p.smartLabel = null; launchRender(p) }
+        }
     }
 
     fun rotate(page: Page) {
@@ -614,7 +658,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = maxSide, forcedOrientation = page.forcedOrientation)
         rgb.release()
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val enhanced = ImageEnhancer.apply(flat, page.filter)
+        val enhanced = ImageEnhancer.apply(flat, page.filter, page.removeShadow)
         flat.release()
         Images.toBitmap(enhanced).also { enhanced.release() }
     }

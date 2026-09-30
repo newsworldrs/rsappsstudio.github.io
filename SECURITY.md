@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| 1.2.x (latest) | ✅ |
-| < 1.2 | ❌ Please update |
+| 1.3.x (latest) | ✅ |
+| < 1.3 | ❌ Please update |
 
 ## Reporting a vulnerability
 **Please don't report security problems in public issues.**

@@ -2,8 +2,13 @@ package com.rskusum.scanner.ui.erase
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Compare
+import androidx.compose.material.icons.outlined.ZoomOutMap
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,11 +49,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -62,13 +71,18 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+private enum class Brush(val label: String, val help: String) {
+    MARKS("Marks only", "Rub over pen, pencil, highlighter and stains: they disappear, printed black text stays."),
+    EVERYTHING("Everything", "Rub over an area to wipe it back to clean paper, text included."),
+    RESTORE("Restore", "Paint over an area to bring the original page back (undo erasing there)."),
+}
+
 /**
- * Eraser: paint over the finished page.
- *  - "Marks only": pen / pencil / highlighter marks and stains disappear, printed text under
- *    them is kept.
- *  - "Everything": the painted area becomes clean paper (text included).
- * Strokes are stored on the page and applied at render time, so they are non-destructive
- * (undo / clear any time).
+ * Eraser: paint over the finished page and see the real result live.
+ *  - One finger erases; two fingers zoom (up to 6x) and move the page for precise work.
+ *  - Brushes: Marks only / Everything / Restore. Edges are feathered.
+ *  - Hold "Compare" to see the page before erasing.
+ * Strokes are stored on the page and applied at render time (non-destructive: undo / clear).
  */
 @Composable
 fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
@@ -76,11 +90,11 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
         LaunchedEffect(Unit) { onDone() }
         return
     }
-    // Clean base (page without any erasing) + live preview with all strokes applied. The user sees
-    // the real result of every stroke: marks disappear, nothing is painted over the page.
-    val base by produceState<android.graphics.Bitmap?>(null, page.id, page.quad, page.rotation, page.filter) {
+    // Clean base (page without any erasing) + live preview with all strokes applied.
+    val base by produceState<android.graphics.Bitmap?>(null, page.id, page.quad, page.rotation, page.filter, page.removeShadow) {
         value = vm.eraserBase(page)
     }
+    val baseImage = remember(base) { base?.asImageBitmap() }
     val strokes = remember(page.id) { mutableStateListOf<EraseStroke>().apply { addAll(page.erasures) } }
     var preview by remember { mutableStateOf<ImageBitmap?>(null) }
     var updating by remember { mutableStateOf(false) }
@@ -92,8 +106,11 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             updating = false
         }
     }
-    var keepText by remember { mutableStateOf(true) }
-    var brush by remember { mutableFloatStateOf(0.03f) }
+    var mode by remember { mutableStateOf(Brush.MARKS) }
+    var brush by remember { mutableFloatStateOf(0.03f) }   // on-screen radius, fraction of page width
+    var zoom by remember { mutableFloatStateOf(1f) }
+    var pan by remember { mutableStateOf(Offset.Zero) }
+    var comparing by remember { mutableStateOf(false) }
     val live = remember { mutableStateListOf<NPoint>() }
     var finger by remember { mutableStateOf<Offset?>(null) }
 
@@ -114,7 +131,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                     Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = if (strokes.isNotEmpty()) Color.White else Color.Gray)
                 }
                 IconButton(onClick = { vm.setErasures(page, strokes.toList()); onDone() }) {
-                    Icon(Icons.Filled.Check, "Apply", tint = ScanColors.Accent, modifier = Modifier.size(30.dp))
+                    Icon(Icons.Filled.Check, "Apply", tint = ScanColors.AccentBright, modifier = Modifier.size(30.dp))
                 }
             }
         }
@@ -123,10 +140,11 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(12.dp)
+                .clipToBounds(),
             contentAlignment = Alignment.Center,
         ) {
-            val img = preview
+            val img = if (comparing) baseImage else preview
             if (img == null) {
                 CircularProgressIndicator(color = ScanColors.Accent)
             } else {
@@ -137,43 +155,76 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 val dh = img.height * s
                 val ox = (cw - dw) / 2
                 val oy = (ch - dh) / 2
-                fun norm(o: Offset) = NPoint(((o.x - ox) / dw).coerceIn(0f, 1f), ((o.y - oy) / dh).coerceIn(0f, 1f))
+                val centre = Offset(cw / 2, ch / 2)
+                // Screen -> page (0..1), undoing zoom (around the centre) and pan.
+                fun norm(o: Offset): NPoint {
+                    val p = (o - pan - centre) / zoom + centre
+                    return NPoint(((p.x - ox) / dw).coerceIn(0f, 1f), ((p.y - oy) / dh).coerceIn(0f, 1f))
+                }
                 Canvas(
                     Modifier
                         .fillMaxSize()
-                        .pointerInput(img.width, img.height, keepText, brush) {
-                            detectDragGestures(
-                                onDragStart = { live.clear(); live.add(norm(it)); finger = it },
-                                onDragEnd = {
-                                    if (live.isNotEmpty()) strokes.add(EraseStroke(live.toList(), brush, keepText))
-                                    live.clear(); finger = null
-                                },
-                                onDragCancel = { live.clear(); finger = null },
-                            ) { change, _ ->
-                                change.consume()
-                                live.add(norm(change.position))
-                                finger = change.position
+                        .pointerInput(img.width, img.height, mode, brush) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                live.clear(); live.add(norm(down.position)); finger = down.position
+                                var multi = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.filter { it.pressed }
+                                    if (pressed.isEmpty()) break
+                                    if (pressed.size >= 2) {
+                                        // Two fingers: zoom + move, never erase.
+                                        if (!multi) { multi = true; live.clear(); finger = null }
+                                        val newZoom = (zoom * event.calculateZoom()).coerceIn(1f, 6f)
+                                        val maxPan = Offset(cw * (newZoom - 1) / 2, ch * (newZoom - 1) / 2)
+                                        val p = pan + event.calculatePan()
+                                        pan = Offset(p.x.coerceIn(-maxPan.x, maxPan.x), p.y.coerceIn(-maxPan.y, maxPan.y))
+                                        zoom = newZoom
+                                        event.changes.forEach { it.consume() }
+                                    } else if (!multi) {
+                                        val c = pressed[0]
+                                        live.add(norm(c.position)); finger = c.position
+                                        c.consume()
+                                    }
+                                }
+                                if (!multi && live.isNotEmpty()) {
+                                    // Brush size is on-screen: at 3x zoom the stroke is 3x finer on the page.
+                                    strokes.add(
+                                        EraseStroke(
+                                            live.toList(), brush / zoom,
+                                            keepText = mode == Brush.MARKS, restore = mode == Brush.RESTORE,
+                                        )
+                                    )
+                                }
+                                live.clear(); finger = null
                             }
                         }
                 ) {
-                    drawImage(img, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()), dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
-                    val rpx = brush * dw
-                    // Stroke in progress: only a faint outline (the page stays visible underneath).
-                    if (live.size > 1) {
-                        val path = androidx.compose.ui.graphics.Path()
-                        live.forEachIndexed { i, p ->
-                            val o = Offset(ox + p.x * dw, oy + p.y * dh)
-                            if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+                    withTransform({
+                        translate(pan.x, pan.y)
+                        scale(zoom, zoom, centre)
+                    }) {
+                        drawImage(img, dstOffset = IntOffset(ox.roundToInt(), oy.roundToInt()), dstSize = IntSize(dw.roundToInt(), dh.roundToInt()))
+                        // Stroke in progress: faint outline, the page stays visible underneath.
+                        if (live.size > 1) {
+                            val path = androidx.compose.ui.graphics.Path()
+                            live.forEachIndexed { i, p ->
+                                val o = Offset(ox + p.x * dw, oy + p.y * dh)
+                                if (i == 0) path.moveTo(o.x, o.y) else path.lineTo(o.x, o.y)
+                            }
+                            val tint = if (mode == Brush.RESTORE) ScanColors.Marigold else Color.White
+                            drawPath(
+                                path, tint.copy(alpha = 0.35f),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = brush / zoom * dw * 2, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+                            )
                         }
-                        drawPath(
-                            path, Color.White.copy(alpha = 0.35f),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = rpx * 2, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
-                        )
                     }
-                    // Brush ring under the finger.
+                    // Brush ring under the finger (screen size).
                     finger?.let {
+                        val rpx = brush * dw
                         drawCircle(Color.Black.copy(alpha = 0.6f), rpx, it, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
-                        drawCircle(Color.White, rpx, it, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                        drawCircle(if (mode == Brush.RESTORE) ScanColors.Marigold else Color.White, rpx, it, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
                     }
                 }
                 if (updating) {
@@ -182,23 +233,52 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                         modifier = Modifier.align(Alignment.TopEnd).size(22.dp),
                     )
                 }
+                // Hold to compare with the page before erasing.
+                Row(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(ScanColors.Bar.copy(alpha = 0.8f))
+                        .pointerInput(Unit) {
+                            detectTapGestures(onPress = { comparing = true; tryAwaitRelease(); comparing = false })
+                        }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Outlined.Compare, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (comparing) "Before" else "Hold: before", color = Color.White, fontSize = 12.sp)
+                }
+                if (zoom > 1.01f) {
+                    Row(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(ScanColors.Bar.copy(alpha = 0.8f))
+                            .clickable { zoom = 1f; pan = Offset.Zero }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.ZoomOutMap, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("${"%.1f".format(zoom)}x · Fit", color = Color.White, fontSize = 12.sp)
+                    }
+                }
             }
         }
 
-        // Mode + brush size
+        // Brush type + size
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ModeChip("Marks only (keep text)", keepText, Modifier.weight(1f)) { keepText = true }
-            ModeChip("Everything", !keepText, Modifier.weight(1f)) { keepText = false }
+            Brush.entries.forEach { b -> ModeChip(b.label, mode == b, Modifier.weight(1f)) { mode = b } }
         }
         Text(
-            if (keepText) "Rub over marks: pen, pencil, highlighter and stains disappear, printed text stays. Repeat as often as you like."
-            else "Rub over an area to wipe it back to clean paper, text included.",
+            mode.help + "  Pinch with two fingers to zoom.",
             color = ScanColors.TextDim,
             fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
         )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -210,7 +290,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 value = brush,
                 onValueChange = { brush = it },
                 valueRange = 0.008f..0.08f,
-                colors = SliderDefaults.colors(thumbColor = ScanColors.Accent, activeTrackColor = ScanColors.Accent),
+                colors = SliderDefaults.colors(thumbColor = ScanColors.AccentBright, activeTrackColor = ScanColors.Accent),
                 modifier = Modifier.weight(1f),
             )
             TextButton(onClick = { strokes.clear() }) { Text("Clear", color = Color.White) }
@@ -223,8 +303,9 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
 private fun ModeChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(if (selected) ScanColors.Accent else ScanColors.SurfaceHigh)
+            .border(1.dp, if (selected) ScanColors.AccentBright else Color.Transparent, RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
