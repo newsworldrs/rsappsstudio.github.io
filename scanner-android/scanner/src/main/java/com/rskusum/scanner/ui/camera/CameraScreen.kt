@@ -282,6 +282,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         analyzer.autoCapture = vm.autoCapture
         analyzer.qrMode = qrMode
         analyzer.textMode = vm.mode.extractText && !qrMode
+        analyzer.bookMode = vm.mode == ScanMode.BOOK && !qrMode
         analyzer.paused = qrText != null
         analyzer.frame = if (qrMode) null else vm.guideFrame
         analyzer.knownPages = vm.sessionSignatures
@@ -364,8 +365,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     // Book guide: dashed divider across the whole preview, sideways
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
-                        val divider = guide?.let { (it.tl.y + it.br.y) / 2f } ?: 0.5f
-                        BookOverlay(divider, vm.bookSwap)
+                        if (guide != null) {
+                            BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap)
+                        } else {
+                            // Free mode: the spine line follows the book the camera actually sees.
+                            state.spine?.let { FreeSpineOverlay(it, vm.bookSwap) }
+                        }
                         BookSwapButton(
                             swapped = vm.bookSwap,
                             onSwap = {
@@ -776,6 +781,29 @@ private fun BookOverlay(dividerY: Float, swapped: Boolean) {
             // Page badges, turned sideways so they read correctly with the phone held across the book.
             PageBadge(top, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 14.dp).rotate(90f))
             PageBadge(bottom, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 14.dp).rotate(90f))
+        }
+    }
+}
+
+/** Free-mode book guide: detected spine line across the spread + PAGE 1 / PAGE 2 on the halves. */
+@Composable
+private fun FreeSpineOverlay(spine: com.rskusum.scanner.camera.SpineGuide, swapped: Boolean) {
+    val guide = ScanColors.Marigold
+    Box(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize()) {
+            val a = Offset(spine.a.x * size.width, spine.a.y * size.height)
+            val b = Offset(spine.b.x * size.width, spine.b.y * size.height)
+            drawLine(guide.copy(alpha = 0.3f), a, b, 12.dp.toPx(), cap = StrokeCap.Round)
+            drawLine(guide, a, b, 2.5.dp.toPx(), cap = StrokeCap.Round)
+            drawCircle(guide, 5.dp.toPx(), a)
+            drawCircle(guide, 5.dp.toPx(), b)
+        }
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+            val w = maxWidth; val h = maxHeight
+            val one = if (swapped) spine.second else spine.first
+            val two = if (swapped) spine.first else spine.second
+            PageBadge("PAGE 1", Modifier.offset(x = w * one.x - 34.dp, y = h * one.y - 14.dp).rotate(90f))
+            PageBadge("PAGE 2", Modifier.offset(x = w * two.x - 34.dp, y = h * two.y - 14.dp).rotate(90f))
         }
     }
 }

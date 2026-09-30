@@ -18,6 +18,19 @@ data class TrackerState(
     val guidance: String? = null,
     /** AI Text mode: live text line boxes (normalized), for the highlight overlay. */
     val textBoxes: List<com.rskusum.scanner.vision.NRect> = emptyList(),
+    /** Book mode without a guide frame: the detected spine of the open book. */
+    val spine: SpineGuide? = null,
+)
+
+/**
+ * Live book spine: line [a]-[b] across the detected spread, and the centres of the two halves
+ * ([first] = top/left, [second] = bottom/right), all normalized.
+ */
+data class SpineGuide(
+    val a: com.rskusum.scanner.vision.NPoint,
+    val b: com.rskusum.scanner.vision.NPoint,
+    val first: com.rskusum.scanner.vision.NPoint,
+    val second: com.rskusum.scanner.vision.NPoint,
 )
 
 /**

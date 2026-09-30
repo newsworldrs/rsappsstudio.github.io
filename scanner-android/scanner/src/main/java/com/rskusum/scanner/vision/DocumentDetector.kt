@@ -11,6 +11,7 @@ import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -628,30 +629,121 @@ object DocumentDetector {
 
     /**
      * Splits the outline of an open book (two pages) into the two page outlines, following the
-     * perspective (the split runs through the true middle of the spread, not the image middle).
-     * The split is across the spread's longer side: top/bottom halves when the spread is taller
-     * than wide in the image (phone held along the book), left/right otherwise.
+     * perspective. The split is across the spread's longer side: top/bottom halves when the spread
+     * is taller than wide in the image (phone held along the book), left/right otherwise.
+     * @param spine where the spine is, as a fraction (0..1) along the split direction of the
+     *   flattened spread ([findSpine]); 0.5 = the true middle.
      * @return (first half, second half) = (top, bottom) or (left, right).
      */
-    fun splitSpread(quad: Quad, imgW: Int, imgH: Int): Pair<Quad, Quad> {
+    fun splitSpread(quad: Quad, imgW: Int, imgH: Int, spine: Float = 0.5f): Pair<Quad, Quad> {
+        val tall = isTallSpread(quad, imgW, imgH)
+        val (m0, m1) = spineLine(quad, imgW, imgH, spine)
+        return if (tall) {
+            // m0 = spine point on the left side, m1 = on the right side
+            Quad(quad.tl, quad.tr, m1, m0) to Quad(m0, m1, quad.br, quad.bl)
+        } else {
+            // m0 = spine point on the top side, m1 = on the bottom side
+            Quad(quad.tl, m0, m1, quad.bl) to Quad(m0, quad.tr, quad.br, m1)
+        }
+    }
+
+    /** True when an open book is split into top/bottom halves (spread taller than wide in the image). */
+    fun isTallSpread(quad: Quad, imgW: Int, imgH: Int): Boolean {
         val (w, h) = naiveSize(quad, imgW, imgH)
+        return h > w
+    }
+
+    /** The two ends of the spine line inside the spread outline, perspective-correct. */
+    fun spineLine(quad: Quad, imgW: Int, imgH: Int, spine: Float = 0.5f): Pair<NPoint, NPoint> {
+        val tall = isTallSpread(quad, imgW, imgH)
         val src = MatOfPoint2f(Point(0.0, 0.0), Point(1.0, 0.0), Point(1.0, 1.0), Point(0.0, 1.0))
         val dst = MatOfPoint2f(*quad.points.map { Point(it.x.toDouble() * imgW, it.y.toDouble() * imgH) }.toTypedArray())
         val hm = Imgproc.getPerspectiveTransform(src, dst)
-        val tall = h > w
-        val probe = if (tall) arrayOf(Point(0.0, 0.5), Point(1.0, 0.5)) else arrayOf(Point(0.5, 0.0), Point(0.5, 1.0))
+        val t = spine.toDouble().coerceIn(0.2, 0.8)
+        val probe = if (tall) arrayOf(Point(0.0, t), Point(1.0, t)) else arrayOf(Point(t, 0.0), Point(t, 1.0))
         val inPts = MatOfPoint2f(*probe)
         val outPts = MatOfPoint2f()
         Core.perspectiveTransform(inPts, outPts, hm)
         val m = outPts.toArray().map { NPoint((it.x / imgW).toFloat(), (it.y / imgH).toFloat()) }
         src.release(); dst.release(); hm.release(); inPts.release(); outPts.release()
-        return if (tall) {
-            // m[0] = middle of left side, m[1] = middle of right side
-            Quad(quad.tl, quad.tr, m[1], m[0]) to Quad(m[0], m[1], quad.br, quad.bl)
-        } else {
-            // m[0] = middle of top side, m[1] = middle of bottom side
-            Quad(quad.tl, m[0], m[1], quad.bl) to Quad(m[0], quad.tr, quad.br, m[1])
+        return m[0] to m[1]
+    }
+
+    /**
+     * Finds the spine (gutter) of an open book inside [quad]: the spread is flattened and, for every
+     * position across it, the *paper* brightness is measured (80th percentile, so text is ignored).
+     * The binding shows as a valley (shadow / curvature near the spine). Without a visible valley,
+     * the blank band between the two text blocks is used; otherwise the middle.
+     * @return spine position 0..1 along the split direction (see [splitSpread]).
+     */
+    fun findSpine(gray: Mat, quad: Quad): Float {
+        val w = gray.cols(); val h = gray.rows()
+        val tall = isTallSpread(quad, w, h)
+        val along = 600; val across = 400
+        val size = if (tall) Size(across.toDouble(), along.toDouble()) else Size(along.toDouble(), across.toDouble())
+        val src = MatOfPoint2f(*quad.points.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray())
+        val dst = MatOfPoint2f(Point(0.0, 0.0), Point(size.width, 0.0), Point(size.width, size.height), Point(0.0, size.height))
+        val m = Imgproc.getPerspectiveTransform(src, dst)
+        var flat = Mat()
+        Imgproc.warpPerspective(gray, flat, m, size, Imgproc.INTER_AREA)
+        src.release(); dst.release(); m.release()
+        if (tall) { val t = Mat(); Core.transpose(flat, t); flat.release(); flat = t } // positions along x
+        val px = ByteArray(along * across)
+        flat.get(0, 0, px)
+        flat.release()
+
+        // Paper brightness and ink amount per position along the split direction.
+        val paper = FloatArray(along)
+        val column = IntArray(across)
+        var allPaper = 0.0
+        for (x in 0 until along) {
+            for (y in 0 until across) column[y] = px[y * along + x].toInt() and 0xFF
+            column.sort()
+            paper[x] = column[(across * 0.8).toInt()].toFloat()
+            allPaper += column[(across * 0.9).toInt()]
         }
+        val paperLevel = (allPaper / along).toFloat()
+        val ink = FloatArray(along)
+        for (x in 0 until along) {
+            var n = 0
+            for (y in 0 until across) if ((px[y * along + x].toInt() and 0xFF) < paperLevel * 0.75f) n++
+            ink[x] = n.toFloat() / across
+        }
+        val paperS = smooth1d(paper, 3.0)
+        val inkS = smooth1d(ink, 2.0)
+
+        val lo = (along * 0.3).toInt(); val hi = (along * 0.7).toInt()
+        var minI = lo
+        for (x in lo until hi) if (paperS[x] < paperS[minI]) minI = x
+        val window = paperS.copyOfRange(lo, hi).sorted()
+        val median = window[window.size / 2]
+        val depth = (median - paperS[minI]) / median.coerceAtLeast(1f)
+        if (depth >= 0.04f) return minI.toFloat() / along
+
+        // No gutter shadow: widest ink-free band near the middle.
+        var best = -1f; var bestC = -1f; var run = 0
+        for (k in lo..hi) {
+            if (k < hi && inkS[k] < 0.01f) { run++; continue }
+            if (run >= 8) {
+                val c = k - run / 2f
+                val score = run - abs(c - along / 2f) * 0.05f
+                if (score > best) { best = score; bestC = c }
+            }
+            run = 0
+        }
+        return if (bestC > 0) bestC / along else 0.5f
+    }
+
+    private fun smooth1d(v: FloatArray, sigma: Double): FloatArray {
+        val r = (sigma * 3).toInt()
+        val k = DoubleArray(2 * r + 1) { i -> exp(-((i - r) * (i - r)) / (2 * sigma * sigma)) }
+        val out = FloatArray(v.size)
+        for (i in v.indices) {
+            var s = 0.0; var ws = 0.0
+            for (j in -r..r) { val t = i + j; if (t in v.indices) { s += v[t] * k[j + r]; ws += k[j + r] } }
+            out[i] = (s / ws).toFloat()
+        }
+        return out
     }
 
     /** Page orientation to enforce together with a forced aspect ratio. */

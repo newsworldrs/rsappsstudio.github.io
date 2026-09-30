@@ -31,6 +31,10 @@ class DocumentAnalyzer(
     @Volatile var autoCapture = true
     @Volatile var qrMode = false
     @Volatile var paused = false
+    /** Book mode: find the spine live (used in Free mode, where there is no guide line). */
+    @Volatile var bookMode = false
+    private var spine: SpineGuide? = null
+
     /** AI Text mode: look for text lines on the live preview. */
     @Volatile var textMode = false
     private var textBoxes: List<com.rskusum.scanner.vision.NRect> = emptyList()
@@ -126,6 +130,12 @@ class DocumentAnalyzer(
                     }
                 }
                 if (!captureAllowed) guidance = "Scan complete - tap the thumbnail to review"
+                val spreadQuad = trackQuad ?: quad
+                if (!bookMode || guide != null || spreadQuad == null) {
+                    spine = null
+                } else if (frameCount % 5 == 0L) {
+                    spine = liveSpine(gray, spreadQuad)
+                }
                 if (!textMode) {
                     textBoxes = emptyList()
                 } else if (frameCount % 4 == 0L) {
@@ -152,7 +162,7 @@ class DocumentAnalyzer(
                     }
                 }
                 lastQuad = state.quad
-                onState(state.copy(rawQuad = quad, aligned = guide != null && trackQuad != null, guidance = guidance, textBoxes = textBoxes))
+                onState(state.copy(rawQuad = quad, aligned = guide != null && trackQuad != null, guidance = guidance, textBoxes = textBoxes, spine = spine))
                 framesAnalyzed++
                 lastError = null
                 if (fire) onAutoCapture()
@@ -168,6 +178,16 @@ class DocumentAnalyzer(
     }
 
     private var snappedQuad: Quad? = null
+
+    /** Spine line + centres of the two halves of the spread in [q]. */
+    private fun liveSpine(gray: Mat, q: Quad): SpineGuide {
+        val w = gray.cols(); val h = gray.rows()
+        val t = DocumentDetector.findSpine(gray, q)
+        val (a, b) = DocumentDetector.splitSpread(q, w, h, t)
+        fun centre(x: Quad) = com.rskusum.scanner.vision.NPoint(x.points.map { it.x }.average().toFloat(), x.points.map { it.y }.average().toFloat())
+        val (m0, m1) = DocumentDetector.spineLine(q, w, h, t)
+        return SpineGuide(m0, m1, centre(a), centre(b))
+    }
 
     private companion object {
         /** Max corner distance (normalized) between detection and guide frame to count as aligned. */
