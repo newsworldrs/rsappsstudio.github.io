@@ -53,6 +53,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.rskusum.scanner.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,7 +79,7 @@ fun HomeScreen(vm: ScannerViewModel, onScan: () -> Unit) {
         try {
             context.startActivity(vm.store.openIntent(doc.file))
         } catch (e: ActivityNotFoundException) {
-            Toast.makeText(context, "No PDF viewer installed", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.rs_scanner_no_pdf_viewer), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -85,7 +88,7 @@ fun HomeScreen(vm: ScannerViewModel, onScan: () -> Unit) {
         topBar = {
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White),
-                title = { Text("Recent scans", fontWeight = FontWeight.SemiBold) },
+                title = { Text(stringResource(R.string.rs_scanner_recent_scans), fontWeight = FontWeight.SemiBold) },
             )
         },
         floatingActionButton = {
@@ -94,7 +97,7 @@ fun HomeScreen(vm: ScannerViewModel, onScan: () -> Unit) {
                 containerColor = ScanColors.Accent,
                 contentColor = Color.White,
                 icon = { Icon(Icons.Outlined.DocumentScanner, null) },
-                text = { Text(if (vm.pages.isEmpty()) "Scan" else "Resume scan (${vm.pages.size})") },
+                text = { Text(if (vm.pages.isEmpty()) stringResource(R.string.rs_scanner_scan) else stringResource(R.string.rs_scanner_resume_scan, vm.pages.size)) },
             )
         },
     ) { padding ->
@@ -106,8 +109,8 @@ fun HomeScreen(vm: ScannerViewModel, onScan: () -> Unit) {
             ) {
                 Icon(Icons.Outlined.Description, null, tint = ScanColors.TextDim, modifier = Modifier.size(64.dp))
                 Spacer(Modifier.height(12.dp))
-                Text("No scans yet", color = Color.White, fontSize = 18.sp)
-                Text("Tap Scan to capture your first document", color = ScanColors.TextDim)
+                Text(stringResource(R.string.rs_scanner_no_scans), color = Color.White, fontSize = 18.sp)
+                Text(stringResource(R.string.rs_scanner_no_scans_hint), color = ScanColors.TextDim)
             }
         } else {
             LazyColumn(Modifier.padding(padding).fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
@@ -130,24 +133,24 @@ fun HomeScreen(vm: ScannerViewModel, onScan: () -> Unit) {
         var text by remember(doc) { mutableStateOf(doc.name) }
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("Rename") },
+            title = { Text(stringResource(R.string.rs_scanner_rename)) },
             text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
             confirmButton = {
                 TextButton(onClick = {
                     if (text.isNotBlank() && text != doc.name) vm.renameDocument(doc, text)
                     renameTarget = null
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.rs_scanner_ok)) }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(stringResource(R.string.rs_scanner_cancel)) } },
         )
     }
     deleteTarget?.let { doc ->
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("Delete \"${doc.name}\"?") },
-            text = { Text("The copy in Downloads is not affected.") },
-            confirmButton = { TextButton(onClick = { vm.deleteDocument(doc); deleteTarget = null }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.rs_scanner_delete_doc_title, doc.name)) },
+            text = { Text(stringResource(R.string.rs_scanner_delete_doc_message)) },
+            confirmButton = { TextButton(onClick = { vm.deleteDocument(doc); deleteTarget = null }) { Text(stringResource(R.string.rs_scanner_tool_delete)) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(stringResource(R.string.rs_scanner_cancel)) } },
         )
     }
 }
@@ -186,19 +189,19 @@ private fun DocumentRow(
             Spacer(Modifier.height(4.dp))
             Text(
                 "${DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(doc.modified))} · " +
-                    "${doc.pageCount} page${if (doc.pageCount == 1) "" else "s"} · ${formatSize(doc.sizeBytes)}",
+                    pluralStringResource(R.plurals.rs_scanner_pages, doc.pageCount, doc.pageCount) + " · ${formatSize(doc.sizeBytes)}",
                 color = ScanColors.TextDim,
                 fontSize = 12.sp,
             )
         }
-        IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, "Share", tint = Color.White) }
+        IconButton(onClick = onShare) { Icon(Icons.Outlined.Share, stringResource(R.string.rs_scanner_share), tint = Color.White) }
         Box {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More", tint = Color.White) }
+            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.rs_scanner_more), tint = Color.White) }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Open") }, onClick = { menu = false; onOpen() })
-                DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
-                DropdownMenuItem(text = { Text("Share") }, onClick = { menu = false; onShare() })
-                DropdownMenuItem(text = { Text("Delete") }, onClick = { menu = false; onDelete() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_open)) }, onClick = { menu = false; onOpen() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_rename)) }, onClick = { menu = false; onRename() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_share)) }, onClick = { menu = false; onShare() })
+                DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_tool_delete)) }, onClick = { menu = false; onDelete() })
             }
         }
     }

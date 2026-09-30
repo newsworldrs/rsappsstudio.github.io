@@ -53,7 +53,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rskusum.scanner.R
 import com.rskusum.scanner.ScannerViewModel
+import androidx.compose.ui.res.stringResource
 import com.rskusum.scanner.data.Images
 import com.rskusum.scanner.data.Page
 import com.rskusum.scanner.ui.ScanColors
@@ -89,10 +91,10 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
     ) {
         Box(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 8.dp)) {
             IconButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Filled.Close, "Cancel", tint = Color.White)
+                Icon(Icons.Filled.Close, stringResource(R.string.rs_scanner_cancel), tint = Color.White)
             }
             Text(
-                "Adjust corners",
+                stringResource(R.string.rs_scanner_adjust_corners),
                 color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -102,7 +104,7 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 onClick = { vm.setQuad(page, quad); onDone() },
                 modifier = Modifier.align(Alignment.CenterEnd),
             ) {
-                Icon(Icons.Filled.Check, "Done", tint = ScanColors.Accent, modifier = Modifier.size(30.dp))
+                Icon(Icons.Filled.Check, stringResource(R.string.rs_scanner_done), tint = ScanColors.Accent, modifier = Modifier.size(30.dp))
             }
         }
 
@@ -127,7 +129,7 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                         CircularProgressIndicator(color = ScanColors.Accent, strokeWidth = 4.dp, modifier = Modifier.size(56.dp))
                         if (detecting) {
                             Spacer(Modifier.height(12.dp))
-                            Text("Finding page edges…", color = Color.White, fontSize = 15.sp)
+                            Text(stringResource(R.string.rs_scanner_finding_edges), color = Color.White, fontSize = 15.sp)
                         }
                     }
                 }
@@ -146,19 +148,19 @@ fun CropScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                     // handles near the page and pressing Auto snaps them onto the real edges.
                     val found = vm.autoDetect(page, quad)
                     if (found != null) quad = found
-                    else android.widget.Toast.makeText(context, "Couldn't find clear edges - drag the handles", android.widget.Toast.LENGTH_SHORT).show()
+                    else android.widget.Toast.makeText(context, context.getString(R.string.rs_scanner_no_clear_edges), android.widget.Toast.LENGTH_SHORT).show()
                     detecting = false
                 }
             }) {
                 if (detecting) CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                 else Icon(Icons.Outlined.AutoFixHigh, null, tint = Color.White)
                 Spacer(Modifier.size(8.dp))
-                Text(if (detecting) "Detecting…" else "Auto detect", color = Color.White)
+                Text(stringResource(if (detecting) R.string.rs_scanner_detecting else R.string.rs_scanner_auto_detect), color = Color.White)
             }
             TextButton(onClick = { quad = Quad.FULL }) {
                 Icon(Icons.Outlined.CropFree, null, tint = Color.White)
                 Spacer(Modifier.size(8.dp))
-                Text("No crop", color = Color.White)
+                Text(stringResource(R.string.rs_scanner_no_crop), color = Color.White)
             }
         }
     }

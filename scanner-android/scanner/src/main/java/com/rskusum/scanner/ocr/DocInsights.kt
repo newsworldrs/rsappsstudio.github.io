@@ -1,37 +1,48 @@
 package com.rskusum.scanner.ocr
 
+import android.content.Context
+import androidx.annotation.StringRes
+import com.rskusum.scanner.R
+
 /** One useful detail found in the text. */
 data class Insight(val kind: Kind, val value: String) {
-    enum class Kind(val label: String) {
-        LINK("Link"), EMAIL("E-mail"), PHONE("Phone"), DATE("Date"), AMOUNT("Amount"),
-        PAN("PAN"), GSTIN("GSTIN"), PINCODE("PIN code"),
+    enum class Kind(@StringRes val labelRes: Int) {
+        LINK(R.string.rs_scanner_insight_link), EMAIL(R.string.rs_scanner_insight_email),
+        PHONE(R.string.rs_scanner_insight_phone), DATE(R.string.rs_scanner_insight_date),
+        AMOUNT(R.string.rs_scanner_insight_amount), PAN(R.string.rs_scanner_insight_pan),
+        GSTIN(R.string.rs_scanner_insight_gstin), PINCODE(R.string.rs_scanner_insight_pincode),
     }
+}
+
+/** Document types [TextInsights] can recognise. */
+enum class DocType(@StringRes val labelRes: Int, internal val keys: List<String>) {
+    INVOICE(R.string.rs_scanner_doc_invoice, listOf("invoice", "bill no", "gstin", "gst", "tax", "subtotal", "sub total", "grand total", "amount due", "hsn", "qty", "rate")),
+    RECEIPT(R.string.rs_scanner_doc_receipt, listOf("receipt", "paid", "cash", "change", "thank you", "txn", "transaction", "upi", "card no")),
+    BANK_STATEMENT(R.string.rs_scanner_doc_bank_statement, listOf("statement", "account no", "a/c", "balance", "debit", "credit", "ifsc", "branch", "opening balance")),
+    ID_DOCUMENT(R.string.rs_scanner_doc_id, listOf("government of india", "date of birth", "dob", "aadhaar", "passport", "licence", "license", "voter", "permanent account number", "identity")),
+    RESUME(R.string.rs_scanner_doc_resume, listOf("resume", "curriculum vitae", "experience", "education", "skills", "objective", "projects", "certifications")),
+    LETTER(R.string.rs_scanner_doc_letter, listOf("dear", "sincerely", "regards", "subject:", "yours", "to,", "respected")),
+    EXAM(R.string.rs_scanner_doc_exam, listOf("marks", "question", "answer", "section", "time allowed", "attempt", "maximum marks")),
+    PRESCRIPTION(R.string.rs_scanner_doc_prescription, listOf("rx", "tab", "tablet", "capsule", "mg", "dosage", "twice", "daily", "dr.", "patient")),
+    FORM(R.string.rs_scanner_doc_form, listOf("name:", "address:", "signature", "date:", "applicant", "please fill", "father's name")),
+    BOOK_PAGE(R.string.rs_scanner_doc_book_page, listOf("chapter", "exercise", "textbook", "lesson", "page", "unit", "ncert")),
+    BUSINESS_CARD(R.string.rs_scanner_doc_business_card, listOf("www.", "mobile", "tel", "director", "manager", "ceo", "founder")),
+    DOCUMENT(R.string.rs_scanner_doc_document, emptyList());
+
+    fun label(context: Context): String = context.getString(labelRes)
 }
 
 /**
  * What a page is about, worked out on the device from its text.
- * @param type best guess of the document type ("Invoice / bill", "Letter", ... or "Document").
+ * @param type best guess of the document type ([DocType.DOCUMENT] when unsure).
  * @param items links, e-mails, phone numbers, dates, amounts, PAN / GSTIN numbers, PIN codes.
  * @param words / [lines] simple counts.
  */
-data class DocInsights(val type: String, val items: List<Insight>, val words: Int, val lines: Int)
+data class DocInsights(val type: DocType, val items: List<Insight>, val words: Int, val lines: Int)
 
 /** Rule-based document understanding: runs instantly and offline on the OCR text. */
 object TextInsights {
 
-    private val types: List<Pair<String, List<String>>> = listOf(
-        "Invoice / bill" to listOf("invoice", "bill no", "gstin", "gst", "tax", "subtotal", "sub total", "grand total", "amount due", "hsn", "qty", "rate"),
-        "Receipt" to listOf("receipt", "paid", "cash", "change", "thank you", "txn", "transaction", "upi", "card no"),
-        "Bank statement" to listOf("statement", "account no", "a/c", "balance", "debit", "credit", "ifsc", "branch", "opening balance"),
-        "ID document" to listOf("government of india", "date of birth", "dob", "aadhaar", "passport", "licence", "license", "voter", "permanent account number", "identity"),
-        "Resume" to listOf("resume", "curriculum vitae", "experience", "education", "skills", "objective", "projects", "certifications"),
-        "Letter" to listOf("dear", "sincerely", "regards", "subject:", "yours", "to,", "respected"),
-        "Exam / question paper" to listOf("marks", "question", "answer", "section", "time allowed", "attempt", "maximum marks"),
-        "Prescription" to listOf("rx", "tab", "tablet", "capsule", "mg", "dosage", "twice", "daily", "dr.", "patient"),
-        "Form" to listOf("name:", "address:", "signature", "date:", "applicant", "please fill", "father's name"),
-        "Book / notes page" to listOf("chapter", "exercise", "textbook", "lesson", "page", "unit", "ncert"),
-        "Business card" to listOf("www.", "mobile", "tel", "director", "manager", "ceo", "founder"),
-    )
 
     private val link = Regex("""\b((https?://|www\.)[^\s,;]+|[a-z0-9-]+\.(com|in|org|net|co|io|gov|edu)(/[^\s,;]*)?)\b""", RegexOption.IGNORE_CASE)
     private val email = Regex("""[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}""")
@@ -66,8 +77,9 @@ object TextInsights {
         }
         pincode.findAll(text).forEach { add(Insight.Kind.PINCODE, it.groupValues[2]) }
 
-        val scored = types.map { (name, keys) -> name to keys.count { lower.contains(it) } }.maxBy { it.second }
-        val type = if (scored.second >= 2) scored.first else "Document"
+        val scored = DocType.entries.filter { it.keys.isNotEmpty() }
+            .map { t -> t to t.keys.count { lower.contains(it) } }.maxBy { it.second }
+        val type = if (scored.second >= 2) scored.first else DocType.DOCUMENT
         val lines = text.lines().count { it.isNotBlank() }
         val words = text.split(Regex("\\s+")).count { it.any(Char::isLetterOrDigit) }
         return DocInsights(type, items.values.take(40), words, lines)

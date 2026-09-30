@@ -62,7 +62,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rskusum.scanner.R
 import com.rskusum.scanner.ScannerViewModel
+import androidx.compose.ui.res.stringResource
 import com.rskusum.scanner.data.Page
 import com.rskusum.scanner.ui.ScanColors
 import com.rskusum.scanner.vision.EraseStroke
@@ -71,10 +73,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-private enum class Brush(val label: String, val help: String) {
-    MARKS("Marks only", "Rub over pen, pencil, highlighter and stains: they disappear, printed black text stays."),
-    EVERYTHING("Everything", "Rub over an area to wipe it back to clean paper, text included."),
-    RESTORE("Restore", "Paint over an area to bring the original page back (undo erasing there)."),
+private enum class Brush(@androidx.annotation.StringRes val label: Int, @androidx.annotation.StringRes val help: Int) {
+    MARKS(R.string.rs_scanner_erase_marks, R.string.rs_scanner_erase_marks_help),
+    EVERYTHING(R.string.rs_scanner_erase_everything, R.string.rs_scanner_erase_everything_help),
+    RESTORE(R.string.rs_scanner_erase_restore, R.string.rs_scanner_erase_restore_help),
 }
 
 /**
@@ -123,15 +125,15 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
     ) {
         Box(Modifier.fillMaxWidth().height(60.dp).padding(horizontal = 8.dp)) {
             IconButton(onClick = onDone, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Filled.Close, "Cancel", tint = Color.White)
+                Icon(Icons.Filled.Close, stringResource(R.string.rs_scanner_cancel), tint = Color.White)
             }
-            Text("Eraser", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center))
+            Text(stringResource(R.string.rs_scanner_eraser), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center))
             Row(Modifier.align(Alignment.CenterEnd)) {
                 IconButton(onClick = { if (strokes.isNotEmpty()) strokes.removeAt(strokes.lastIndex) }, enabled = strokes.isNotEmpty()) {
-                    Icon(Icons.AutoMirrored.Filled.Undo, "Undo", tint = if (strokes.isNotEmpty()) Color.White else Color.Gray)
+                    Icon(Icons.AutoMirrored.Filled.Undo, stringResource(R.string.rs_scanner_undo), tint = if (strokes.isNotEmpty()) Color.White else Color.Gray)
                 }
                 IconButton(onClick = { vm.setErasures(page, strokes.toList()); onDone() }) {
-                    Icon(Icons.Filled.Check, "Apply", tint = ScanColors.AccentBright, modifier = Modifier.size(30.dp))
+                    Icon(Icons.Filled.Check, stringResource(R.string.rs_scanner_apply), tint = ScanColors.AccentBright, modifier = Modifier.size(30.dp))
                 }
             }
         }
@@ -247,7 +249,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 ) {
                     Icon(Icons.Outlined.Compare, null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
-                    Text(if (comparing) "Before" else "Hold: before", color = Color.White, fontSize = 12.sp)
+                    Text(stringResource(if (comparing) R.string.rs_scanner_before else R.string.rs_scanner_hold_before), color = Color.White, fontSize = 12.sp)
                 }
                 if (zoom > 1.01f) {
                     Row(
@@ -261,7 +263,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                     ) {
                         Icon(Icons.Outlined.ZoomOutMap, null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("${"%.1f".format(zoom)}x · Fit", color = Color.White, fontSize = 12.sp)
+                        Text(stringResource(R.string.rs_scanner_zoom_fit, zoom), color = Color.White, fontSize = 12.sp)
                     }
                 }
             }
@@ -272,10 +274,10 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Brush.entries.forEach { b -> ModeChip(b.label, mode == b, Modifier.weight(1f)) { mode = b } }
+            Brush.entries.forEach { b -> ModeChip(stringResource(b.label), mode == b, Modifier.weight(1f)) { mode = b } }
         }
         Text(
-            mode.help + "  Pinch with two fingers to zoom.",
+            stringResource(mode.help) + "  " + stringResource(R.string.rs_scanner_pinch_zoom),
             color = ScanColors.TextDim,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
@@ -284,7 +286,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
             Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Brush", color = Color.White, fontSize = 14.sp)
+            Text(stringResource(R.string.rs_scanner_brush), color = Color.White, fontSize = 14.sp)
             Spacer(Modifier.width(12.dp))
             Slider(
                 value = brush,
@@ -293,7 +295,7 @@ fun EraseScreen(vm: ScannerViewModel, page: Page?, onDone: () -> Unit) {
                 colors = SliderDefaults.colors(thumbColor = ScanColors.AccentBright, activeTrackColor = ScanColors.Accent),
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { strokes.clear() }) { Text("Clear", color = Color.White) }
+            TextButton(onClick = { strokes.clear() }) { Text(stringResource(R.string.rs_scanner_clear), color = Color.White) }
         }
         Spacer(Modifier.height(8.dp))
     }

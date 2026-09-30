@@ -4,6 +4,22 @@ All notable changes to the **RS Kusum Scanner** Android library (`scanner-androi
 Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPack:
 `implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")`.
 
+## [1.4.0] - 2026-09-30
+### Changed
+- **Branding:** the camera now shows **"Scan · powered by RS Apps Studio"**. PDFs are labelled "Scan - powered by RS Apps Studio", and the standalone app saves to the `RS Apps Studio Scan` folder.
+- **All visible text is in string resources** (`res/values/rs_scanner_strings.xml`: 211 strings and 5 plurals). Apps translate the scanner by adding `values-xx/rs_scanner_strings.xml`. Enum labels are now resource IDs:
+  - `ScanFilter.labelRes` and `label(context)`
+  - `ScanMode.labelRes`
+  - `PdfQuality.labelRes`
+  - `Insight.Kind.labelRes`
+  - `DocInsights.type` is now a `DocType`
+- **Smaller library:**
+  - PDFBox (and the BouncyCastle crypto library it pulled in) is removed. PDFs are written by a built-in writer, and are just as small because pages are embedded as JPEG without re-compression.
+  - The orientation model now has 8-bit weights: 3.4 MB → 1.8 MB, with the same results in testing.
+### Fixed
+- **Book spine:** the spine is now searched only near the middle of the spread (40–60%, preferring the centre), so both pages come out the same size.
+- **Book in Free mode:** if the open book lies across a portrait screen, the camera asks you to turn the phone so the book fills the long side, and doesn't auto-capture a small, sideways spread.
+
 ## [1.3.0] - 2026-09-30
 ### Added
 - **Dark text** filter for light photocopies and faded print. It turns every stroke dark and sharp on pure white, and removes paper grain and show-through.
@@ -55,6 +71,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Compressed PDF output with PDFBox, and JPEG pages.
 - Apache 2.0 licence and a full third-party licence audit.
 
+[1.4.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.4.0
 [1.3.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.3.0
 [1.2.1]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.2.1
 [1.2.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.2.0

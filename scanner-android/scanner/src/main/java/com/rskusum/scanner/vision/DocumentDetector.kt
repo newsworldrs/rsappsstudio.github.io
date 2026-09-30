@@ -712,10 +712,18 @@ object DocumentDetector {
         val paperS = smooth1d(paper, 3.0)
         val inkS = smooth1d(ink, 2.0)
 
-        val lo = (along * 0.3).toInt(); val hi = (along * 0.7).toInt()
+        // Both pages of a book are the same size, so the spine lies near the middle of the
+        // spread; only an imperfect outer edge moves it a little. Search 40-60% and prefer the
+        // centre, so a dark picture or shaded area on one page can't win.
+        val lo = (along * 0.4).toInt(); val hi = (along * 0.6).toInt()
+        val centre = along / 2f
         var minI = lo
-        for (x in lo until hi) if (paperS[x] < paperS[minI]) minI = x
-        val window = paperS.copyOfRange(lo, hi).sorted()
+        var minScore = Float.MAX_VALUE
+        for (x in lo until hi) {
+            val score = paperS[x] * (1f + 0.6f * abs(x - centre) / along)
+            if (score < minScore) { minScore = score; minI = x }
+        }
+        val window = paperS.copyOfRange((along * 0.3).toInt(), (along * 0.7).toInt()).sorted()
         val median = window[window.size / 2]
         val depth = (median - paperS[minI]) / median.coerceAtLeast(1f)
         if (depth >= 0.04f) return minI.toFloat() / along
@@ -726,7 +734,7 @@ object DocumentDetector {
             if (k < hi && inkS[k] < 0.01f) { run++; continue }
             if (run >= 8) {
                 val c = k - run / 2f
-                val score = run - abs(c - along / 2f) * 0.05f
+                val score = run - abs(c - along / 2f) * 0.15f
                 if (score > best) { best = score; bestC = c }
             }
             run = 0

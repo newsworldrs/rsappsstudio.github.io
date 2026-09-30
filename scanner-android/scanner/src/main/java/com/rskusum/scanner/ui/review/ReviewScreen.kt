@@ -76,6 +76,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import com.rskusum.scanner.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -134,14 +137,14 @@ fun ReviewScreen(
             r.onSuccess {
                 if (vm.options.standalone || asJpeg) Toast.makeText(context, it, Toast.LENGTH_LONG).show()
                 if (!asJpeg) onSaved()
-            }.onFailure { snackbar.showSnackbar("Save failed: ${it.message}") }
+            }.onFailure { snackbar.showSnackbar(context.getString(R.string.rs_scanner_save_failed, it.message ?: "")) }
         }
     }
 
     var pendingJpeg by remember { mutableStateOf(false) }
     var choosingSize by remember { mutableStateOf(false) }
     val legacyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
-        if (ok) doSave(pendingJpeg) else scope.launch { snackbar.showSnackbar("Storage permission is needed to save") }
+        if (ok) doSave(pendingJpeg) else scope.launch { snackbar.showSnackbar(context.getString(R.string.rs_scanner_storage_needed)) }
     }
     fun save(asJpeg: Boolean) {
         // Only the standalone app writes to public storage; embedded results stay app-private.
@@ -162,7 +165,7 @@ fun ReviewScreen(
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White),
                 navigationIcon = {
-                    IconButton(onClick = onAddPage) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to camera", tint = Color.White) }
+                    IconButton(onClick = onAddPage) { Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.rs_scanner_back_to_camera), tint = Color.White) }
                 },
                 title = {
                     Text(
@@ -180,19 +183,19 @@ fun ReviewScreen(
                         enabled = !saving && vm.pages.isNotEmpty(),
                         colors = ButtonDefaults.buttonColors(containerColor = ScanColors.Accent),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    ) { Text(if (vm.options.standalone) "Save PDF" else "Done", fontWeight = FontWeight.SemiBold) }
+                    ) { Text(stringResource(if (vm.options.standalone) R.string.rs_scanner_save_pdf else R.string.rs_scanner_done), fontWeight = FontWeight.SemiBold) }
                     Box {
-                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, "More", tint = Color.White) }
+                        IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, stringResource(R.string.rs_scanner_more), tint = Color.White) }
                         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                             if (vm.options.standalone) {
-                                DropdownMenuItem(text = { Text("Save as JPG") }, onClick = { menuOpen = false; save(asJpeg = true) })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_save_jpg)) }, onClick = { menuOpen = false; save(asJpeg = true) })
                             }
-                            DropdownMenuItem(text = { Text("Share pages") }, onClick = {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_share_pages)) }, onClick = {
                                 menuOpen = false
                                 runCatching { context.startActivity(vm.sessionShareIntent()) }
                             })
-                            DropdownMenuItem(text = { Text("Rename") }, onClick = { menuOpen = false; renaming = true })
-                            DropdownMenuItem(text = { Text("Discard scan") }, onClick = { menuOpen = false; confirmDiscard = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_rename)) }, onClick = { menuOpen = false; renaming = true })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.rs_scanner_discard_scan)) }, onClick = { menuOpen = false; confirmDiscard = true })
                         }
                     }
                 },
@@ -205,13 +208,13 @@ fun ReviewScreen(
                     Modifier.fillMaxWidth().padding(vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    ToolButton(Icons.Outlined.AddAPhoto, "Add") { onAddPage() }
-                    ToolButton(Icons.Outlined.Crop, "Crop") { current?.let { onCrop(vm.pages.indexOf(it)) } }
-                    ToolButton(Icons.Filled.RotateRight, "Rotate") { current?.let { vm.rotate(it) } }
-                    ToolButton(Icons.Outlined.AutoFixNormal, "Erase") { current?.let { onErase(vm.pages.indexOf(it)) } }
-                    ToolButton(Icons.Outlined.AutoFixHigh, "Filters", selected = showFilters) { showFilters = !showFilters }
-                    ToolButton(Icons.Outlined.TextSnippet, "Text") { current?.let { onText(vm.pages.indexOf(it)) } }
-                    ToolButton(Icons.Outlined.Delete, "Delete") {
+                    ToolButton(Icons.Outlined.AddAPhoto, stringResource(R.string.rs_scanner_tool_add)) { onAddPage() }
+                    ToolButton(Icons.Outlined.Crop, stringResource(R.string.rs_scanner_tool_crop)) { current?.let { onCrop(vm.pages.indexOf(it)) } }
+                    ToolButton(Icons.Filled.RotateRight, stringResource(R.string.rs_scanner_tool_rotate)) { current?.let { vm.rotate(it) } }
+                    ToolButton(Icons.Outlined.AutoFixNormal, stringResource(R.string.rs_scanner_tool_erase)) { current?.let { onErase(vm.pages.indexOf(it)) } }
+                    ToolButton(Icons.Outlined.AutoFixHigh, stringResource(R.string.rs_scanner_tool_filters), selected = showFilters) { showFilters = !showFilters }
+                    ToolButton(Icons.Outlined.TextSnippet, stringResource(R.string.rs_scanner_tool_text)) { current?.let { onText(vm.pages.indexOf(it)) } }
+                    ToolButton(Icons.Outlined.Delete, stringResource(R.string.rs_scanner_tool_delete)) {
                         current?.let {
                             vm.deletePage(it)
                             if (vm.pages.isEmpty()) onAddPage()
@@ -236,7 +239,7 @@ fun ReviewScreen(
                 }
                 val smart = vm.pages.getOrNull(pagerState.currentPage)?.smartLabel
                 Text(
-                    "${pagerState.currentPage + 1} / ${vm.pages.size}" + (smart?.let { "  ·  ✨ Smart: $it" } ?: ""),
+                    "${pagerState.currentPage + 1} / ${vm.pages.size}" + (smart?.let { "  ·  ✨ " + stringResource(R.string.rs_scanner_smart_chip, it) } ?: ""),
                     color = Color.White,
                     fontSize = 13.sp,
                     modifier = Modifier
@@ -252,7 +255,7 @@ fun ReviewScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(color = Color.White)
                         Spacer(Modifier.height(12.dp))
-                        Text("Saving…", color = Color.White)
+                        Text(stringResource(R.string.rs_scanner_saving), color = Color.White)
                     }
                 }
             }
@@ -263,25 +266,25 @@ fun ReviewScreen(
         var text by remember { mutableStateOf(vm.documentName) }
         AlertDialog(
             onDismissRequest = { renaming = false },
-            title = { Text("Rename") },
+            title = { Text(stringResource(R.string.rs_scanner_rename)) },
             text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
             confirmButton = {
-                TextButton(onClick = { if (text.isNotBlank()) vm.documentName = text.trim(); renaming = false }) { Text("OK") }
+                TextButton(onClick = { if (text.isNotBlank()) vm.documentName = text.trim(); renaming = false }) { Text(stringResource(R.string.rs_scanner_ok)) }
             },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { renaming = false }) { Text(stringResource(R.string.rs_scanner_cancel)) } },
         )
     }
     if (choosingSize) {
         AlertDialog(
             onDismissRequest = { choosingSize = false },
-            title = { Text("PDF size") },
+            title = { Text(stringResource(R.string.rs_scanner_pdf_size)) },
             text = {
                 Column {
                     com.rskusum.scanner.data.PdfQuality.entries.forEach { q ->
                         val perPage = when (q) {
-                            com.rskusum.scanner.data.PdfQuality.SMALL -> "Smallest file - for email and WhatsApp"
-                            com.rskusum.scanner.data.PdfQuality.BALANCED -> "Recommended - sharp text, compact"
-                            com.rskusum.scanner.data.PdfQuality.HIGH -> "Largest file - best for printing"
+                            com.rskusum.scanner.data.PdfQuality.SMALL -> stringResource(R.string.rs_scanner_pdf_small_hint)
+                            com.rskusum.scanner.data.PdfQuality.BALANCED -> stringResource(R.string.rs_scanner_pdf_balanced_hint)
+                            com.rskusum.scanner.data.PdfQuality.HIGH -> stringResource(R.string.rs_scanner_pdf_high_hint)
                         }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -293,24 +296,24 @@ fun ReviewScreen(
                         ) {
                             androidx.compose.material3.RadioButton(selected = vm.pdfQuality == q, onClick = { vm.pdfQuality = q })
                             Column {
-                                Text(q.label, color = Color.White)
+                                Text(stringResource(q.labelRes), color = Color.White)
                                 Text(perPage, color = ScanColors.TextDim, fontSize = 12.sp)
                             }
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { choosingSize = false; save(asJpeg = false) }) { Text("Save PDF") } },
-            dismissButton = { TextButton(onClick = { choosingSize = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { choosingSize = false; save(asJpeg = false) }) { Text(stringResource(R.string.rs_scanner_save_pdf)) } },
+            dismissButton = { TextButton(onClick = { choosingSize = false }) { Text(stringResource(R.string.rs_scanner_cancel)) } },
         )
     }
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
-            title = { Text("Discard this scan?") },
-            text = { Text("All ${vm.pages.size} page(s) will be deleted.") },
-            confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscard() }) { Text("Discard") } },
-            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Cancel") } },
+            title = { Text(stringResource(R.string.rs_scanner_discard_title)) },
+            text = { Text(pluralStringResource(R.plurals.rs_scanner_discard_message, vm.pages.size, vm.pages.size)) },
+            confirmButton = { TextButton(onClick = { confirmDiscard = false; onDiscard() }) { Text(stringResource(R.string.rs_scanner_discard)) } },
+            dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text(stringResource(R.string.rs_scanner_cancel)) } },
         )
     }
 }
@@ -325,7 +328,7 @@ private fun PageView(page: Page) {
         image?.let {
             Image(
                 it,
-                contentDescription = "Page",
+                contentDescription = stringResource(R.string.rs_scanner_page),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .shadow(8.dp)
@@ -335,7 +338,7 @@ private fun PageView(page: Page) {
         if (page.rendering || image == null) CircularProgressIndicator(color = ScanColors.Accent)
         if (page.idSide >= 0) {
             Text(
-                if (page.idSide == 0) "ID card - Front" else "ID card - Back",
+                stringResource(if (page.idSide == 0) R.string.rs_scanner_id_front else R.string.rs_scanner_id_back),
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -371,7 +374,7 @@ private fun FilterStrip(vm: ScannerViewModel, page: Page) {
             ) {
                 Icon(Icons.Outlined.WbShade, null, tint = Color.White, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text(if (page.removeShadow) "Shadow removed ✓" else "Remove shadow", color = Color.White, fontSize = 13.sp)
+                Text(stringResource(if (page.removeShadow) R.string.rs_scanner_shadow_removed else R.string.rs_scanner_remove_shadow), color = Color.White, fontSize = 13.sp)
             }
             Spacer(Modifier.weight(1f))
             Row(
@@ -380,20 +383,20 @@ private fun FilterStrip(vm: ScannerViewModel, page: Page) {
                     .border(1.dp, ScanColors.AccentBright, RoundedCornerShape(20.dp))
                     .clickable {
                         vm.applyFilterToAll(page.filter, page.removeShadow)
-                        val what = if (page.removeShadow) "${page.filter.label} + shadow removal" else page.filter.label
-                        Toast.makeText(context, "$what applied to all ${vm.pages.size} pages", Toast.LENGTH_SHORT).show()
+                        val what = com.rskusum.scanner.vision.SmartPick(page.filter, page.removeShadow).label(context)
+                        Toast.makeText(context, context.resources.getQuantityString(R.plurals.rs_scanner_applied_to_all, vm.pages.size, what, vm.pages.size), Toast.LENGTH_SHORT).show()
                     }
                     .padding(horizontal = 12.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Outlined.DoneAll, null, tint = ScanColors.AccentBright, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("Apply to all", color = ScanColors.AccentBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.rs_scanner_apply_to_all), color = ScanColors.AccentBright, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             }
         }
         page.smartLabel?.let {
             Text(
-                "✨ Smart filter picked: $it",
+                "✨ " + stringResource(R.string.rs_scanner_smart_picked, it),
                 color = ScanColors.Marigold, fontSize = 12.sp,
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp),
             )
@@ -417,11 +420,11 @@ private fun FilterStrip(vm: ScannerViewModel, page: Page) {
                         contentAlignment = Alignment.Center,
                     ) {
                         val p = previews[f]
-                        if (p != null) Image(p, f.label, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        if (p != null) Image(p, stringResource(f.labelRes), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         else CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text(f.label, color = if (selected) ScanColors.AccentBright else Color.White, fontSize = 12.sp)
+                    Text(stringResource(f.labelRes), color = if (selected) ScanColors.AccentBright else Color.White, fontSize = 12.sp)
                 }
             }
         }

@@ -88,11 +88,11 @@ This is a complete **Android document scanner library**, which you can use free 
 - 🔄 **Upright pages:** an on-device text-orientation model turns sideways or upside-down pages the right way up.
 - ✨ **Editing:** filters (Auto colour, No shadow, B&W…), an **eraser** that can remove marks and keep the text, crop and rotate.
 - 🔤 **AI Text:** live text highlighting in the camera, **on-device OCR** with Tesseract (100+ languages), plus the document type and key details (links, phone numbers, dates, amounts, PAN, GSTIN).
-- 🛡️ **Duplicate-page protection**, and **compressed PDF** output built with PDFBox.
+- 🛡️ **Duplicate-page protection**, and **compressed PDF** output from a built-in writer, with no PDF library needed.
 
 ```kotlin
 // settings.gradle.kts → repositories { maven("https://jitpack.io") }
-implementation("com.github.newsworldrs:rsappsstudio.github.io:1.3.0")
+implementation("com.github.newsworldrs:rsappsstudio.github.io:1.4.0")
 
 val scanner = rememberLauncherForActivityResult(ScanDocument()) { result ->
     result?.pdfUri   // finished PDF

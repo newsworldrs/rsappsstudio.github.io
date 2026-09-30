@@ -12,6 +12,6 @@ doc_orientation.tflite
 Document / text orientation classifier (0, 90, 180, 270 degrees), PP-LCNet from PaddleClas
 (PULC text_image_orientation), packaged by RapidOrientation
 https://github.com/RapidAI/RapidOrientation (rapid_orientation/models/rapid_orientation.onnx),
-converted to TensorFlow Lite (float16) with onnx2tf.
+converted to TensorFlow Lite with onnx2tf, weights quantized to 8 bit.
 Copyright RapidAI / PaddlePaddle Authors. Licensed under the Apache License, Version 2.0
 http://www.apache.org/licenses/LICENSE-2.0

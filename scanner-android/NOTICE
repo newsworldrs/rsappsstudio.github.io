@@ -18,14 +18,12 @@ Bundled model files (scanner/src/main/assets/models):
     Text orientation classifier (PP-LCNet, PaddleClas "text_image_orientation"),
     as packaged by RapidOrientation https://github.com/RapidAI/RapidOrientation
     Copyright RapidAI and the PaddlePaddle Authors. Apache License 2.0.
-    Modified: converted from ONNX to TensorFlow Lite (float16) with onnx2tf.
+    Modified: converted from ONNX to TensorFlow Lite with onnx2tf, weights quantized to 8 bit.
 
 Libraries used at runtime (downloaded from Maven, not copied into this repository):
 
   OpenCV 4.12.0              - Apache License 2.0      https://opencv.org
   TensorFlow Lite 2.16.1     - Apache License 2.0      https://www.tensorflow.org/lite
-  PDFBox-Android 2.0.27.0    - Apache License 2.0      https://github.com/TomRoush/PdfBox-Android
-    (based on Apache PDFBox, Copyright The Apache Software Foundation)
   Tesseract4Android 4.9.0   - Apache License 2.0      https://github.com/adaptech-cz/Tesseract4Android
     (Tesseract OCR, Apache 2.0; Leptonica, BSD 2-clause)
   Tesseract language models - Apache License 2.0      https://github.com/tesseract-ocr/tessdata_best
