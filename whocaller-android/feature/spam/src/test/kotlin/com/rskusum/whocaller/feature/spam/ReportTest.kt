@@ -5,6 +5,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.rskusum.whocaller.core.common.phone.NormalizationResult
@@ -109,7 +110,7 @@ class ReportTest {
                 )
             }
         }
-        compose.onNodeWithText("Submit Report").assertIsEnabled().performClick()
+        compose.onNodeWithText("Submit Report").performScrollTo().assertIsEnabled().performClick()
         assertTrue(clicked)
     }
 }
