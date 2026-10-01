@@ -15,6 +15,11 @@
         android:name="android.hardware.camera.front"
         android:required="false" />
 
+    <!-- Phone/SMS features are optional so the app still installs on tablets and Chromebooks. -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
     <application>
         <!-- Telecom binds this when WhoCaller is the default phone app. Telecom plays the ringtone. -->
         <service
