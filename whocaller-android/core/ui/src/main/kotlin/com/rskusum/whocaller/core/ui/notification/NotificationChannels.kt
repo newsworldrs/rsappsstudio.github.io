@@ -20,6 +20,9 @@ object NotificationChannels {
     /** New SMS when WhoCaller is the default SMS app. */
     const val MESSAGES = "messages"
 
+    /** "Know this caller?" after an unknown call. */
+    const val POST_CALL = "post_call"
+
     fun idFor(category: NotificationCategory): String = when (category) {
         NotificationCategory.CALLER_ALERTS -> CALLER_ALERTS
         NotificationCategory.SPAM_ALERTS -> SPAM_ALERTS
@@ -38,6 +41,7 @@ object NotificationChannels {
                 .apply { setSound(null, null) },
             channel(context, ONGOING_CALLS, R.string.channel_ongoing_calls, R.string.channel_ongoing_calls_desc, NotificationManager.IMPORTANCE_LOW),
             channel(context, MESSAGES, R.string.channel_messages, R.string.channel_messages_desc, NotificationManager.IMPORTANCE_HIGH),
+            channel(context, POST_CALL, R.string.channel_post_call, R.string.channel_post_call_desc, NotificationManager.IMPORTANCE_DEFAULT),
         )
         nm.createNotificationChannels(channels)
     }

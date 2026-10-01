@@ -370,6 +370,14 @@ class DialerViewModel @Inject constructor(
         .map { it.themeMode }
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
 
+    val postCallPrompt: StateFlow<Boolean> = settingsRepository.settings
+        .map { it.postCallPrompt }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setPostCallPrompt(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.update { it.copy(postCallPrompt = enabled) } }
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsRepository.update { it.copy(themeMode = mode) } }
     }

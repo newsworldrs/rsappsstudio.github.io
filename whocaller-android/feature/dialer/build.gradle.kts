@@ -13,6 +13,7 @@ android {
 
 dependencies {
     implementation(projects.core.domain)
+    implementation(projects.feature.postcall)
     implementation(projects.core.ui)
     implementation(projects.core.permissions)
     implementation(libs.androidx.core.ktx)

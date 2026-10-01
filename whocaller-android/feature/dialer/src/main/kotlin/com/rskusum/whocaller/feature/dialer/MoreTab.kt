@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
@@ -103,6 +104,13 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
             MoreRow(Icons.Filled.Shield, stringResource(R.string.dialer_caller_id_spam), null, OkGreen) { openWhoCaller(context, "protection") }
             MoreRow(Icons.Filled.Block, stringResource(R.string.dialer_block_list), null, WarnRed) { openWhoCaller(context, "blocked") }
             MoreRow(Icons.AutoMirrored.Filled.Message, stringResource(R.string.dialer_messages), null, Indigo) { openWhoCaller(context, "messages") }
+            val postCall by viewModel.postCallPrompt.collectAsState()
+            MoreRow(
+                Icons.Filled.Flag,
+                stringResource(R.string.dialer_post_call),
+                stringResource(if (postCall) R.string.dialer_post_call_on else R.string.dialer_post_call_off),
+                Color(0xFFEC4899),
+            ) { viewModel.setPostCallPrompt(!postCall) }
         }
 
         Section(stringResource(R.string.dialer_section_app)) {

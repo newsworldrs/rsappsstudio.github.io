@@ -45,6 +45,11 @@ data class ReportRequestDto(
     /** Client-generated id so retries are idempotent on the server. */
     @SerialName("clientReportId") val clientReportId: String,
     @SerialName("reportedAt") val reportedAt: Long,
+    /** 1–2 post-call categories (see ReportCategory); empty for single-reason reports. */
+    @SerialName("categories") val categories: List<String> = emptyList(),
+    /** INCOMING_UNKNOWN (post-call screen) or MANUAL. */
+    @SerialName("callType") val callType: String? = null,
+    @SerialName("callAnswered") val callAnswered: Boolean? = null,
 )
 
 @Serializable

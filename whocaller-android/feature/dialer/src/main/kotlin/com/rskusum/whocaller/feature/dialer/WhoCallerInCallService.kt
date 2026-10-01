@@ -9,12 +9,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.telecom.Call
 import android.telecom.CallAudioState
+import android.telecom.DisconnectCause
 import android.telecom.InCallService
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import com.rskusum.whocaller.core.domain.caller.CallerIdentificationManager
+import com.rskusum.whocaller.core.model.CallerLabel
+import com.rskusum.whocaller.feature.postcall.PostCallCoordinator
 import com.rskusum.whocaller.core.ui.notification.NotificationChannels
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +39,10 @@ import com.rskusum.whocaller.core.ui.R as UiR
 class WhoCallerInCallService : InCallService() {
 
     @Inject lateinit var identification: CallerIdentificationManager
+    @Inject lateinit var postCall: PostCallCoordinator
+
+    /** Calls that rang on this phone (incoming), so the post-call screen only follows those. */
+    private val incoming = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Call, Boolean>())
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var observer: Job? = null
@@ -52,6 +59,7 @@ class WhoCallerInCallService : InCallService() {
         super.onCallAdded(call)
         val number = call.details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() }
         CallManager.add(call, CallerDisplayFormatter.initial(this, number))
+        if (CallManager.stateOf(call) == Call.STATE_RINGING) incoming += call
 
         if (CallManager.stateOf(call) != Call.STATE_RINGING) {
             // Outgoing call: show the call screen straight away.
@@ -67,7 +75,18 @@ class WhoCallerInCallService : InCallService() {
 
     override fun onCallRemoved(call: Call) {
         super.onCallRemoved(call)
+        val wasIncoming = incoming.remove(call)
+        val details = call.details
+        val number = details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() }
+        val answered = details.connectTimeMillis > 0
+        val declined = details.disconnectCause?.code == DisconnectCause.REJECTED
+        val display = CallManager.calls.value.firstOrNull { it.call == call }?.display
         CallManager.remove(call)
+        // "Know this caller?" for unknown numbers the user answered or declined (never for contacts).
+        if (wasIncoming && number != null && display?.callerLabel != CallerLabel.CONTACT && (answered || declined)) {
+            val showNow = CallManager.calls.value.isEmpty()
+            postCall.onIncomingCallEndedAsync(number, answered, declined, canOpenScreen = showNow)
+        }
     }
 
     @Deprecated("Deprecated in Java")

@@ -22,6 +22,8 @@ import com.rskusum.whocaller.core.model.CallerInfo
 import com.rskusum.whocaller.core.model.Contact
 import com.rskusum.whocaller.core.model.Country
 import com.rskusum.whocaller.core.model.IdentifiedCall
+import com.rskusum.whocaller.core.model.ReportCallType
+import com.rskusum.whocaller.core.model.ReportCategory
 import com.rskusum.whocaller.core.model.ReportReason
 import com.rskusum.whocaller.core.model.SearchHistoryItem
 import com.rskusum.whocaller.core.model.SpamReport
@@ -98,6 +100,17 @@ class FakeSpamRepository : SpamRepository {
     val reports = mutableListOf<SpamReport>()
     override suspend fun submitReport(numberKey: String, reason: ReportReason, comment: String?): AppResult<SpamReport> {
         val r = SpamReport(reports.size + 1L, numberKey, reason, comment, now, SyncState.PENDING)
+        reports += r
+        return AppResult.Success(r)
+    }
+    override suspend fun submitCallReport(
+        numberKey: String,
+        categories: List<ReportCategory>,
+        callType: ReportCallType,
+        callAnswered: Boolean,
+    ): AppResult<SpamReport> {
+        val picked = categories.distinct().take(ReportCategory.MAX_PER_REPORT)
+        val r = SpamReport(reports.size + 1L, numberKey, picked.first().reason, null, now, SyncState.PENDING, picked)
         reports += r
         return AppResult.Success(r)
     }

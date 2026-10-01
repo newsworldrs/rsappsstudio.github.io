@@ -14,6 +14,14 @@ import com.rskusum.whocaller.core.network.model.ReportResponseDto
 import com.rskusum.whocaller.core.network.model.SpamListResponseDto
 
 /**
+ * Marks the REST/dev/unconfigured data source built from BuildConfig. The app module may wrap it
+ * (e.g. with Firestore) and provide the unqualified [NetworkDataSource].
+ */
+@javax.inject.Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class BaseNetwork
+
+/**
  * Backend abstraction used by repositories. Swapping Firebase/Cloud Functions for another server
  * only requires a different implementation (or just a different base URL for the REST one).
  */

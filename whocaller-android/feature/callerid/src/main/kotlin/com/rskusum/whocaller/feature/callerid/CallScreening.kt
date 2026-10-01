@@ -12,6 +12,8 @@ import com.rskusum.whocaller.core.common.analytics.CrashReporter
 import com.rskusum.whocaller.core.domain.caller.CallerIdentificationManager
 import com.rskusum.whocaller.core.domain.repository.SettingsRepository
 import com.rskusum.whocaller.core.model.CallDecision
+import com.rskusum.whocaller.core.model.CallerLabel
+import com.rskusum.whocaller.feature.postcall.PostCallWorker
 import com.rskusum.whocaller.core.model.CallerResult
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -93,6 +95,13 @@ class WhoCallerScreeningService : CallScreeningService() {
             // As the default phone app, WhoCaller's call screen already shows who is calling.
             val isDefaultDialer = getSystemService(TelecomManager::class.java)?.defaultDialerPackage == packageName
             val result = screeningManager.screen(if (hidden) null else number, canBlock = true, showAlert = !isDefaultDialer)
+            // Not the phone app: we can't see the call end, so check the call log afterwards
+            // and offer "Know this caller?" if the user answered or declined.
+            if (!isDefaultDialer && !hidden && number != null && result != null &&
+                result.decision != CallDecision.BLOCK && result.label != CallerLabel.CONTACT
+            ) {
+                PostCallWorker.schedule(this@WhoCallerScreeningService, number)
+            }
             val response = if (result?.decision == CallDecision.BLOCK) {
                 CallScreeningService.CallResponse.Builder()
                     .setDisallowCall(true)

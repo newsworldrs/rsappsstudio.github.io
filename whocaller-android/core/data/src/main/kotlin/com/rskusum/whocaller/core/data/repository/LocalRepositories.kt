@@ -30,6 +30,8 @@ import com.rskusum.whocaller.core.model.BlockedNumber
 import com.rskusum.whocaller.core.model.Business
 import com.rskusum.whocaller.core.model.IdentifiedCall
 import com.rskusum.whocaller.core.model.PhoneNumber
+import com.rskusum.whocaller.core.model.ReportCallType
+import com.rskusum.whocaller.core.model.ReportCategory
 import com.rskusum.whocaller.core.model.ReportReason
 import com.rskusum.whocaller.core.model.SearchHistoryItem
 import com.rskusum.whocaller.core.model.SpamReport
@@ -58,15 +60,45 @@ class SpamRepositoryImpl @Inject constructor(
 ) : SpamRepository {
 
     override suspend fun submitReport(numberKey: String, reason: ReportReason, comment: String?): AppResult<SpamReport> =
-        withContext(io) {
-            val entity = SpamReportEntity(
+        save(
+            SpamReportEntity(
                 numberKey = numberKey,
                 reason = reason.name,
                 comment = comment,
                 createdAt = clock.now(),
                 syncState = SyncState.PENDING.name,
                 clientReportId = UUID.randomUUID().toString(),
-            )
+                callType = ReportCallType.MANUAL.name,
+                callAnswered = false,
+            ),
+        )
+
+    override suspend fun submitCallReport(
+        numberKey: String,
+        categories: List<ReportCategory>,
+        callType: ReportCallType,
+        callAnswered: Boolean,
+    ): AppResult<SpamReport> {
+        val picked = categories.distinct().take(ReportCategory.MAX_PER_REPORT)
+        if (picked.isEmpty()) return AppResult.Failure(AppError.UNKNOWN)
+        return save(
+            SpamReportEntity(
+                numberKey = numberKey,
+                // Older code paths read a single reason; the first non-neutral pick fits best.
+                reason = (picked.firstOrNull { !it.neutral } ?: picked.first()).reason.name,
+                comment = null,
+                createdAt = clock.now(),
+                syncState = SyncState.PENDING.name,
+                clientReportId = UUID.randomUUID().toString(),
+                categories = picked.joinToString(",") { it.name },
+                callType = callType.name,
+                callAnswered = callAnswered,
+            ),
+        )
+    }
+
+    private suspend fun save(entity: SpamReportEntity): AppResult<SpamReport> =
+        withContext(io) {
             val id = try {
                 dao.insert(entity)
             } catch (e: android.database.SQLException) {
@@ -106,6 +138,11 @@ class SpamRepositoryImpl @Inject constructor(
             comment = report.comment,
             clientReportId = report.clientReportId,
             reportedAt = report.createdAt,
+            // Single-reason reports are sent with their matching category so every report has one.
+            categories = report.categories.split(',').filter { it.isNotBlank() }
+                .ifEmpty { listOf(categoryFor(report.reason)) },
+            callType = report.callType ?: ReportCallType.MANUAL.name,
+            callAnswered = report.callAnswered ?: false,
         )
         val state = when (val r = network.reportNumber(report.numberKey, request)) {
             is AppResult.Success -> SyncState.SYNCED
@@ -115,6 +152,19 @@ class SpamRepositoryImpl @Inject constructor(
         dao.updateState(report.id, state.name, if (state == SyncState.SYNCED) 0 else 1)
         return state
     }
+
+    /** Category for an old single-reason report. */
+    private fun categoryFor(reason: String): String = when (ReportReason.fromWire(reason)) {
+        ReportReason.SPAM -> ReportCategory.SPAM
+        ReportReason.SCAM -> ReportCategory.FINANCIAL_SCAM
+        ReportReason.TELEMARKETING -> ReportCategory.TELEMARKETING
+        ReportReason.FRAUD -> ReportCategory.FRAUD_FAKE_OFFER
+        ReportReason.ROBOCALL -> ReportCategory.ROBOCALL
+        ReportReason.HARASSMENT -> ReportCategory.HARASSMENT
+        ReportReason.FAKE_BANK_CALL -> ReportCategory.BANKING_SCAM
+        ReportReason.FAKE_DELIVERY_CALL -> ReportCategory.IMPERSONATION
+        ReportReason.OTHER -> ReportCategory.OTHER
+    }.name
 
     companion object {
         const val MAX_ATTEMPTS = 8

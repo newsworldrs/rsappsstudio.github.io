@@ -48,6 +48,7 @@ class SettingsRepositoryImpl @Inject constructor(
             dynamicColor = p[Keys.DYNAMIC_COLOR] ?: d.dynamicColor,
             defaultRegion = p[Keys.REGION]?.takeIf { it.length == 2 },
             callerIdEnabled = p[Keys.CALLER_ID] ?: d.callerIdEnabled,
+            postCallPrompt = p[Keys.POST_CALL_PROMPT] ?: d.postCallPrompt,
             spamProtectionEnabled = p[Keys.SPAM_PROTECTION] ?: d.spamProtectionEnabled,
             autoBlockHighRisk = p[Keys.AUTO_BLOCK] ?: d.autoBlockHighRisk,
             blockUnknownCallers = p[Keys.BLOCK_UNKNOWN] ?: d.blockUnknownCallers,
@@ -72,6 +73,7 @@ class SettingsRepositoryImpl @Inject constructor(
         val region = s.defaultRegion
         if (region == null) p.remove(Keys.REGION) else p[Keys.REGION] = region
         p[Keys.CALLER_ID] = s.callerIdEnabled
+        p[Keys.POST_CALL_PROMPT] = s.postCallPrompt
         p[Keys.SPAM_PROTECTION] = s.spamProtectionEnabled
         p[Keys.AUTO_BLOCK] = s.autoBlockHighRisk
         p[Keys.BLOCK_UNKNOWN] = s.blockUnknownCallers
@@ -92,6 +94,7 @@ class SettingsRepositoryImpl @Inject constructor(
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val REGION = stringPreferencesKey("default_region")
         val CALLER_ID = booleanPreferencesKey("caller_id_enabled")
+        val POST_CALL_PROMPT = booleanPreferencesKey("post_call_prompt")
         val SPAM_PROTECTION = booleanPreferencesKey("spam_protection_enabled")
         val AUTO_BLOCK = booleanPreferencesKey("auto_block_high_risk")
         val BLOCK_UNKNOWN = booleanPreferencesKey("block_unknown")

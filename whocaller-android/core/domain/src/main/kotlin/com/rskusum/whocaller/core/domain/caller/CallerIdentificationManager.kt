@@ -113,7 +113,7 @@ class CallerIdentificationManager @Inject constructor(
                 info = info,
                 isContact = false,
                 userBlocked = userBlocked,
-                userReported = myReport?.reason?.category,
+                userReported = myReport?.primaryCategory,
             ),
         )
 

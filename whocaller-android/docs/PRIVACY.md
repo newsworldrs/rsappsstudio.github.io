@@ -13,11 +13,15 @@ WhoCaller is designed so that the phone's personal data stays on the phone.
 |---|---|---|
 | A phone number you **search** or type in the keypad (7+ digits, not a saved contact) | When you search or pause typing | To look it up |
 | An **incoming** number not in your contacts | When it rings and caller ID is on | To identify it (cached; repeated calls use the cache) |
-| A number you **report**, reason, optional comment | When you submit a report | Community spam protection. Comments are moderated and never shown publicly |
+| A number you **report**: 1–2 categories, whether the call was answered, app version, your anonymous user id | When you submit a report (Report screen or "Know this caller?" after an unknown call) | Community caller identification and spam protection. One report per person per number; you can withdraw it by deleting your account |
 | Account email/phone/name | If you sign in | Account management (Firebase Authentication) |
 | App Check token | Every request | Blocks fake clients and abuse |
 
 Guests can use caller ID, blocking, call history, contacts, spam checks and search without an account.
+
+Caller data lives in Firestore (`callerNumbers`, `reports`; see backend/FIRESTORE.md). Without an
+account the app signs in anonymously, so reports carry a random id, never your name or number.
+Saving a caller to contacts uses Android's contact editor; contacts are never uploaded.
 
 ## Analytics and crash reports
 Both are **off by default** (opt-in under Settings › Privacy) and enforced in the manifest

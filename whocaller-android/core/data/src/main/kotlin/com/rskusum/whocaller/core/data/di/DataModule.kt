@@ -48,6 +48,7 @@ import com.rskusum.whocaller.core.domain.repository.SyncController
 import com.rskusum.whocaller.core.domain.repository.UserDataRepository
 import com.rskusum.whocaller.core.network.AppCheckTokenProvider
 import com.rskusum.whocaller.core.network.AuthTokenProvider
+import com.rskusum.whocaller.core.network.BaseNetwork
 import com.rskusum.whocaller.core.network.HttpClientFactory
 import com.rskusum.whocaller.core.network.NetworkConfig
 import com.rskusum.whocaller.core.network.NetworkDataSource
@@ -125,6 +126,7 @@ object DataProvidersModule {
 
     @Provides
     @Singleton
+    @BaseNetwork
     fun networkDataSource(
         environment: BackendEnvironment,
         authTokenProvider: AuthTokenProvider,

@@ -1,8 +1,44 @@
 rules_version = '2';
-// Clients never read or write Firestore directly: every access goes through the API (Cloud
-// Functions with the Admin SDK), which enforces auth, App Check, validation and rate limits.
+// WhoCaller rules.
+//
+// IMPORTANT: Firestore rules apply to the whole Firebase project. If other apps use this project,
+// do NOT deploy this file as-is: copy the two `match` blocks marked WHOCALLER into your existing
+// rules instead (see FIRESTORE.md).
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ---- WHOCALLER: caller identity + community summary. Read-only for app users. ----
+    // Written only by the seed/aggregate tools and the Cloud Function (Admin SDK bypasses rules).
+    match /callerNumbers/{number} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ---- WHOCALLER: one report per user per number, id "<E.164 digits>_<uid>". ----
+    // Users may create, replace (re-report), read or delete their own report, never others'.
+    match /reports/{reportId} {
+      allow create, update: if request.auth != null
+        && reportId == request.resource.data.phoneNumber.replace('[+]', '') + '_' + request.auth.uid
+        && validReport(request.resource.data);
+      allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    function validReport(d) {
+      return d.keys().hasOnly(['phoneNumber', 'userId', 'categories', 'callType', 'callAnswered', 'reportedAt', 'appVersion'])
+        && d.keys().hasAll(['phoneNumber', 'userId', 'categories', 'callType', 'callAnswered', 'reportedAt', 'appVersion'])
+        && d.phoneNumber is string && d.phoneNumber.matches('^[+][1-9][0-9]{6,14}$')
+        && d.userId == request.auth.uid
+        && d.categories is list && d.categories.size() >= 1 && d.categories.size() <= 2
+        && d.categories.hasOnly(['SPAM', 'TELEMARKETING', 'FINANCIAL_SCAM', 'FRAUD_FAKE_OFFER', 'IMPERSONATION',
+                                 'BANKING_SCAM', 'BUSINESS_SERVICE', 'DELIVERY', 'ROBOCALL', 'HARASSMENT', 'OTHER'])
+        && d.callType in ['INCOMING_UNKNOWN', 'MANUAL']
+        && d.callAnswered is bool
+        && d.reportedAt == request.time
+        && d.appVersion is string && d.appVersion.size() <= 32;
+    }
+    // ---- end WHOCALLER ----
+
+    // Everything else stays closed (the REST API in functions/ uses the Admin SDK).
     match /{document=**} {
       allow read, write: if false;
     }

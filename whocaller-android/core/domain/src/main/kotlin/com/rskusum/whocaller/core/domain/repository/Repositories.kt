@@ -11,6 +11,8 @@ import com.rskusum.whocaller.core.model.CallerInfo
 import com.rskusum.whocaller.core.model.Contact
 import com.rskusum.whocaller.core.model.Country
 import com.rskusum.whocaller.core.model.IdentifiedCall
+import com.rskusum.whocaller.core.model.ReportCallType
+import com.rskusum.whocaller.core.model.ReportCategory
 import com.rskusum.whocaller.core.model.ReportReason
 import com.rskusum.whocaller.core.model.SearchHistoryItem
 import com.rskusum.whocaller.core.model.LocalProfile
@@ -44,6 +46,13 @@ interface CallerRepository {
 interface SpamRepository {
     /** Stores the report locally (so it works offline) and uploads it when possible. */
     suspend fun submitReport(numberKey: String, reason: ReportReason, comment: String?): AppResult<SpamReport>
+    /** Report from the post-call "Know this caller?" screen: 1–2 categories (extra ones are dropped). */
+    suspend fun submitCallReport(
+        numberKey: String,
+        categories: List<ReportCategory>,
+        callType: ReportCallType,
+        callAnswered: Boolean,
+    ): AppResult<SpamReport>
     fun observeMyReports(): Flow<List<SpamReport>>
     suspend fun latestReportFor(numberKey: String): SpamReport?
     suspend fun countReportsSince(sinceMillis: Long): Int

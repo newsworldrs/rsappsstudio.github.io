@@ -52,12 +52,21 @@ abstract class WhoCallerDatabase : RoomDatabase() {
     abstract fun userSettingsDao(): UserSettingsDao
 
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         const val NAME = "whocaller.db"
     }
 }
 
-/** Manual migrations, applied in order. Empty while the schema is at version 1. */
+/** Manual migrations, applied in order. */
 object Migrations {
-    val ALL: Array<androidx.room.migration.Migration> = emptyArray()
+    /** v2: post-call reports carry up to two categories, the call type and whether it was answered. */
+    val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE spam_reports ADD COLUMN categories TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE spam_reports ADD COLUMN callType TEXT")
+            db.execSQL("ALTER TABLE spam_reports ADD COLUMN callAnswered INTEGER")
+        }
+    }
+
+    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2)
 }

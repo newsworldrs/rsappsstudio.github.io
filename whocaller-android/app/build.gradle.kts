@@ -139,6 +139,7 @@ dependencies {
     implementation(projects.feature.profile)
     implementation(projects.feature.premium)
     implementation(projects.feature.dialer)
+    implementation(projects.feature.postcall)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -156,6 +157,7 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.config)

@@ -21,6 +21,8 @@ data class AppSettings(
     val blockUnknownCallers: Boolean = false,
     val blockHiddenNumbers: Boolean = false,
     val blockedCategories: Set<SpamCategory> = emptySet(),
+    /** After an unknown caller (answered or declined), ask "Know this caller?" to save or report it. */
+    val postCallPrompt: Boolean = true,
 
     // Privacy
     val searchHistoryEnabled: Boolean = true,

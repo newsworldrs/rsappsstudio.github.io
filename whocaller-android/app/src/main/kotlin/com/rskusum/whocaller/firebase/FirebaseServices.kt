@@ -132,7 +132,8 @@ class FirebaseAuthRepository @Inject constructor(
         else -> AppError.UNKNOWN
     }
 
-    private fun FirebaseUser?.toProfile(): UserProfile = if (this == null) {
+    // Anonymous sign-in (used for caller lookups and reports) still counts as a guest.
+    private fun FirebaseUser?.toProfile(): UserProfile = if (this == null || isAnonymous) {
         UserProfile.GUEST
     } else {
         UserProfile(

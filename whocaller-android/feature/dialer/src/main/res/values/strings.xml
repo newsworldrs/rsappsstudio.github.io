@@ -130,6 +130,9 @@
         <item quantity="one">%d call</item>
         <item quantity="other">%d calls</item>
     </plurals>
+    <string name="dialer_post_call">\"Know this caller?\" after calls</string>
+    <string name="dialer_post_call_on">On · tap to turn off</string>
+    <string name="dialer_post_call_off">Off · tap to turn on</string>
     <string name="dialer_permission_needed">Allow phone calls to call from WhoCaller.</string>
 
     <string name="call_incoming_from">Incoming call from %1$s</string>

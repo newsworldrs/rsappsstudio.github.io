@@ -19,6 +19,7 @@ import com.rskusum.whocaller.core.model.IdentifiedCall
 import com.rskusum.whocaller.core.model.IdentityType
 import com.rskusum.whocaller.core.model.InfoSource
 import com.rskusum.whocaller.core.model.NumberType
+import com.rskusum.whocaller.core.model.ReportCategory
 import com.rskusum.whocaller.core.model.ReportReason
 import com.rskusum.whocaller.core.model.SearchHistoryItem
 import com.rskusum.whocaller.core.model.SpamCategory
@@ -114,6 +115,7 @@ fun SpamReportEntity.toModel() = SpamReport(
     comment = comment,
     createdAt = createdAt,
     syncState = enumOrNull<SyncState>(syncState) ?: SyncState.PENDING,
+    categories = ReportCategory.parseList(categories),
 )
 
 fun BlockedNumberEntity.toModel() = BlockedNumber(

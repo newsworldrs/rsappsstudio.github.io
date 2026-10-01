@@ -95,4 +95,6 @@
     <string name="channel_messages_desc">New text messages when WhoCaller is your SMS app.</string>
     <string name="action_video_call">Video call</string>
     <string name="action_whatsapp">WhatsApp</string>
+    <string name="channel_post_call">After unknown calls</string>
+    <string name="channel_post_call_desc">Asks whether you know a caller who isn\'t in your contacts, so you can save or report the number.</string>
 </resources>

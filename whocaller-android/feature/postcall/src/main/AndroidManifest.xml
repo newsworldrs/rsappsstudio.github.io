@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- "Know this caller?" after an unknown call. Its own task so it never mixes with the call screen. -->
+        <activity
+            android:name=".PostCallActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.rskusum.whocaller.postcall"
+            android:theme="@style/Theme.WhoCaller.PostCall" />
+    </application>
+</manifest>

@@ -1,5 +1,6 @@
 package com.rskusum.whocaller.core.database.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -47,6 +48,10 @@ data class SpamReportEntity(
     val syncState: String,
     val clientReportId: String,
     val attempts: Int = 0,
+    /** Comma-separated ReportCategory names (post-call screen), "" for single-reason reports. Added in v2. */
+    @ColumnInfo(defaultValue = "") val categories: String = "",
+    val callType: String? = null,
+    val callAnswered: Boolean? = null,
 )
 
 /** Calls WhoCaller screened on this device. Never uploaded. */

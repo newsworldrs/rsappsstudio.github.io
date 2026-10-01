@@ -396,3 +396,6 @@ function exampleFor(region: string): string {
 }
 
 export const api = onRequest({ region: "asia-south1", cors: false, maxInstances: 50 }, app);
+
+// Direct-Firestore mode: keeps callerNumbers in sync with reports written by the app.
+export { onReportWritten } from "./callerNumbers";

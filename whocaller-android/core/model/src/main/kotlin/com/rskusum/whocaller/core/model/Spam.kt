@@ -97,4 +97,41 @@ data class SpamReport(
     val comment: String?,
     val createdAt: Long,
     val syncState: SyncState,
-)
+    /** Categories picked on the "Know this caller?" screen (1–2). Empty for older single-reason reports. */
+    val categories: List<ReportCategory> = emptyList(),
+) {
+    /** What this report says about the number on this device. Neutral picks (business, delivery) aren't complaints. */
+    val primaryCategory: SpamCategory
+        get() = categories.firstOrNull { !it.neutral }?.category
+            ?: categories.firstOrNull()?.category
+            ?: reason.category
+}
+
+/** Categories of the post-call "Know this caller?" screen. Names are the wire/Firestore values. */
+enum class ReportCategory(val category: SpamCategory, val reason: ReportReason, val neutral: Boolean = false) {
+    SPAM(SpamCategory.SPAM, ReportReason.SPAM),
+    TELEMARKETING(SpamCategory.TELEMARKETING, ReportReason.TELEMARKETING),
+    FINANCIAL_SCAM(SpamCategory.SCAM, ReportReason.SCAM),
+    FRAUD_FAKE_OFFER(SpamCategory.FRAUD, ReportReason.FRAUD),
+    IMPERSONATION(SpamCategory.SCAM, ReportReason.SCAM),
+    BANKING_SCAM(SpamCategory.FRAUD, ReportReason.FAKE_BANK_CALL),
+    BUSINESS_SERVICE(SpamCategory.BUSINESS, ReportReason.OTHER, neutral = true),
+    DELIVERY(SpamCategory.BUSINESS, ReportReason.OTHER, neutral = true),
+    ROBOCALL(SpamCategory.ROBOCALL, ReportReason.ROBOCALL),
+    HARASSMENT(SpamCategory.SPAM, ReportReason.HARASSMENT),
+    OTHER(SpamCategory.SPAM, ReportReason.OTHER),
+    ;
+
+    companion object {
+        /** Users may pick at most this many categories per report. */
+        const val MAX_PER_REPORT = 2
+
+        fun fromWire(value: String?): ReportCategory? = entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+
+        fun parseList(value: String?): List<ReportCategory> =
+            value.orEmpty().split(',').mapNotNull { fromWire(it.trim()) }.distinct().take(MAX_PER_REPORT)
+    }
+}
+
+/** How a report was made: from the post-call screen after an unknown call, or from the Report screen. */
+enum class ReportCallType { INCOMING_UNKNOWN, MANUAL }

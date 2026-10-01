@@ -175,6 +175,14 @@ fun PrivacyScreen(
             item { SectionHeader(stringResource(R.string.privacy_features)) }
             item { SettingSwitch(stringResource(R.string.privacy_caller_id), null, s.callerIdEnabled, { v -> viewModel.update { it.copy(callerIdEnabled = v) } }) }
             item { SettingSwitch(stringResource(R.string.privacy_spam), null, s.spamProtectionEnabled, { v -> viewModel.update { it.copy(spamProtectionEnabled = v) } }) }
+            item {
+                SettingSwitch(
+                    stringResource(R.string.privacy_post_call),
+                    stringResource(R.string.privacy_post_call_desc),
+                    s.postCallPrompt,
+                    { v -> viewModel.update { it.copy(postCallPrompt = v) } },
+                )
+            }
             item { SettingSwitch(stringResource(R.string.privacy_search_history), stringResource(R.string.privacy_search_history_desc), s.searchHistoryEnabled, viewModel::setSearchHistory) }
             item {
                 SettingSwitch(

@@ -109,8 +109,8 @@ class RuleBasedSpamScoreEngine @Inject constructor(
             local = min(local, cap)
         }
 
-        // The user's own judgement always wins on their device.
-        if (signals.userBlocked || signals.userReportedCategory != null) {
+        // The user's own judgement always wins on their device ("Business / Service" isn't a complaint).
+        if (signals.userBlocked || signals.userReportedCategory?.isUnwanted == true) {
             combined = max(combined, PERSONAL_FLOOR.toDouble())
         }
 

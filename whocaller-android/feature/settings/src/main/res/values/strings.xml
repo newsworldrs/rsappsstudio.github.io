@@ -70,4 +70,6 @@
     <string name="privacy_statement">WhoCaller never uploads your contacts, call history or messages. Numbers you search or report are sent to WhoCaller\'s servers to look them up.</string>
     <string name="action_confirm">Confirm</string>
     <string name="settings_default_apps">Default apps</string>
+    <string name="privacy_post_call">Ask about unknown callers</string>
+    <string name="privacy_post_call_desc">After you answer or decline a number that isn\'t in your contacts, offer to save it or report spam.</string>
 </resources>
