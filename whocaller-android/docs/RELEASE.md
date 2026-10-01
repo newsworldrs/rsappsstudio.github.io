@@ -39,6 +39,26 @@ Collection is off until the user opts in.
 - Privacy policy URL (`WHOCALLER_PRIVACY_URL`).
 - No SMS permissions in the default build.
 
+## Moving to Android Studio (your own signing key)
+
+The GitHub test APKs are signed with the shared test key `app/debug.keystore`; its fingerprints are
+registered in Firebase only so test builds can sign in (Google + SMS code). When you move the
+project to Android Studio:
+
+1. Optional: delete `app/debug.keystore` and the `getByName("debug") { … }` block under
+   `signingConfigs` in `app/build.gradle.kts`, so debug builds use Android Studio's own debug key.
+2. Run `./gradlew signingReport` (or Gradle panel → app → Tasks → android → signingReport) and copy
+   the SHA-1 and SHA-256 of your debug key and of your release key.
+3. Firebase Console → Project settings → Your apps → com.rskusum.whocaller → Add fingerprint → add them.
+4. **Delete the test-key fingerprints** there (trash icon):
+   - SHA-1 `BB:C4:FD:B7:EC:7E:E7:12:D7:5E:B7:9F:D5:86:F7:B3:DF:4E:A7:73`
+   - SHA-256 `F5:85:A3:33:7C:53:2B:FB:64:15:55:91:4C:C8:18:B7:97:39:99:17:BB:79:A2:33:C5:D5:1D:88:59:E2:B5:97`
+5. Download the new `google-services.json` and replace `app/google-services.json`.
+6. After the first Play Console upload: add the **App signing key** SHA-1/SHA-256 from Play Console →
+   Setup → App signing, then download `google-services.json` once more.
+7. Delete the Firebase service-account key used for the data uploads (Project settings → Service
+   accounts) and create a new one only when you need to upload data again.
+
 ## Release checklist
 - [ ] CI green: build, unit tests, lint, release build, instrumented-test compilation
 - [ ] `versionCode`/`versionName` bumped in `app/build.gradle.kts`
