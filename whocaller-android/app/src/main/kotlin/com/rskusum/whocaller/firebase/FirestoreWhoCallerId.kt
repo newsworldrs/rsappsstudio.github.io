@@ -23,7 +23,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class FirestoreWhoCallerIdRepository @Inject constructor(
-    @ApplicationContext context: Context,
+    @ApplicationContext private val context: Context,
 ) : WhoCallerIdRepository {
 
     private val available = context.isFirebaseAvailable()
@@ -51,12 +51,41 @@ class FirestoreWhoCallerIdRepository @Inject constructor(
             },
             SetOptions.merge(),
         ).await()
+        publishCaller(db, user.uid, e164, if (showName) cleanName else null)
+        AppResult.Success(Unit)
+    }
+
+    /**
+     * registeredCallers/{number}: the name (only if the user shows it) and the network their SIM is on
+     * now. Nothing to publish → the document is removed.
+     */
+    private suspend fun publishCaller(db: FirebaseFirestore, uid: String, e164: String, name: String?) {
+        val carrier = SimCarrier.forNumber(context, e164)
         val caller = db.collection(CALLERS).document(e164)
-        if (showName) {
-            caller.set(mapOf("name" to cleanName, "uid" to user.uid, "updatedAt" to FieldValue.serverTimestamp())).await()
-        } else {
+        if (name == null && carrier == null) {
             runCatching { caller.delete().await() }
+            return
         }
+        caller.set(
+            buildMap {
+                put("uid", uid)
+                put("updatedAt", FieldValue.serverTimestamp())
+                name?.let { put("name", it) }
+                carrier?.let { put("carrier", it) }
+            },
+        ).await()
+    }
+
+    override suspend fun refreshCarrier(): AppResult<Unit> = call { a, db ->
+        val user = a.currentUser ?: return@call AppResult.Success(Unit)
+        val e164 = user.phoneNumber ?: return@call AppResult.Success(Unit)
+        val carrier = SimCarrier.forNumber(context, e164) ?: return@call AppResult.Success(Unit)
+        val doc = db.collection(CALLERS).document(e164).get().await()
+        if (doc.exists() && doc.getString("carrier") == carrier) return@call AppResult.Success(Unit)
+        // Keep the published name as it is (or none, if the user hides it).
+        val shownName = db.collection(USERS).document(user.uid).get().await()
+            .takeIf { it.getBoolean("showNameToCallers") == true }?.getString("name")
+        publishCaller(db, user.uid, e164, shownName)
         AppResult.Success(Unit)
     }
 

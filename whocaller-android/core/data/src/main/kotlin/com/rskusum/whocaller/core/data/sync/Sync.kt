@@ -46,12 +46,15 @@ class SyncWorker @AssistedInject constructor(
     private val settingsRepository: SettingsRepository,
     private val crashReporter: CrashReporter,
     private val smsModelStore: SmsModelStore,
+    private val whoCallerId: com.rskusum.whocaller.core.domain.repository.WhoCallerIdRepository,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         return try {
             val reports = spamRepository.syncPendingReports()
             runCatching { smsModelStore.refresh() }
+            // The user's own operator (changes when they port their number).
+            runCatching { whoCallerId.refreshCarrier() }
             val list = if (settingsRepository.current().spamProtectionEnabled) {
                 callerRepository.refreshSpamDatabase(countryRepository.defaultRegion())
             } else {

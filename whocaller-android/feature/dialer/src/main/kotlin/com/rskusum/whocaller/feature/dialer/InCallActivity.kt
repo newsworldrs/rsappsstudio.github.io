@@ -267,7 +267,8 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                 overflow = TextOverflow.Ellipsis,
             )
             call.display.number?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.8f)) }
-            listOfNotNull(facts?.location, facts?.carrier).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+            val operator = call.display.carrier ?: facts?.carrier?.let { stringResource(com.rskusum.whocaller.core.ui.R.string.operator_original_short, it) }
+            listOfNotNull(facts?.location, operator).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
             }
             call.display.label?.let { label ->

@@ -278,7 +278,13 @@ private fun FormContent(
                 if (state.location != null && state.operator != null) {
                     Text("  |  ", color = TextSub.copy(alpha = 0.5f), style = MaterialTheme.typography.bodyMedium)
                 }
-                state.operator?.let { Text(it, color = TextSub, style = MaterialTheme.typography.bodyMedium) }
+                state.operator?.let {
+                    Text(
+                        if (state.operatorIsOriginal) stringResource(com.rskusum.whocaller.core.ui.R.string.operator_original_short, it) else it,
+                        color = TextSub,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
         }
 

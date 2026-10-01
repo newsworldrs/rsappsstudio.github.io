@@ -51,19 +51,29 @@ class FirestoreNetworkDataSource(
         if (!E164.matches(e164)) return@firestore AppResult.Failure(AppError.INVALID_NUMBER)
         uid()
         val snap = db.collection(CALLERS).document(e164).get().await()
-        // Name a WhoCaller user registered for their own (verified) number.
-        val registered = runCatching {
-            db.collection(FirestoreWhoCallerIdRepository.CALLERS).document(e164).get().await().getString("name")
-        }.getOrNull()?.takeIf { it.isNotBlank() }
+        // Name and current network a WhoCaller user published for their own (verified) number.
+        val registeredDoc = runCatching {
+            db.collection(FirestoreWhoCallerIdRepository.CALLERS).document(e164).get().await()
+        }.getOrNull()
+        val registered = registeredDoc?.getString("name")?.takeIf { it.isNotBlank() }
+        // Confirmed by the number's owner from their SIM: correct even after the number was ported.
+        val currentCarrier = registeredDoc?.getString("carrier")?.takeIf { it.isNotBlank() }
         when {
             snap.exists() -> {
                 val info = snap.toNumberInfo(e164)
                 // A business name from the dataset wins; otherwise the person's own registered name.
-                AppResult.Success(
-                    if (registered != null && info.identityType != "BUSINESS") info.copy(name = registered, identityType = "PERSON") else info,
-                )
+                val named = if (registered != null && info.identityType != "BUSINESS") info.copy(name = registered, identityType = "PERSON") else info
+                AppResult.Success(named.copy(carrier = currentCarrier ?: named.carrier))
             }
-            registered != null -> AppResult.Success(NumberInfoDto(number = e164, name = registered, identityType = "PERSON", confidence = 0.9f))
+            registered != null || currentCarrier != null -> AppResult.Success(
+                NumberInfoDto(
+                    number = e164,
+                    name = registered,
+                    identityType = if (registered != null) "PERSON" else "UNKNOWN",
+                    confidence = if (registered != null) 0.9f else null,
+                    carrier = currentCarrier,
+                ),
+            )
             base.isConfigured -> base.getNumber(e164)
             else -> AppResult.Failure(AppError.NOT_FOUND)
         }

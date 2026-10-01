@@ -33,6 +33,8 @@ data class CallerDisplay(
     val label: String?,
     val warning: Boolean,
     val callerLabel: CallerLabel,
+    /** Current network confirmed by the number's owner (null: only the original network is known). */
+    val carrier: String? = null,
 )
 
 /** Snapshot of one call for the UI. */
@@ -404,6 +406,7 @@ object CallerDisplayFormatter {
             label = label,
             warning = warning,
             callerLabel = result.label,
+            carrier = result.info?.carrier?.takeIf { it.isNotBlank() },
         )
     }
 }

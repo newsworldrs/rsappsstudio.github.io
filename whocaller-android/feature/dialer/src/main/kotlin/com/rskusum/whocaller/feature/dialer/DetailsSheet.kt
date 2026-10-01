@@ -203,7 +203,11 @@ private fun DetailsContent(
                 })
             }
             d.facts?.location?.let { InfoRow(Icons.Filled.LocationOn, stringResource(R.string.dialer_location), it) }
-            (d.facts?.carrier ?: result?.info?.carrier)?.let { InfoRow(Icons.Filled.SignalCellularAlt, stringResource(R.string.dialer_operator), it) }
+            // Current network confirmed by the number's owner (WhoCaller), else the original network
+            // from the prefix, which can be wrong after the number was ported.
+            val currentOperator = result?.info?.carrier?.takeIf { it.isNotBlank() }
+            (currentOperator ?: d.facts?.carrier?.let { stringResource(com.rskusum.whocaller.core.ui.R.string.operator_original_long, it) })
+                ?.let { InfoRow(Icons.Filled.SignalCellularAlt, stringResource(R.string.dialer_operator), it) }
             result?.info?.reportCount?.takeIf { it > 0 }?.let { n ->
                 InfoRow(Icons.Filled.Flag, stringResource(R.string.dialer_whocaller_reports), context.resources.getQuantityString(R.plurals.call_reported_by, n, n))
             }

@@ -49,13 +49,22 @@ whocallerUsers/{uid}               the account's WhoCaller ID (only the owner ca
   createdAt, updatedAt
 
 registeredCallers/{E.164}          public caller ID, e.g. registeredCallers/+919876543210
-  name, uid, updatedAt             only when showNameToCallers is on; removed when it's turned off
+  name               only when showNameToCallers is on
+  carrier            network the owner's SIM is on now ("Airtel"), read from their phone and
+                     refreshed by the daily sync, so it stays right after the number is ported
+  uid, updatedAt
 ```
 
 Firestore creates both collections by itself the first time a user saves their profile: there's
 nothing to create in the console. The rules only accept a number that the user verified by SMS
 code (Firebase Auth's `phone_number`), so nobody can put their name on someone else's number. When
 a number is looked up, a business name from the dataset wins; otherwise the registered name is shown.
+
+**Operator after number portability.** A number's prefix only tells which network first issued it.
+The app therefore shows the owner-confirmed `carrier` when there is one, and otherwise the prefix
+network marked "(original)" / "Originally Jio. The number may have moved to another network."
+Live lookups for any number (HLR / MNP query) need a paid provider (e.g. Twilio Lookup in the US,
+an HLR lookup service in India) called from a Cloud Function so the API key stays secret.
 
 `BUSINESS_SERVICE` and `DELIVERY` describe a legitimate caller: they label the number but don't raise
 its spam score. Because each user has exactly one report per number, re-reporting replaces the old

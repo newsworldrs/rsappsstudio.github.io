@@ -187,6 +187,11 @@ interface WhoCallerIdRepository {
     suspend fun save(name: String, e164: String, showName: Boolean): AppResult<Unit>
     /** Name/number saved for this account in the backend, e.g. after reinstalling the app. */
     suspend fun load(): AppResult<Pair<String, String>?>
+    /**
+     * Publishes the network the user's own SIM is on now (after porting it can differ from the
+     * number's original network), so lookups show the correct operator. Cheap; call periodically.
+     */
+    suspend fun refreshCarrier(): AppResult<Unit> = AppResult.Success(Unit)
 }
 
 interface LocalProfileRepository {

@@ -42,6 +42,8 @@ data class PostCallUiState(
     val reportCount: Int = 0,
     val location: String? = null,
     val operator: String? = null,
+    /** True when [operator] only comes from the number's prefix (the network that first issued it). */
+    val operatorIsOriginal: Boolean = true,
     /** Set once the number is in the user's contacts (e.g. after "Add to Contacts"). */
     val savedContactId: Long? = null,
     val selected: List<ReportCategory> = emptyList(),
@@ -77,7 +79,11 @@ class PostCallViewModel @Inject constructor(
         val number = _state.value.number
         viewModelScope.launch {
             val facts = withContext(Dispatchers.IO) { numberFacts(number) }
-            _state.update { it.copy(display = facts?.first ?: number, location = facts?.second, operator = facts?.third) }
+            _state.update {
+                // Keep a confirmed current operator if the lookup already found one.
+                if (!it.operatorIsOriginal) it.copy(display = facts?.first ?: number, location = facts?.second)
+                else it.copy(display = facts?.first ?: number, location = facts?.second, operator = facts?.third)
+            }
         }
         viewModelScope.launch {
             val result = try {
@@ -94,7 +100,10 @@ class PostCallViewModel @Inject constructor(
 
     private fun applyIdentity(result: CallerResult) {
         _state.update {
+            val current = result.info?.carrier?.takeIf { c -> c.isNotBlank() }
             it.copy(
+                operator = current ?: it.operator,
+                operatorIsOriginal = if (current != null) false else it.operatorIsOriginal,
                 knownName = result.info?.displayName?.takeIf { n -> n.isNotBlank() },
                 spamWarning = result.spamScore.score >= SPAM_WARNING_SCORE && result.contactName == null,
                 reportCount = result.info?.reportCount ?: 0,

@@ -425,7 +425,8 @@ private fun callerView(context: Context, number: String, lookup: DialLookup): Ca
     val company = contact?.company?.let { c -> listOfNotNull(contact.jobTitle, c).joinToString(" · ") }
         ?: found.business?.category
     val place = listOfNotNull(
-        found.facts?.carrier ?: result.info?.carrier,
+        result.info?.carrier?.takeIf { it.isNotBlank() }
+            ?: found.facts?.carrier?.let { context.getString(com.rskusum.whocaller.core.ui.R.string.operator_original_short, it) },
         contact?.city ?: found.business?.address ?: found.facts?.location,
     ).distinct().joinToString(" · ").ifEmpty { null }
     return CallerView(
