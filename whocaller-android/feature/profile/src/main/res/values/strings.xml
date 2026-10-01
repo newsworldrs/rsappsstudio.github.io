@@ -82,4 +82,10 @@
     <string name="complete_sim_no_number">number not stored on SIM</string>
     <string name="complete_sim_type_number">Your operator didn\'t store the number on the SIM. Type it below.</string>
     <string name="complete_detect_sims">Detect my SIM numbers</string>
+    <string name="complete_country">Country code</string>
+    <string name="complete_mobile_digits">%1$d-digit mobile number</string>
+    <string name="complete_number_more">Enter %1$d more digit(s)</string>
+    <string name="complete_number_india_start">Indian mobile numbers start with 6, 7, 8 or 9</string>
+    <string name="complete_number_invalid">This isn\'t a valid mobile number. Check it and try again.</string>
+    <string name="complete_number_ok">✓ Looks good</string>
 </resources>

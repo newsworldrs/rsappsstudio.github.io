@@ -88,6 +88,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -160,6 +161,12 @@ fun KeypadTab(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    // Re-read the SIMs whenever the app comes back (SIM settings may have changed).
+    var simTick by remember { mutableIntStateOf(0) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { simTick++ }
+    val dualSim: List<SimOption>? = remember(simTick) {
+        Sims.list(context).takeIf { it.size >= 2 && Sims.default(context) == null }?.take(2)
+    }
     val palette = LocalDialerPalette.current
     val input by viewModel.input.collectAsState()
     val lookup by viewModel.lookup.collectAsState()
@@ -377,19 +384,30 @@ fun KeypadTab(
                     enabled = number.isNotBlank() && !emergency,
                     onClick = { actions.video(number) },
                 )
-                GradientCallButton(
-                    icon = Icons.Filled.Call,
-                    description = stringResource(if (emergency) R.string.dialer_emergency_call else R.string.dialer_call),
-                    colors = if (emergency) listOf(Color(0xFFFF6B6B), WarnRed) else listOf(CallGreenLight, CallGreen),
-                    size = 76.dp,
-                    enabled = number.isNotBlank(),
-                    onLongClickLabel = stringResource(R.string.dialer_choose_sim),
-                    onLongClick = { actions.call(number, pickSim = true) },
-                    onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                        actions.call(number)
-                    },
-                )
+                // Two SIMs and no default calling SIM ("ask every time"): one call button per SIM,
+                // with its network underneath, so the right number is used in one tap.
+                if (dualSim != null && !emergency) {
+                    dualSim.forEach { sim ->
+                        SimCallButton(sim, enabled = number.isNotBlank()) {
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            actions.callOn(number, sim.handle)
+                        }
+                    }
+                } else {
+                    GradientCallButton(
+                        icon = Icons.Filled.Call,
+                        description = stringResource(if (emergency) R.string.dialer_emergency_call else R.string.dialer_call),
+                        colors = if (emergency) listOf(Color(0xFFFF6B6B), WarnRed) else listOf(CallGreenLight, CallGreen),
+                        size = 76.dp,
+                        enabled = number.isNotBlank(),
+                        onLongClickLabel = stringResource(R.string.dialer_choose_sim),
+                        onLongClick = { actions.call(number, pickSim = true) },
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            actions.call(number)
+                        },
+                    )
+                }
                 Box(Modifier.size(60.dp), contentAlignment = Alignment.Center) {
                     if (number.isNotEmpty()) {
                         Box(
@@ -816,4 +834,30 @@ private fun rememberDtmfTones(context: Context): DtmfTones {
     }
     DisposableEffect(tones) { onDispose { tones.release() } }
     return tones
+}
+
+/** Call button for one SIM: green button with the slot number, "SIM 1" and the network below. */
+@Composable
+private fun SimCallButton(sim: SimOption, enabled: Boolean, onClick: () -> Unit) {
+    val palette = LocalDialerPalette.current
+    val slot = sim.slot ?: 1
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(76.dp)) {
+        Box(contentAlignment = Alignment.BottomEnd) {
+            GradientCallButton(
+                icon = Icons.Filled.Call,
+                description = stringResource(R.string.dialer_call_with_sim, slot, sim.network ?: sim.label),
+                colors = listOf(CallGreenLight, CallGreen),
+                size = 64.dp,
+                enabled = enabled,
+                onClick = onClick,
+            )
+            Box(
+                Modifier.size(22.dp).clip(CircleShape).background(Color.White),
+                contentAlignment = Alignment.Center,
+            ) { Text(slot.toString(), color = CallGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(stringResource(R.string.dialer_sim_n, slot), color = palette.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(sim.network ?: sim.label, color = palette.subtle, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
 }

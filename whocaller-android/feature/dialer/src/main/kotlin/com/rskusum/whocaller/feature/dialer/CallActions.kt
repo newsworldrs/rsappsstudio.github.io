@@ -101,6 +101,21 @@ class CallActions internal constructor(private val context: Context, private val
         TelecomActions.placeCall(context, number, withVideo)
     }
 
+    /** Calls [number] on a specific SIM (the dual-SIM buttons on the keypad). */
+    fun callOn(number: String, handle: PhoneAccountHandle) {
+        if (number.isBlank()) return
+        if (NumberTools.isEmergency(context, number) && !isDefaultDialer(context)) {
+            NumberTools.dialEmergencyWithSystem(context, number)
+            return
+        }
+        if (!TelecomActions.canPlaceCalls(context)) {
+            pending = { callOn(number, handle) }
+            requestPermission(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE))
+            return
+        }
+        TelecomActions.placeCall(context, number, video = false, account = handle)
+    }
+
     internal fun callWith(request: SimRequest, handle: PhoneAccountHandle) {
         simChoice = null
         TelecomActions.placeCall(context, request.number, request.video, handle)
@@ -209,7 +224,11 @@ fun SimPicker(sims: List<SimOption>, palette: DialerPalette, onPick: (SimOption)
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text(sim.label, color = palette.text, style = MaterialTheme.typography.titleSmall)
-                    Text(stringResource(R.string.dialer_sim_n, i + 1), color = palette.subtle, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        listOfNotNull(stringResource(R.string.dialer_sim_n, sim.slot ?: (i + 1)), sim.network?.takeIf { it != sim.label }).joinToString(" · "),
+                        color = palette.subtle,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }

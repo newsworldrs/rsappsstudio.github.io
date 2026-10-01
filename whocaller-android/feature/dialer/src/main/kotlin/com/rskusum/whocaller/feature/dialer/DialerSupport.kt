@@ -44,7 +44,15 @@ data class ContactCard(
 data class LabeledValue(val value: String, val label: String?)
 
 /** A SIM / calling account the user can pick for an outgoing call. */
-data class SimOption(val handle: PhoneAccountHandle, val label: String, val color: Int?)
+data class SimOption(
+    val handle: PhoneAccountHandle,
+    val label: String,
+    val color: Int?,
+    /** 1-based SIM slot, when known. */
+    val slot: Int? = null,
+    /** Network provider of this SIM ("Jio", "Airtel"…), as SIM settings show it. */
+    val network: String? = null,
+)
 
 /** Offline facts about a number from libphonenumber's location and operator data. */
 data class NumberFacts(val location: String?, val carrier: String?, val international: String?)
@@ -216,15 +224,28 @@ object Sims {
     fun list(context: Context): List<SimOption> {
         if (!granted(context, Manifest.permission.READ_PHONE_STATE)) return emptyList()
         val telecom = context.getSystemService(TelecomManager::class.java) ?: return emptyList()
+        val sims = com.rskusum.whocaller.core.ui.util.SimCards.list(context)
+        val tm = context.getSystemService(android.telephony.TelephonyManager::class.java)
         return try {
-            telecom.callCapablePhoneAccounts.mapIndexedNotNull { i, handle ->
+            val accounts = telecom.callCapablePhoneAccounts
+            accounts.mapIndexedNotNull { i, handle ->
                 val account = telecom.getPhoneAccount(handle) ?: return@mapIndexedNotNull null
+                // Which SIM this calling account is: exact on Android 11+, else by id or order.
+                val subId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    runCatching { tm?.getSubscriptionId(handle) }.getOrNull()
+                } else {
+                    handle.id.toIntOrNull()
+                }
+                val sim = sims.firstOrNull { it.subscriptionId == subId }
+                    ?: sims.takeIf { it.size == accounts.size }?.getOrNull(i)
                 SimOption(
                     handle = handle,
                     label = account.label?.toString()?.takeIf { it.isNotBlank() } ?: "SIM ${i + 1}",
                     color = account.highlightColor.takeIf { it != PhoneAccount.NO_HIGHLIGHT_COLOR },
+                    slot = sim?.slot ?: (i + 1),
+                    network = sim?.network ?: account.label?.toString()?.takeIf { it.isNotBlank() },
                 )
-            }
+            }.sortedBy { it.slot ?: 0 }
         } catch (_: SecurityException) {
             emptyList()
         }
