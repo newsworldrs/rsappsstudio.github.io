@@ -120,7 +120,7 @@ class CallerIdentificationManager @Inject constructor(
             ),
         )
 
-        val (decision, reason) = decide(settings, score, userBlocked, canCheckContacts)
+        val (decision, reason) = decide(settings, score, userBlocked, canCheckContacts, listOnly = info?.flaggedOnlyByList == true)
         val result = CallerResult(
             number = number,
             contactName = null,
@@ -140,6 +140,8 @@ class CallerIdentificationManager @Inject constructor(
         score: SpamScore,
         userBlocked: Boolean,
         canCheckContacts: Boolean,
+        /** Flagged only by an outside spam list: warn, but never block automatically. */
+        listOnly: Boolean = false,
     ): Pair<CallDecision, DecisionReason> {
         if (userBlocked) return CallDecision.BLOCK to DecisionReason.USER_BLOCK_LIST
         // Without contacts access every caller would look "unknown", so this rule needs it.
@@ -149,6 +151,9 @@ class CallerIdentificationManager @Inject constructor(
         if (!settings.spamProtectionEnabled) return CallDecision.ALLOW to DecisionReason.NONE
 
         val risk = score.riskLevel
+        if (listOnly) {
+            return if (score.hasEvidence && risk >= RiskLevel.HIGH) CallDecision.WARN to DecisionReason.SUSPECTED_SPAM else CallDecision.ALLOW to DecisionReason.NONE
+        }
         if (score.hasEvidence && risk >= RiskLevel.HIGH && score.category in settings.blockedCategories) {
             return CallDecision.BLOCK to DecisionReason.BLOCKED_CATEGORY
         }

@@ -39,4 +39,5 @@
     <string name="postcall_cat_robocall">Robocall</string>
     <string name="postcall_cat_harassment">Harassment</string>
     <string name="postcall_cat_other">Other</string>
+    <string name="postcall_cat_not_spam">Not spam</string>
 </resources>

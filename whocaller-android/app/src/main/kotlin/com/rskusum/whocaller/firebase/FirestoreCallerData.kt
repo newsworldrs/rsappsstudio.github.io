@@ -185,10 +185,13 @@ class FirestoreNetworkDataSource(
                 businessName != null || verified -> SpamCategory.BUSINESS
                 else -> null
             }
+            // Outside spam list still in force (fewer than two users said "Not spam").
+            val listedBy = if (getBoolean("externalActive") == true) getString("externalListName")?.takeIf { it.isNotBlank() } ?: "outside list" else null
             val confidence = maxOf(
                 min(1.0, ln(1.0 + totalReports) / ln(51.0)),
                 if (seeded) 0.8 else 0.0,
                 if (verified) 0.9 else 0.0,
+                if (listedBy != null) LISTED_CONFIDENCE else 0.0,
             ).toFloat()
             return NumberInfoDto(
                 number = e164,
@@ -209,7 +212,11 @@ class FirestoreNetworkDataSource(
                 verified = verified,
                 region = getString("region"),
                 updatedAt = getTimestamp("updatedAt")?.toDate()?.time,
+                listedBy = listedBy,
             )
         }
+
+        /** Enough for a list score of 60 to show "Possible spam", not enough to block or say "scam". */
+        private const val LISTED_CONFIDENCE = 0.85
     }
 }

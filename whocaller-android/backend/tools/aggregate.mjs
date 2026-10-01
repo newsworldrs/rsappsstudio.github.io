@@ -40,7 +40,7 @@ for (let i = 0; i < numbers.length; i += 300) {
     const before = existing[j].exists ? existing[j].data() : {};
     const s = summarize(byNumber.get(e164), now);
     const merged = { ...before, ...s };
-    const { spamScore, categories } = combine(merged);
+    const { spamScore, categories, externalActive } = combine(merged);
     const n = normalize(e164);
     batch.set(refs[j], {
       phoneNumber: before.phoneNumber ?? n?.display ?? e164,
@@ -57,6 +57,7 @@ for (let i = 0; i < numbers.length; i += 300) {
       lastReportedAt: s.lastReportedAt ? Timestamp.fromMillis(s.lastReportedAt) : null,
       spamScore,
       categories,
+      externalActive,
       source: before.seedSpamScore !== undefined ? "seed+reports" : "reports",
       updatedAt: FieldValue.serverTimestamp(),
       ...(existing[j].exists ? {} : { createdAt: FieldValue.serverTimestamp() }),

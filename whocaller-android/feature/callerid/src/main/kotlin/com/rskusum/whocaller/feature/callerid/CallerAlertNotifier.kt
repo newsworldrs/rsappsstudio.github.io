@@ -61,6 +61,19 @@ class CallerAlertNotifier @Inject constructor(
         val title = context.getString(R.string.callerid_incoming_from, who)
         val numberLine = result.number?.display?.takeIf { it != who }
         val reportsText = if (reports > 0) context.resources.getQuantityString(R.plurals.callerid_reported_by, reports, reports) else null
+        // Outside spam list only: a softer warning that says where it comes from.
+        if (result.label == CallerLabel.SUSPECTED_SPAM && result.info?.flaggedOnlyByList == true) {
+            return CallerAlert(
+                NotificationCategory.SPAM_ALERTS,
+                title,
+                listOfNotNull(
+                    context.getString(com.rskusum.whocaller.core.ui.R.string.label_possible_spam_list),
+                    context.getString(com.rskusum.whocaller.core.ui.R.string.label_flagged_by_list),
+                    numberLine,
+                ).joinToString(" · "),
+                key,
+            )
+        }
         return when (result.label) {
             CallerLabel.POSSIBLE_SCAM -> CallerAlert(
                 NotificationCategory.SPAM_ALERTS,

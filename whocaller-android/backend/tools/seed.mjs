@@ -108,12 +108,13 @@ for (let i = 0; i < entries.length; i += 300) {
     // Leave fields the file doesn't mention as they are.
     const update = Object.fromEntries(Object.entries(record).filter(([, v]) => v !== undefined));
     const merged = { ...before, ...update };
-    const { spamScore, categories } = combine(merged);
+    const { spamScore, categories, externalActive } = combine(merged);
     batch.set(refs[j], {
       ...update,
       isVerified: merged.isVerified ?? false,
       spamScore,
       categories,
+      externalActive,
       totalReports: before.totalReports ?? 0,
       source: before.totalReports ? "seed+reports" : "seed",
       updatedAt: FieldValue.serverTimestamp(),

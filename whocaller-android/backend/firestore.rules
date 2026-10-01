@@ -75,7 +75,7 @@ service cloud.firestore {
         && d.userId == request.auth.uid
         && d.categories is list && d.categories.size() >= 1 && d.categories.size() <= 2
         && d.categories.hasOnly(['SPAM', 'TELEMARKETING', 'FINANCIAL_SCAM', 'FRAUD_FAKE_OFFER', 'IMPERSONATION',
-                                 'BANKING_SCAM', 'BUSINESS_SERVICE', 'DELIVERY', 'ROBOCALL', 'HARASSMENT', 'OTHER'])
+                                 'BANKING_SCAM', 'BUSINESS_SERVICE', 'DELIVERY', 'ROBOCALL', 'HARASSMENT', 'OTHER', 'NOT_SPAM'])
         && d.callType in ['INCOMING_UNKNOWN', 'MANUAL']
         && d.callAnswered is bool
         && d.reportedAt == request.time

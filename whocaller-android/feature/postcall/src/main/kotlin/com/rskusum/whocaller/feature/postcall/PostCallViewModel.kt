@@ -116,6 +116,9 @@ class PostCallViewModel @Inject constructor(
         val current = _state.value.selected
         when {
             category in current -> _state.update { it.copy(selected = current - category, failed = false) }
+            // "Not spam" can't be combined with a complaint: picking one replaces the other.
+            category == ReportCategory.NOT_SPAM -> _state.update { it.copy(selected = listOf(category), failed = false) }
+            ReportCategory.NOT_SPAM in current -> _state.update { it.copy(selected = listOf(category), failed = false) }
             current.size < ReportCategory.MAX_PER_REPORT -> _state.update { it.copy(selected = current + category, failed = false) }
             else -> _limitHit.value++
         }

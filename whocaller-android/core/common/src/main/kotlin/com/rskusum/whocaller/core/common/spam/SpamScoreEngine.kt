@@ -112,6 +112,9 @@ class RuleBasedSpamScoreEngine @Inject constructor(
         // The user's own judgement always wins on their device ("Business / Service" isn't a complaint).
         if (signals.userBlocked || signals.userReportedCategory?.isUnwanted == true) {
             combined = max(combined, PERSONAL_FLOOR.toDouble())
+        } else if (signals.userReportedCategory == SpamCategory.SAFE) {
+            // They said "Not spam": don't warn them about this number again.
+            combined = min(combined, NOT_SPAM_CAP)
         }
 
         val score = combined.roundToInt().coerceIn(0, 100)
@@ -184,6 +187,7 @@ class RuleBasedSpamScoreEngine @Inject constructor(
 
     companion object {
         const val PERSONAL_FLOOR = 80
+        const val NOT_SPAM_CAP = 10.0
         const val MIN_SEVERE_REPORTS = 3
         const val VERIFIED_OVERRIDE_REPORTS = 25
         private const val SATURATION_REPORTS = 50

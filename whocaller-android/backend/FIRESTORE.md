@@ -35,7 +35,7 @@ reports/{E.164 digits}_{uid}       e.g. reports/919876543210_Xy12…   (one per 
   phoneNumber    "+919876543210"
   userId         Firebase Auth uid (anonymous sign-in is fine)
   categories     1–2 of: SPAM, TELEMARKETING, FINANCIAL_SCAM, FRAUD_FAKE_OFFER, IMPERSONATION,
-                 BANKING_SCAM, BUSINESS_SERVICE, DELIVERY, ROBOCALL, HARASSMENT, OTHER
+                 BANKING_SCAM, BUSINESS_SERVICE, DELIVERY, ROBOCALL, HARASSMENT, OTHER, NOT_SPAM
   callType       "INCOMING_UNKNOWN" (post-call screen) or "MANUAL" (Report screen)
   callAnswered   true / false
   reportedAt     server time
@@ -134,6 +134,37 @@ number from the company's own website into the `phoneNumber` column, then
 
 The app also recognises TRAI's reserved series without any data: **140xxxxxxx** is labelled
 Telemarketing, **1600xxxxxx** is labelled as a bank/financial service call.
+
+## Outside spam lists
+
+Numbers from a third-party spam list are kept apart from WhoCaller's own data, because nobody can
+check where such a list came from and Indian mobile numbers get reassigned to new people:
+
+```
+callerNumbers/{E.164}
+  externalList        "community-spamlist-2026-09"   id of the list (used to remove it)
+  externalListName    "Public spam list (GitHub)"     shown nowhere except the app's wording
+  externalSpamScore   60                              never above 80
+  externalCategories  ["SPAM"]
+  externalActive      true until 2 users answer "Not spam" (or the number is verified)
+```
+
+- The app shows these as **"Possible spam · Flagged by an outside spam list, not yet reported by
+  WhoCaller users"**, never as plain "Spam", and never blocks them automatically, even when the
+  user turned on category blocking.
+- **"Not spam"** on the "Know this caller?" screen hides the warning at once for that user; two
+  different users answering "Not spam" switch it off for everyone (`NOT_SPAM_TO_CLEAR` in `tools/lib.mjs`).
+- Numbers WhoCaller already knows (bank, business, helpline, named caller) are never flagged.
+- One command takes a whole list back out:
+
+```bash
+node external-list.mjs import data/list.json --list community-spamlist-2026-09 --name "Public spam list (GitHub)" --score 60
+node external-list.mjs remove --list community-spamlist-2026-09
+```
+
+Imported so far: `community-spamlist-2026-09`, 1,034 numbers from
+github.com/RajeshLakkam/call-blocker-spam-list (source of the numbers not stated by that project), and
+`scam-calls-india`, 1 number from github.com/makash/scam-calls-india (public domain).
 
 ## Turning reports into spam scores
 

@@ -52,7 +52,7 @@ abstract class WhoCallerDatabase : RoomDatabase() {
     abstract fun userSettingsDao(): UserSettingsDao
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
         const val NAME = "whocaller.db"
     }
 }
@@ -68,5 +68,12 @@ object Migrations {
         }
     }
 
-    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2)
+    /** v3: which outside spam list (if any) flagged a cached number. */
+    val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+        override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE callers ADD COLUMN listedBy TEXT")
+        }
+    }
+
+    val ALL: Array<androidx.room.migration.Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

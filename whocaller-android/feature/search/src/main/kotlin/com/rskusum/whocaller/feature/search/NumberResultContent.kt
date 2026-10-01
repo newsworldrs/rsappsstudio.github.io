@@ -101,8 +101,12 @@ fun NumberResultContent(
                 severe = true,
             )
             CallerLabel.SUSPECTED_SPAM, CallerLabel.TELEMARKETING -> WarningBanner(
-                title = stringResource(lookup.label.labelRes()),
-                message = info?.reportCount?.takeIf { it > 0 }?.let { reportsText(it) },
+                title = stringResource(if (info?.flaggedOnlyByList == true) UiR.string.label_possible_spam_list else lookup.label.labelRes()),
+                message = if (info?.flaggedOnlyByList == true) {
+                    stringResource(UiR.string.label_flagged_by_list)
+                } else {
+                    info?.reportCount?.takeIf { it > 0 }?.let { reportsText(it) }
+                },
                 severe = false,
             )
             else -> Unit

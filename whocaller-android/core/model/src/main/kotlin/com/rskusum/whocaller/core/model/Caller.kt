@@ -31,7 +31,12 @@ data class CallerInfo(
     val regionCode: String? = null,
     val source: InfoSource = InfoSource.NONE,
     val updatedAt: Long = 0L,
+    /** Outside spam list that flagged the number; null when the warning comes from WhoCaller users. */
+    val listedBy: String? = null,
 ) {
+    /** Spam warning based only on an outside list, with no WhoCaller reports yet. */
+    val flaggedOnlyByList: Boolean get() = listedBy != null && reportCount == 0
+
     val hasIdentity: Boolean get() = !displayName.isNullOrBlank()
 
     companion object {

@@ -120,6 +120,8 @@ enum class ReportCategory(val category: SpamCategory, val reason: ReportReason, 
     ROBOCALL(SpamCategory.ROBOCALL, ReportReason.ROBOCALL),
     HARASSMENT(SpamCategory.SPAM, ReportReason.HARASSMENT),
     OTHER(SpamCategory.SPAM, ReportReason.OTHER),
+    /** "This caller is fine": clears an outside-list spam label once enough users say so. */
+    NOT_SPAM(SpamCategory.SAFE, ReportReason.OTHER, neutral = true),
     ;
 
     companion object {

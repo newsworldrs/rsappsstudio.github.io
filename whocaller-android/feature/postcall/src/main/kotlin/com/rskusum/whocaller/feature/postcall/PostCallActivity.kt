@@ -164,6 +164,7 @@ private fun look(c: ReportCategory): CategoryLook = when (c) {
     ReportCategory.ROBOCALL -> CategoryLook(R.string.postcall_cat_robocall, Icons.Filled.SmartToy, Color(0xFF94A3B8))
     ReportCategory.HARASSMENT -> CategoryLook(R.string.postcall_cat_harassment, Icons.Filled.SentimentVeryDissatisfied, Color(0xFFF43F5E))
     ReportCategory.OTHER -> CategoryLook(R.string.postcall_cat_other, Icons.Filled.MoreHoriz, Color(0xFFCBD5E1))
+    ReportCategory.NOT_SPAM -> CategoryLook(R.string.postcall_cat_not_spam, Icons.Filled.CheckCircle, Color(0xFF22C55E))
 }
 
 // ---------- Screen ----------

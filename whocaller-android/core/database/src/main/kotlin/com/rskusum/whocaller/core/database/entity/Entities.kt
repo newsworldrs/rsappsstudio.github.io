@@ -33,6 +33,8 @@ data class CallerEntity(
     /** True when the row came from the downloaded regional spam list rather than an explicit lookup. */
     val fromSpamList: Boolean,
     val updatedAt: Long,
+    /** Outside spam list that flagged the number (v3). */
+    val listedBy: String? = null,
 )
 
 @Entity(

@@ -92,7 +92,7 @@ class SearchNumberUseCase @Inject constructor(
         val isBlocked = blockRepository.isBlocked(number.key)
         val myReport = spamRepository.latestReportFor(number.key)
         val score = engine.score(
-            SpamSignals.from(info, isContact = contactName != null, userBlocked = isBlocked, userReported = myReport?.reason?.category),
+            SpamSignals.from(info, isContact = contactName != null, userBlocked = isBlocked, userReported = myReport?.primaryCategory),
         )
 
         if (recordHistory && settings.searchHistoryEnabled) {

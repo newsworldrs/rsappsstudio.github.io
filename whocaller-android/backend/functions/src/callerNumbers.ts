@@ -8,9 +8,10 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 
 const CATEGORIES = [
   "SPAM", "TELEMARKETING", "FINANCIAL_SCAM", "FRAUD_FAKE_OFFER", "IMPERSONATION", "BANKING_SCAM",
-  "BUSINESS_SERVICE", "DELIVERY", "ROBOCALL", "HARASSMENT", "OTHER",
+  "BUSINESS_SERVICE", "DELIVERY", "ROBOCALL", "HARASSMENT", "OTHER", "NOT_SPAM",
 ];
-const NEUTRAL = new Set(["BUSINESS_SERVICE", "DELIVERY"]);
+const NEUTRAL = new Set(["BUSINESS_SERVICE", "DELIVERY", "NOT_SPAM"]);
+const NOT_SPAM_TO_CLEAR = 2;
 const DAY_MS = 86_400_000;
 const log2 = (x: number) => Math.log(x) / Math.LN2;
 
@@ -53,10 +54,16 @@ export function summarize(reports: Doc[], now: number) {
 }
 
 export function combine(d: Doc) {
-  let spamScore = Math.max(Number(d.seedSpamScore ?? 0), Number(d.reportSpamScore ?? 0));
+  const notSpam = Number(d.categoryCounts?.NOT_SPAM ?? 0);
+  const externalActive = Number(d.externalSpamScore ?? 0) > 0 && !d.isVerified && notSpam < NOT_SPAM_TO_CLEAR;
+  let spamScore = Math.max(Number(d.seedSpamScore ?? 0), Number(d.reportSpamScore ?? 0), externalActive ? Number(d.externalSpamScore) : 0);
   if (d.isVerified && (d.reportsLast7d ?? 0) < 25) spamScore = Math.min(spamScore, 15);
-  const categories = [...new Set([...(d.topCategories ?? []), ...(d.seedCategories ?? [])])].slice(0, 3);
-  return { spamScore, categories };
+  const categories = [...new Set([
+    ...(d.topCategories ?? []).filter((c: string) => c !== "NOT_SPAM"),
+    ...(d.seedCategories ?? []),
+    ...(externalActive ? d.externalCategories ?? [] : []),
+  ])].slice(0, 3);
+  return { spamScore, categories, externalActive };
 }
 
 export const onReportWritten = onDocumentWritten({ document: "reports/{reportId}", region: "asia-south1" }, async (event) => {
@@ -70,7 +77,7 @@ export const onReportWritten = onDocumentWritten({ document: "reports/{reportId}
     const snap = await tx.get(ref);
     const before = snap.exists ? snap.data()! : {};
     const s = summarize(reports, Date.now());
-    const { spamScore, categories } = combine({ ...before, ...s });
+    const { spamScore, categories, externalActive } = combine({ ...before, ...s });
     tx.set(ref, {
       normalizedNumber: e164,
       phoneNumber: before.phoneNumber ?? e164,
@@ -78,6 +85,7 @@ export const onReportWritten = onDocumentWritten({ document: "reports/{reportId}
       ...s,
       spamScore,
       categories,
+      externalActive,
       source: before.seedSpamScore !== undefined ? "seed+reports" : "reports",
       updatedAt: FieldValue.serverTimestamp(),
       ...(snap.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),

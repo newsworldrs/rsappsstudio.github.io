@@ -8,6 +8,8 @@
     <string name="label_business">Business</string>
     <string name="label_person">Person</string>
     <string name="label_suspected_spam">Suspected spam</string>
+    <string name="label_possible_spam_list">Possible spam</string>
+    <string name="label_flagged_by_list">Flagged by an outside spam list, not yet reported by WhoCaller users</string>
     <string name="label_possible_scam">Possible scam</string>
     <string name="label_telemarketing">Telemarketing</string>
     <string name="label_hidden">Private number</string>

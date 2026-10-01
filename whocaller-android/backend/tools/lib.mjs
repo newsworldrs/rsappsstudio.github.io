@@ -10,11 +10,14 @@ import { parsePhoneNumberFromString } from "libphonenumber-js/max";
 /** Report categories, exactly as the app sends them. */
 export const CATEGORIES = [
   "SPAM", "TELEMARKETING", "FINANCIAL_SCAM", "FRAUD_FAKE_OFFER", "IMPERSONATION", "BANKING_SCAM",
-  "BUSINESS_SERVICE", "DELIVERY", "ROBOCALL", "HARASSMENT", "OTHER",
+  "BUSINESS_SERVICE", "DELIVERY", "ROBOCALL", "HARASSMENT", "OTHER", "NOT_SPAM",
 ];
 
 /** Categories that describe a legitimate caller; they don't raise the spam score. */
-export const NEUTRAL = new Set(["BUSINESS_SERVICE", "DELIVERY"]);
+export const NEUTRAL = new Set(["BUSINESS_SERVICE", "DELIVERY", "NOT_SPAM"]);
+
+/** This many different users saying "Not spam" clears an outside-list label. */
+export const NOT_SPAM_TO_CLEAR = 2;
 
 /** Connects with a service account: FIREBASE_SERVICE_ACCOUNT (JSON text), --key <file>, or GOOGLE_APPLICATION_CREDENTIALS. */
 export function connect(keyPath) {
@@ -94,10 +97,17 @@ export function summarize(reports, now = Date.now()) {
 /** Final fields derived from seed data + report summary. Verified callers stay low unless reports surge. */
 export function combine(doc) {
   const seedScore = Number(doc.seedSpamScore ?? 0);
-  let spamScore = Math.max(seedScore, Number(doc.reportSpamScore ?? 0));
+  // An outside spam list counts only until WhoCaller users say "Not spam" (or the caller is verified).
+  const notSpam = Number(doc.categoryCounts?.NOT_SPAM ?? 0);
+  const externalActive = Number(doc.externalSpamScore ?? 0) > 0 && !doc.isVerified && notSpam < NOT_SPAM_TO_CLEAR;
+  let spamScore = Math.max(seedScore, Number(doc.reportSpamScore ?? 0), externalActive ? Number(doc.externalSpamScore) : 0);
   if (doc.isVerified && (doc.reportsLast7d ?? 0) < 25) spamScore = Math.min(spamScore, 15);
-  const categories = [...new Set([...(doc.topCategories ?? []), ...(doc.seedCategories ?? [])])].slice(0, 3);
-  return { spamScore, categories };
+  const categories = [...new Set([
+    ...(doc.topCategories ?? []).filter((c) => c !== "NOT_SPAM"),
+    ...(doc.seedCategories ?? []),
+    ...(externalActive ? doc.externalCategories ?? [] : []),
+  ])].slice(0, 3);
+  return { spamScore, categories, externalActive };
 }
 
 /** Minimal CSV reader (quotes, commas and newlines inside quotes). First row = headers. */
