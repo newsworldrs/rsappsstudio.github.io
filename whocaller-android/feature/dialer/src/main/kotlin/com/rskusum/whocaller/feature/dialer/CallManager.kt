@@ -54,6 +54,10 @@ data class CallUi(
     val canSwapConference: Boolean = false,
     /** The network and both phones allow switching this call to video. */
     val canVideo: Boolean = false,
+    /** This phone can do video but the other side (phone or network) says it can't. */
+    val remoteCantVideo: Boolean = false,
+    /** We asked to switch to video and are waiting for the other person. */
+    val videoUpgradePending: Boolean = false,
     /** The other person asked to switch this call to video. */
     val videoRequested: Boolean = false,
 ) {
@@ -83,6 +87,10 @@ object CallManager {
 
     private val videoCallbacks = ConcurrentHashMap<Call, Pair<InCallService.VideoCall, InCallService.VideoCall.Callback>>()
     private val videoRequests: MutableSet<Call> = ConcurrentHashMap.newKeySet()
+    private val pendingUpgrades: MutableSet<Call> = ConcurrentHashMap.newKeySet()
+
+    /** Called when the other person asks to switch to video (the call screen must come to the front). */
+    @Volatile internal var onVideoRequest: ((Call) -> Unit)? = null
     /** Video calls that the network connected as voice (told once). */
     private val downgradeNoticed: MutableSet<Call> = ConcurrentHashMap.newKeySet()
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -125,6 +133,7 @@ object CallManager {
     internal fun remove(call: Call) {
         videoCallbacks.remove(call)?.let { (vc, cb) -> runCatching { vc.unregisterCallback(cb) } }
         videoRequests.remove(call)
+        pendingUpgrades.remove(call)
         downgradeNoticed.remove(call)
         call.unregisterCallback(callback)
         list.remove(call)
@@ -181,12 +190,33 @@ object CallManager {
         answer(ringing, video = false)
     }
 
-    /** Asks the network to turn video on (or off) for an ongoing call. Returns false if it can't. */
+    /**
+     * Asks the network to turn video on (or off) for an ongoing call. Returns false if it can't.
+     * For "on", the call screen has already started the camera preview (some networks need it).
+     */
     fun requestVideo(call: Call, on: Boolean): Boolean {
         val vc = call.videoCall ?: return false
-        return runCatching {
-            vc.sendSessionModifyRequest(VideoProfile(if (on) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY))
-        }.isSuccess
+        watchVideo(call)
+        val state = if (on) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY
+        val sent = runCatching { vc.sendSessionModifyRequest(VideoProfile(state)) }.isSuccess
+        if (sent && on) {
+            pendingUpgrades += call
+            // No answer at all: stop waiting (the network normally times out first).
+            mainHandler.postDelayed({
+                if (pendingUpgrades.remove(call)) {
+                    _messages.tryEmit(R.string.call_video_no_answer)
+                    refresh()
+                }
+            }, UPGRADE_WAIT_MS)
+        }
+        refresh()
+        return sent
+    }
+
+    /** Stops waiting for the other person (the request itself can't be withdrawn). */
+    fun cancelVideoRequest(call: Call) {
+        pendingUpgrades.remove(call)
+        refresh()
     }
 
     /** Answers the other person's request to switch to video. */
@@ -211,13 +241,23 @@ object CallManager {
                 if (VideoProfile.isVideo(videoProfile.videoState) && !VideoProfile.isVideo(call.details.videoState)) {
                     videoRequests += call
                     refresh()
+                    // Show the request even if the call screen is in the background.
+                    onVideoRequest?.invoke(call)
                 }
             }
 
             override fun onSessionModifyResponseReceived(status: Int, requestedProfile: VideoProfile?, responseProfile: VideoProfile?) {
-                if (status != Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS) {
+                val wasWaiting = pendingUpgrades.remove(call)
+                val nowVideo = responseProfile?.let { VideoProfile.isVideo(it.videoState) } == true
+                if (status != Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS || (wasWaiting && !nowVideo)) {
                     _messages.tryEmit(
-                        if (status == Connection.VideoProvider.SESSION_MODIFY_REQUEST_REJECTED_BY_REMOTE) R.string.call_video_declined else R.string.call_video_failed,
+                        when (status) {
+                            Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS,
+                            Connection.VideoProvider.SESSION_MODIFY_REQUEST_REJECTED_BY_REMOTE,
+                            -> R.string.call_video_declined
+                            Connection.VideoProvider.SESSION_MODIFY_REQUEST_TIMED_OUT -> R.string.call_video_no_answer
+                            else -> R.string.call_video_failed
+                        },
                     )
                 }
                 refresh()
@@ -257,6 +297,14 @@ object CallManager {
         call.state
     }
 
+    private fun localVideo(d: Call.Details) =
+        d.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL) || d.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_TX)
+
+    private fun remoteVideo(d: Call.Details) =
+        d.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_BIDIRECTIONAL) || d.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_RX)
+
+    private const val UPGRADE_WAIT_MS = 30_000L
+
     private fun refresh() {
         _calls.value = list.map { call ->
             val details = call.details
@@ -285,10 +333,10 @@ object CallManager {
                 isChild = call.parent != null,
                 canMerge = call.conferenceableCalls.isNotEmpty() || details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE),
                 canSwapConference = details.can(Call.Details.CAPABILITY_SWAP_CONFERENCE),
-                canVideo = call.videoCall != null && (
-                    details.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL) ||
-                        details.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_TX)
-                    ),
+                // Like the system phone app: both this phone and the other side must support video.
+                canVideo = call.videoCall != null && localVideo(details) && remoteVideo(details),
+                remoteCantVideo = call.videoCall != null && localVideo(details) && !remoteVideo(details),
+                videoUpgradePending = call in pendingUpgrades && !video,
                 videoRequested = call in videoRequests && !video,
             )
         }

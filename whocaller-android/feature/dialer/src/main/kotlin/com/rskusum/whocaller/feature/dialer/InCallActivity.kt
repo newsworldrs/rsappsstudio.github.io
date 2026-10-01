@@ -63,6 +63,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -188,6 +189,14 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
     val recording by CallRecorder.active.collectAsStateWithLifecycle()
     var recordNotice by remember { mutableStateOf(false) }
     var videoUnavailable by remember { mutableStateOf(false) }
+    // Camera preview starts first; the request goes out a moment later (some networks need it).
+    var startingVideo by remember(call.call) { mutableStateOf(false) }
+    LaunchedEffect(startingVideo) {
+        if (!startingVideo) return@LaunchedEffect
+        delay(VIDEO_PREVIEW_LEAD_MS)
+        if (!CallManager.requestVideo(call.call, on = true)) videoUnavailable = true
+        startingVideo = false
+    }
     fun startRecording() {
         val go = {
             CallRecorder.start(context, call.number)
@@ -218,7 +227,7 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
 
     Box(Modifier.fillMaxSize()) {
         // Self-view starts while a video call is still dialing, like the system phone app.
-        val showVideo = call.isVideo && !call.isRinging && !call.isHeld
+        val showVideo = (call.isVideo || call.videoUpgradePending || startingVideo) && !call.isRinging && !call.isHeld
         if (showVideo) VideoSurfaces(call.call)
 
         Column(
@@ -266,6 +275,21 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
             Spacer(Modifier.height(12.dp))
             CallStatus(call)
             recording?.let { RecordingBadge(it.startedAt) }
+            if (call.videoUpgradePending || startingVideo) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.clip(RoundedCornerShape(50)).background(GLASS).padding(start = 14.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircularProgressIndicator(Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.call_video_waiting, call.display.title), color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    TextButton(onClick = {
+                        startingVideo = false
+                        CallManager.cancelVideoRequest(call.call)
+                    }) { Text(stringResource(android.R.string.cancel), color = Color.White) }
+                }
+            }
             Spacer(Modifier.weight(1f))
 
             when {
@@ -292,13 +316,8 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                             ) {
                                 when {
                                     call.isVideo -> CallManager.requestVideo(call.call, on = false)
-                                    call.canVideo -> withCamera {
-                                        if (CallManager.requestVideo(call.call, on = true)) {
-                                            Toast.makeText(context, R.string.call_video_asking, Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            videoUnavailable = true
-                                        }
-                                    }
+                                    call.videoUpgradePending -> CallManager.cancelVideoRequest(call.call)
+                                    call.canVideo -> withCamera { startingVideo = true }
                                     else -> videoUnavailable = true
                                 }
                             }
@@ -367,7 +386,25 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
             onDismissRequest = { videoUnavailable = false },
             icon = { Icon(Icons.Filled.VideocamOff, contentDescription = null) },
             title = { Text(stringResource(R.string.call_video_unavailable_title)) },
-            text = { Text(stringResource(R.string.call_video_unavailable_text)) },
+            text = {
+                Column {
+                    Text(stringResource(if (call.remoteCantVideo) R.string.call_video_remote_cant else R.string.call_video_unavailable_text))
+                    Spacer(Modifier.height(10.dp))
+                    // What the network reports for this call (helps when testing between two phones).
+                    val d = call.call.details
+                    fun yn(b: Boolean) = if (b) "✓" else "✗"
+                    Text(
+                        stringResource(
+                            R.string.call_video_diagnostics,
+                            yn(call.call.videoCall != null),
+                            yn(d.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL)),
+                            yn(d.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_BIDIRECTIONAL)),
+                            yn(TelecomActions.supportsVideoCalling(context)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
             confirmButton = {
                 if (whatsApp && call.number != null) {
                     TextButton(onClick = {
@@ -406,6 +443,7 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
 }
 
 private const val REC_PREFS = "call_recorder"
+private const val VIDEO_PREVIEW_LEAD_MS = 700L
 private fun recordNoticeSeen(context: Context) = context.getSharedPreferences(REC_PREFS, Context.MODE_PRIVATE).getBoolean("notice_seen", false)
 private fun markRecordNoticeSeen(context: Context) =
     context.getSharedPreferences(REC_PREFS, Context.MODE_PRIVATE).edit().putBoolean("notice_seen", true).apply()

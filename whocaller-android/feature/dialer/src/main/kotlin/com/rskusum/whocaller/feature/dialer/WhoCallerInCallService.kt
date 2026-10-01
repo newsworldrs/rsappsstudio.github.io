@@ -50,6 +50,7 @@ class WhoCallerInCallService : InCallService() {
     override fun onCreate() {
         super.onCreate()
         CallManager.attach(this)
+        CallManager.onVideoRequest = { call -> showVideoRequest(call) }
         observer = scope.launch {
             CallManager.calls.collect { CallNotifications.update(this@WhoCallerInCallService, it) }
         }
@@ -105,7 +106,31 @@ class WhoCallerInCallService : InCallService() {
         CallManager.onAudioState(audioState)
     }
 
+    /** The other person asked to switch to video: bring the call screen up so the user can answer. */
+    private fun showVideoRequest(call: Call) {
+        runCatching { startActivity(InCallActivity.intent(this)) }
+        val who = CallManager.calls.value.firstOrNull { it.call == call }?.display?.title.orEmpty()
+        val open = PendingIntent.getActivity(this, 40, InCallActivity.intent(this), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(this, NotificationChannels.INCOMING_CALLS)
+            .setSmallIcon(UiR.drawable.ic_stat_whocaller)
+            .setContentTitle(getString(R.string.call_video_request_title, who))
+            .setContentText(getString(R.string.call_video_request_tap))
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setTimeoutAfter(VIDEO_REQUEST_NOTIFICATION_MS)
+            .setContentIntent(open)
+            .setFullScreenIntent(open, true)
+            .build()
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED ||
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        ) {
+            runCatching { NotificationManagerCompat.from(this).notify(VIDEO_REQUEST_NOTIFICATION_ID, notification) }
+        }
+    }
+
     override fun onDestroy() {
+        CallManager.onVideoRequest = null
         CallRecorder.stop()
         observer?.cancel()
         scope.cancel()
@@ -117,6 +142,8 @@ class WhoCallerInCallService : InCallService() {
     private companion object {
         const val IDENTIFY_BUDGET_MS = 3_000L
         const val NETWORK_BUDGET_MS = 2_000L
+        const val VIDEO_REQUEST_NOTIFICATION_ID = 4_201
+        const val VIDEO_REQUEST_NOTIFICATION_MS = 30_000L
     }
 }
 

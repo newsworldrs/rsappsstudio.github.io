@@ -183,7 +183,7 @@
     <string name="call_video">Video</string>
     <string name="call_video_off">Video off</string>
     <string name="call_video_asking">Asking to switch to video…</string>
-    <string name="call_video_declined">They declined the video call</string>
+    <string name="call_video_declined">Video wasn\'t accepted: the other person declined, or their phone or network doesn\'t support video calling.</string>
     <string name="call_video_failed">Couldn\'t switch to video on this call</string>
     <string name="call_video_became_voice">Your network connected this as a voice call (video isn\'t available for this call)</string>
     <string name="call_video_request_title">%1$s wants to switch to video</string>
@@ -216,4 +216,9 @@
     <string name="rec_private">Private number</string>
     <string name="rec_local_note">Stored only on this phone. Not uploaded or backed up.</string>
     <string name="call_label_spoofed">⚠ Caller ID not verified · number may be spoofed</string>
+    <string name="call_video_waiting">Waiting for %1$s to accept video…</string>
+    <string name="call_video_no_answer">No answer to the video request. The call stays on voice.</string>
+    <string name="call_video_request_tap">Tap to turn on video or stay on voice</string>
+    <string name="call_video_remote_cant">The other person\'s phone or network can\'t do video on this call. Video calling (ViLTE) has to be on for both phones, usually on the same 4G/VoLTE network. You can continue on WhatsApp video instead.</string>
+    <string name="call_video_diagnostics">Video session %1$s · this phone %2$s · other side %3$s · SIM video calling %4$s</string>
 </resources>
