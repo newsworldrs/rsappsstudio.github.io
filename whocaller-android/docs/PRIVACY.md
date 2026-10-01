@@ -5,7 +5,7 @@ WhoCaller is designed so that the phone's personal data stays on the phone.
 ## Never uploaded
 - **Contacts** — read on-device via the Contacts Provider only to recognise saved contacts. Never uploaded, never stored in Firestore.
 - **Call history** — read on-device to show recent calls. Never uploaded.
-- **SMS content** — message checks run on-device (`SmsClassifier`). Nothing is uploaded.
+- **SMS content** — messages are classified on-device (`SmsClassifier`). Nothing is uploaded.
 - **Call audio** — WhoCaller cannot access or record calls.
 
 ## Sent to WhoCaller servers (only when a backend is configured)
@@ -36,22 +36,33 @@ Analytics · Crash reports · Contact access · Delete search history · Clear l
 Delete account · Privacy Policy · Terms of Service.
 
 ## Permissions
-| Permission | Used for | If denied |
+| Permission / role | Used for | If denied |
 |---|---|---|
 | Call-screening role (Android 10+) | Identify/block incoming calls | Manual search still works |
-| `READ_PHONE_STATE` (Android 8–9 only) | Identify incoming calls | Manual search still works |
+| Default phone app role (optional) | WhoCaller's own call screen: "Incoming call from …" for every call, answer/decline, in-call controls, video calls | System phone app keeps handling calls |
+| Default SMS app role (optional) | Receive, store and send texts with scam warnings | Messages stay in your current SMS app; "Check a message" still works |
+| `READ_PHONE_STATE` | Caller ID on Android 8–9; checking whether the SIM supports video calling | Video call button hidden |
+| `CALL_PHONE` | Placing calls/video calls when you tap Call | Calls open in the dialer instead |
+| `CAMERA` | Self-view during video calls only | Video calls without self-view |
 | `READ_CALL_LOG` | Recent calls; incoming number on Android 9 | Recent calls hidden |
 | `READ_CONTACTS` | Recognise saved contacts | Contacts not recognised; "block unknown" disabled |
 | `WRITE_CONTACTS` | Only when you star/delete a contact in WhoCaller | Those two actions unavailable |
-| `POST_NOTIFICATIONS` | Caller alerts and spam warnings | No alerts |
+| `READ_SMS`, `SEND_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS`, `RECEIVE_WAP_PUSH` | Only used as the default SMS app (granted with that role) | — |
+| `USE_FULL_SCREEN_INTENT` | Full-screen incoming-call screen as default phone app | Heads-up notification instead |
+| `POST_NOTIFICATIONS` | Caller alerts, spam warnings, new messages | No alerts |
 
-Not requested: `CALL_PHONE` (calls go through your dialer), `READ_SMS`/`SEND_SMS`, accessibility, overlay.
+Not requested: accessibility, draw-over-other-apps.
 
-### SMS inbox
-Google Play restricts SMS permissions to default SMS apps and a few approved uses. The default build does
-**not** declare `READ_SMS`; users check messages by sharing them to WhoCaller. The inbox reader
-(`SmsRepositoryImpl`) activates automatically only in a build that declares the permission *and* has Play
-approval (or is the default SMS handler).
+### SMS
+Messages are read, classified and stored **on the device only**; their text is never uploaded.
+As the default SMS app WhoCaller stores every incoming message (it never deletes or hides any),
+and records messages you send. Picture messages (MMS) are not downloaded yet: the user is told to
+view them in another SMS app. Google Play only allows SMS permissions for default SMS apps.
+
+### Profile
+Name, profession, institute, email and the profile photo or avatar are stored on this device only.
+The photo is picked with the system photo picker (no storage permission) and saved downscaled in
+private app storage.
 
 ## Retention
 Server: aggregate counts per number; per-user report records are anonymised on account deletion.
