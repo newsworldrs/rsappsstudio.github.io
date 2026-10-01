@@ -13,7 +13,6 @@
     <string name="sms_looks_ok">No common warning signs found. Stay careful with links and payment requests.</string>
     <string name="sms_why">Why:</string>
     <string name="sms_inbox">Inbox</string>
-    <string name="sms_inbox_unavailable">Reading your SMS inbox isn\'t available in this version. Google Play only allows it for default SMS apps, so WhoCaller checks messages you share with it instead.</string>
     <string name="sms_inbox_empty">No messages to show.</string>
 
     <string name="sms_cat_personal">Personal</string>
@@ -35,4 +34,24 @@
     <string name="sms_sig_promotion">Looks like an advertisement</string>
     <string name="sms_sig_blocked">Sender is on your block list</string>
     <string name="sms_sig_reported">You reported this sender</string>
+
+    <string name="sms_tab_conversations">Conversations</string>
+    <string name="sms_tab_check">Check a message</string>
+    <string name="sms_make_default">Make WhoCaller your SMS app</string>
+    <string name="sms_make_default_desc">To read, receive and send texts here with scam warnings, set WhoCaller as your default SMS app. Picture messages (MMS) aren\'t supported yet — you can switch back any time.</string>
+    <string name="sms_allow_read">Allow reading messages</string>
+    <string name="sms_inbox_unavailable">Allow WhoCaller to read your messages, or make it your SMS app, to see conversations with scam warnings.</string>
+    <string name="sms_no_conversations">No messages yet.</string>
+    <string name="sms_new_message">New message</string>
+    <string name="sms_to">To</string>
+    <string name="sms_type_message">Text message</string>
+    <string name="sms_send">Send</string>
+    <string name="sms_send_failed">Message not sent.</string>
+    <string name="sms_cannot_send">Make WhoCaller your SMS app to send messages from here.</string>
+    <string name="sms_from">Message from %1$s</string>
+    <string name="sms_suspicious_from">⚠ Suspicious message from %1$s</string>
+    <string name="sms_mms_received">Picture message from %1$s</string>
+    <string name="sms_mms_unsupported">WhoCaller can\'t show picture messages yet. Switch your SMS app in Settings › Default apps to view it.</string>
+    <string name="sms_unread">%1$d new</string>
+    <string name="sms_warning_short">Possible phishing</string>
 </resources>

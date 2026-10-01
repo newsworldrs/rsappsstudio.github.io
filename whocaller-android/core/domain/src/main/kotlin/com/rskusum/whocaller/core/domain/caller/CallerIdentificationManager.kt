@@ -63,12 +63,16 @@ class CallerIdentificationManager @Inject constructor(
      * @param rawNumber number as presented by Telecom; null/empty when the caller withheld it.
      * @param networkBudgetMs maximum time spent waiting for the backend.
      */
-    suspend fun identify(rawNumber: String?, networkBudgetMs: Long = DEFAULT_NETWORK_BUDGET_MS): CallerResult {
+    suspend fun identify(
+        rawNumber: String?,
+        networkBudgetMs: Long = DEFAULT_NETWORK_BUDGET_MS,
+        record: Boolean = true,
+    ): CallerResult {
         val settings = settingsRepository.current()
         val region = countryRepository.defaultRegion()
 
         val number = when (val n = normalizer.normalize(rawNumber, region)) {
-            NormalizationResult.Hidden -> return hiddenResult(settings)
+            NormalizationResult.Hidden -> return hiddenResult(settings, record)
             is NormalizationResult.Invalid -> return unknownResult(null)
             is NormalizationResult.Parsed -> n.number
         }
@@ -123,7 +127,7 @@ class CallerIdentificationManager @Inject constructor(
             reason = reason,
             label = labelFor(info, score, userBlocked),
         )
-        recordOutcome(result)
+        if (record) recordOutcome(result)
         return result
     }
 
@@ -163,7 +167,7 @@ class CallerIdentificationManager @Inject constructor(
         return (remote as? AppResult.Success)?.data ?: cached
     }
 
-    private suspend fun hiddenResult(settings: AppSettings): CallerResult {
+    private suspend fun hiddenResult(settings: AppSettings, record: Boolean): CallerResult {
         val block = settings.blockHiddenNumbers
         val result = CallerResult(
             number = null,
@@ -175,7 +179,7 @@ class CallerIdentificationManager @Inject constructor(
             label = CallerLabel.HIDDEN,
             isHidden = true,
         )
-        if (block) recordOutcome(result)
+        if (block && record) recordOutcome(result)
         return result
     }
 

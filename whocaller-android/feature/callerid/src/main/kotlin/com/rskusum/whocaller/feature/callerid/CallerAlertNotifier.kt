@@ -56,43 +56,55 @@ class CallerAlertNotifier @Inject constructor(
             return CallerAlert(NotificationCategory.SPAM_ALERTS, context.getString(R.string.callerid_blocked_title), text, key)
         }
 
+        // "Incoming call from …": contact name, else WhoCaller's name, else the number.
+        val who = result.displayName ?: result.number?.display ?: context.getString(R.string.callerid_private)
+        val title = context.getString(R.string.callerid_incoming_from, who)
+        val numberLine = result.number?.display?.takeIf { it != who }
+        val reportsText = if (reports > 0) context.resources.getQuantityString(R.plurals.callerid_reported_by, reports, reports) else null
         return when (result.label) {
             CallerLabel.POSSIBLE_SCAM -> CallerAlert(
                 NotificationCategory.SPAM_ALERTS,
-                context.getString(R.string.callerid_possible_scam),
-                context.getString(R.string.callerid_scam_detail),
+                title,
+                listOfNotNull(context.getString(R.string.callerid_possible_scam), context.getString(R.string.callerid_scam_detail), numberLine)
+                    .joinToString(" · "),
                 key,
             )
             CallerLabel.SUSPECTED_SPAM, CallerLabel.TELEMARKETING -> CallerAlert(
                 NotificationCategory.SPAM_ALERTS,
-                context.getString(R.string.callerid_suspected_spam),
-                buildList {
-                    if (result.spamScore.category != SpamCategory.UNKNOWN) add(categoryName)
-                    if (reports > 0) add(context.resources.getQuantityString(R.plurals.callerid_reported_by, reports, reports))
-                }.ifEmpty { listOf(result.number?.display.orEmpty()) }.joinToString(" · "),
+                title,
+                listOfNotNull(
+                    context.getString(R.string.callerid_suspected_spam),
+                    categoryName.takeIf { result.spamScore.category != SpamCategory.UNKNOWN },
+                    reportsText,
+                    numberLine,
+                ).joinToString(" · "),
                 key,
             )
             CallerLabel.VERIFIED_BUSINESS -> CallerAlert(
                 NotificationCategory.CALLER_ALERTS,
-                result.displayName ?: result.number?.display.orEmpty(),
+                title,
                 listOfNotNull(
                     context.getString(R.string.callerid_verified_business),
                     result.info?.category?.takeIf { it != SpamCategory.BUSINESS && it != SpamCategory.UNKNOWN }
                         ?.let { context.getString(R.string.callerid_category, context.getString(it.labelRes())) },
+                    numberLine,
                 ).joinToString(" · "),
                 key,
             )
             CallerLabel.BUSINESS, CallerLabel.PERSON -> CallerAlert(
                 NotificationCategory.CALLER_ALERTS,
-                result.displayName ?: return null,
-                listOfNotNull(
-                    context.getString(result.label.labelRes()),
-                    result.number?.display,
-                ).joinToString(" · "),
+                title,
+                listOfNotNull(context.getString(R.string.callerid_identified_by), numberLine).joinToString(" · "),
                 key,
             )
-            // Contacts, unknown and hidden callers: the system dialer already shows what we'd show.
-            else -> null
+            CallerLabel.CONTACT -> CallerAlert(NotificationCategory.CALLER_ALERTS, title, numberLine.orEmpty(), key)
+            CallerLabel.UNKNOWN -> CallerAlert(
+                NotificationCategory.CALLER_ALERTS,
+                title,
+                context.getString(R.string.callerid_not_in_contacts),
+                key,
+            )
+            CallerLabel.HIDDEN -> CallerAlert(NotificationCategory.CALLER_ALERTS, title, context.getString(R.string.callerid_hidden_detail), key)
         }
     }
 

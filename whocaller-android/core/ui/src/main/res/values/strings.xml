@@ -87,4 +87,12 @@
     <string name="channel_security_desc">Account and security notices.</string>
     <string name="channel_general">General</string>
     <string name="channel_general_desc">Sync status and other information.</string>
+    <string name="channel_incoming_calls">Incoming calls</string>
+    <string name="channel_incoming_calls_desc">Shows who is calling when WhoCaller is your phone app.</string>
+    <string name="channel_ongoing_calls">Ongoing calls</string>
+    <string name="channel_ongoing_calls_desc">Controls for the call in progress.</string>
+    <string name="channel_messages">Messages</string>
+    <string name="channel_messages_desc">New text messages when WhoCaller is your SMS app.</string>
+    <string name="action_video_call">Video call</string>
+    <string name="action_whatsapp">WhatsApp</string>
 </resources>

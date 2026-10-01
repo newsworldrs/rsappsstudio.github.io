@@ -29,6 +29,8 @@ import com.rskusum.whocaller.core.data.system.ContactsRepositoryImpl
 import com.rskusum.whocaller.core.data.system.CountryRepositoryImpl
 import com.rskusum.whocaller.core.data.system.NetworkMonitorImpl
 import com.rskusum.whocaller.core.data.system.SmsRepositoryImpl
+import com.rskusum.whocaller.core.data.repository.LocalProfileRepositoryImpl
+import com.rskusum.whocaller.core.domain.repository.LocalProfileRepository
 import com.rskusum.whocaller.core.domain.repository.BlockRepository
 import com.rskusum.whocaller.core.domain.repository.BusinessRepository
 import com.rskusum.whocaller.core.domain.repository.CallLogRepository
@@ -90,6 +92,7 @@ abstract class DataBindingsModule {
     @Binds abstract fun network(impl: NetworkMonitorImpl): NetworkMonitor
     @Binds abstract fun sms(impl: SmsRepositoryImpl): SmsRepository
     @Binds abstract fun userData(impl: UserDataRepositoryImpl): UserDataRepository
+    @Binds abstract fun localProfile(impl: LocalProfileRepositoryImpl): LocalProfileRepository
     @Binds abstract fun sync(impl: WorkManagerSyncController): SyncController
     @Binds abstract fun spamEngine(impl: RuleBasedSpamScoreEngine): SpamScoreEngine
     @Binds abstract fun clock(impl: SystemClock): Clock

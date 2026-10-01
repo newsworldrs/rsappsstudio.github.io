@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.CloudOff
@@ -49,6 +51,7 @@ import com.rskusum.whocaller.core.ui.component.RiskBadge
 import com.rskusum.whocaller.core.ui.component.VerifiedBadge
 import com.rskusum.whocaller.core.ui.component.WarningBanner
 import com.rskusum.whocaller.core.ui.util.ActionIntents
+import com.rskusum.whocaller.core.ui.util.TelecomActions
 import com.rskusum.whocaller.core.ui.util.labelRes
 import com.rskusum.whocaller.core.ui.util.messageRes
 import com.rskusum.whocaller.core.ui.util.relativeTime
@@ -74,6 +77,8 @@ fun NumberResultContent(
     val dialable = number.e164 ?: number.raw
     val name = lookup.contactName ?: info?.displayName
     val isDemo = name?.startsWith("[Demo]") == true
+    val videoSupported = androidx.compose.runtime.remember { TelecomActions.supportsVideoCalling(context) }
+    val hasWhatsApp = androidx.compose.runtime.remember { TelecomActions.whatsAppPackage(context) != null }
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
         lookup.remoteError?.let {
@@ -204,6 +209,12 @@ fun NumberResultContent(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Action(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, dialable) }
             Action(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, dialable) }
+            if (videoSupported) {
+                Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_video_call)) { TelecomActions.placeCall(context, dialable, video = true) }
+            }
+            if (hasWhatsApp && number.e164 != null) {
+                Action(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) { TelecomActions.openWhatsApp(context, dialable) }
+            }
             if (lookup.contactName == null) {
                 Action(Icons.Outlined.PersonAdd, stringResource(UiR.string.action_save_contact)) {
                     ActionIntents.saveContact(context, dialable, info?.displayName?.takeUnless { isDemo })

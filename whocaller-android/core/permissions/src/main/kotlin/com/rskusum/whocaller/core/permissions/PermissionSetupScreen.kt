@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Call
 import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Notifications
@@ -215,6 +216,7 @@ fun AppPermission.icon(): ImageVector = when (this) {
     AppPermission.CALLER_ID -> Icons.Outlined.Shield
     AppPermission.CALL_HISTORY -> Icons.Outlined.History
     AppPermission.CONTACTS -> Icons.Outlined.Contacts
+    AppPermission.PHONE_CALLS -> Icons.Outlined.Call
     AppPermission.NOTIFICATIONS -> Icons.Outlined.Notifications
 }
 

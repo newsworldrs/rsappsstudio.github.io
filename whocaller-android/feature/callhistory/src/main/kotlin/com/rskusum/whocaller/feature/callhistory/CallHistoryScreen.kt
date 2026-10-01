@@ -15,7 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.Message
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material.icons.outlined.Call
@@ -74,6 +76,7 @@ import com.rskusum.whocaller.core.ui.component.ErrorState
 import com.rskusum.whocaller.core.ui.component.LoadingState
 import com.rskusum.whocaller.core.ui.theme.WhoCallerTheme
 import com.rskusum.whocaller.core.ui.util.ActionIntents
+import com.rskusum.whocaller.core.ui.util.TelecomActions
 import com.rskusum.whocaller.core.ui.util.OffsetPagingSource
 import com.rskusum.whocaller.core.ui.util.callTime
 import com.rskusum.whocaller.core.ui.util.labelRes
@@ -259,6 +262,8 @@ private fun CallActionsSheet(
     val context = LocalContext.current
     val number = entry.rawNumber
     val title = entry.title ?: entry.displayNumber
+    val videoSupported = remember { TelecomActions.supportsVideoCalling(context) }
+    val hasWhatsApp = remember { TelecomActions.whatsAppPackage(context) != null }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.navigationBarsPadding().semantics { contentDescription = context.getString(R.string.calls_actions_for, title) }) {
             Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
@@ -268,6 +273,18 @@ private fun CallActionsSheet(
             }
             SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, number); onDismiss() }
             SheetAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, number); onDismiss() }
+            if (videoSupported) {
+                SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_video_call)) {
+                    TelecomActions.placeCall(context, number, video = true)
+                    onDismiss()
+                }
+            }
+            if (hasWhatsApp && entry.numberKey.startsWith("+")) {
+                SheetAction(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) {
+                    TelecomActions.openWhatsApp(context, entry.numberKey)
+                    onDismiss()
+                }
+            }
             if (entry.contactName == null) {
                 SheetAction(Icons.Outlined.PersonAdd, stringResource(UiR.string.action_save_contact)) { ActionIntents.saveContact(context, number); onDismiss() }
             }

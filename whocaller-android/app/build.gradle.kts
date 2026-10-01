@@ -126,6 +126,7 @@ dependencies {
     implementation(projects.feature.settings)
     implementation(projects.feature.profile)
     implementation(projects.feature.premium)
+    implementation(projects.feature.dialer)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)

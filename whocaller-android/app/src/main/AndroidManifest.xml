@@ -6,10 +6,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Caller ID on Android 8–9 only (Android 10+ uses the call-screening role instead). -->
-    <uses-permission
-        android:name="android.permission.READ_PHONE_STATE"
-        android:maxSdkVersion="28" />
+    <!-- Caller ID on Android 8–9, and video-calling capability check (phone accounts). -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Recent calls screen, and incoming numbers on Android 9. Never uploaded. -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <!-- Recognise saved contacts. Never uploaded. -->
@@ -19,7 +17,7 @@
     <!-- Caller alerts and spam warnings (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Calling uses ACTION_DIAL, so CALL_PHONE is not needed. SMS permissions are not declared: see docs/PRIVACY.md. -->
+    <!-- CALL_PHONE, camera and SMS permissions come from feature/dialer and feature/sms (default phone/SMS app). -->
 
     <uses-feature
         android:name="android.hardware.telephony"
@@ -37,6 +35,9 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <!-- To show "WhatsApp" only when it is installed. -->
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application
@@ -69,7 +70,24 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="whocaller" />
             </intent-filter>
-            <!-- "Share to WhoCaller" to check a suspicious message without any SMS permission. -->
+            <!-- Compose a text (required for the default SMS app role). -->
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+            <!-- "Share to WhoCaller" to check a suspicious message. -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

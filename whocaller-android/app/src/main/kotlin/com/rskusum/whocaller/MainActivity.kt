@@ -97,6 +97,16 @@ class MainActivity : AppCompatActivity() {
     /** Maps whocaller:// links and shared text to navigation routes. Input is validated, never trusted. */
     private fun routeFor(intent: Intent?): String? {
         intent ?: return null
+        // sms:, smsto:, mms:, mmsto: links (default SMS app requirement) open a conversation.
+        val scheme = intent.data?.scheme
+        if ((intent.action == Intent.ACTION_SENDTO || intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_VIEW) &&
+            scheme in setOf("sms", "smsto", "mms", "mmsto")
+        ) {
+            val address = intent.data?.schemeSpecificPart?.substringBefore('?')?.take(40)
+                ?.filter { it.isDigit() || it in "+;, " }?.trim()
+            val body = (intent.getStringExtra("sms_body") ?: intent.getStringExtra(Intent.EXTRA_TEXT))?.take(1_600)
+            return Routes.conversation(0, address, body)
+        }
         if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.take(2_000) ?: return null
             return Routes.messages(text)
@@ -109,6 +119,11 @@ class MainActivity : AppCompatActivity() {
             "calls" -> "calls"
             "protection" -> "protection"
             "blocked" -> Routes.BLOCKED
+            "messages" -> Routes.messages(null)
+            "sms" -> {
+                val thread = data.lastPathSegment?.toLongOrNull() ?: return null
+                Routes.conversation(thread, data.getQueryParameter("address")?.take(40))
+            }
             "number" -> data.lastPathSegment
                 ?.filter { it.isDigit() || it == '+' }
                 ?.takeIf { it.length in 3..20 }

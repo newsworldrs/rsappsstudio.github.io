@@ -10,6 +10,8 @@ import com.rskusum.whocaller.core.common.result.AppError
 import com.rskusum.whocaller.core.common.result.AppResult
 import com.rskusum.whocaller.core.domain.repository.AuthRepository
 import com.rskusum.whocaller.core.domain.repository.CountryRepository
+import com.rskusum.whocaller.core.domain.repository.LocalProfileRepository
+import com.rskusum.whocaller.core.model.LocalProfile
 import com.rskusum.whocaller.core.domain.repository.StatsRepository
 import com.rskusum.whocaller.core.model.UserProfile
 import com.rskusum.whocaller.core.model.UserStats
@@ -56,6 +58,7 @@ data class SignInUiState(
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val authRepository: AuthRepository,
+    private val localProfileRepository: LocalProfileRepository,
     private val phoneAuth: PhoneAuthGateway,
     private val normalizer: PhoneNumberNormalizer,
     private val countryRepository: CountryRepository,
@@ -64,6 +67,30 @@ class ProfileViewModel @Inject constructor(
 
     val user: StateFlow<UserProfile> = authRepository.currentUser
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UserProfile.GUEST)
+
+    val localProfile: StateFlow<LocalProfile> = localProfileRepository.profile
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LocalProfile())
+
+    // NonCancellable: the screen closes right after Save, which clears this ViewModel.
+    fun saveProfile(name: String, profession: String, institute: String, email: String, avatarId: Int?) = viewModelScope.launch(kotlinx.coroutines.NonCancellable) {
+        val cleanEmail = email.trim()
+        if (cleanEmail.isNotEmpty() && !validEmail(cleanEmail)) {
+            _toasts.emit(R.string.signin_invalid_email)
+            return@launch
+        }
+        localProfileRepository.update {
+            it.copy(name = name, profession = profession, institute = institute, email = cleanEmail, avatarId = avatarId)
+        }
+        // Keep the account display name in sync when signed in.
+        if (!user.value.isGuest && name.isNotBlank()) authRepository.updateDisplayName(name)
+        _toasts.emit(R.string.profile_saved)
+    }
+
+    fun choosePhoto(uri: String) = viewModelScope.launch {
+        if (localProfileRepository.importPhoto(uri) is AppResult.Failure) _toasts.emit(R.string.profile_photo_failed)
+    }
+
+    fun removePhoto() = viewModelScope.launch { localProfileRepository.removePhoto() }
 
     val stats: StateFlow<UserStats> = statsRepository.stats
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UserStats())

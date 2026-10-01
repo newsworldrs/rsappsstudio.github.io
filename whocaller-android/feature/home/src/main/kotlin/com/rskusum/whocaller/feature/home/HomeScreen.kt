@@ -65,6 +65,9 @@ import com.rskusum.whocaller.core.domain.repository.SyncController
 import com.rskusum.whocaller.core.model.CallLogEntry
 import com.rskusum.whocaller.core.model.CallerLabel
 import com.rskusum.whocaller.core.model.UserProfile
+import com.rskusum.whocaller.core.model.LocalProfile
+import com.rskusum.whocaller.core.domain.repository.LocalProfileRepository
+import com.rskusum.whocaller.core.ui.component.ProfileAvatar
 import com.rskusum.whocaller.core.model.UserStats
 import com.rskusum.whocaller.core.permissions.PermissionManager
 import com.rskusum.whocaller.core.ui.component.CallerAvatar
@@ -87,6 +90,7 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val user: UserProfile = UserProfile.GUEST,
+    val profile: LocalProfile = LocalProfile(),
     val stats: UserStats = UserStats(),
     val protectionActive: Boolean = false,
     val syncing: Boolean = false,
@@ -96,6 +100,7 @@ data class HomeUiState(
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     authRepository: AuthRepository,
+    localProfileRepository: LocalProfileRepository,
     statsRepository: StatsRepository,
     settingsRepository: SettingsRepository,
     syncController: SyncController,
@@ -107,13 +112,13 @@ class HomeViewModel @Inject constructor(
     private val roleReady = MutableStateFlow(permissionManager.isCallerIdReady())
 
     val state: StateFlow<HomeUiState> = combine(
-        authRepository.currentUser,
+        combine(authRepository.currentUser, localProfileRepository.profile) { u, p -> u to p },
         statsRepository.stats,
         combine(settingsRepository.settings, roleReady) { s, ready -> s.callerIdEnabled && ready },
         syncController.isSyncing,
         networkMonitor.isOnline,
-    ) { user, stats, active, syncing, online ->
-        HomeUiState(user, stats, active, syncing, online)
+    ) { (user, profile), stats, active, syncing, online ->
+        HomeUiState(user, profile, stats, active, syncing, online)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     private val _unidentified = MutableStateFlow<List<CallLogEntry>>(emptyList())
@@ -163,15 +168,19 @@ fun HomeScreen(
         item {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(greeting(state.user), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(greeting(state.user, state.profile), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         stringResource(com.rskusum.whocaller.core.ui.R.string.core_app_name),
                         style = MaterialTheme.typography.headlineMedium,
                         modifier = Modifier.semantics { heading() },
                     )
                 }
-                IconButton(onClick = onProfile) {
-                    Icon(Icons.Outlined.AccountCircle, contentDescription = stringResource(R.string.home_profile))
+                IconButton(onClick = onProfile, modifier = Modifier.size(56.dp)) {
+                    ProfileAvatar(
+                        state.profile.copy(name = state.profile.name.ifBlank { state.user.name.orEmpty() }),
+                        size = 40.dp,
+                        description = stringResource(R.string.home_profile),
+                    )
                 }
             }
         }
@@ -242,8 +251,9 @@ fun HomeScreen(
 }
 
 @Composable
-private fun greeting(user: UserProfile): String {
-    val name = user.name?.substringBefore(' ')?.takeIf { it.isNotBlank() } ?: stringResource(R.string.home_default_name)
+private fun greeting(user: UserProfile, profile: LocalProfile): String {
+    val name = profile.name.ifBlank { user.name.orEmpty() }.substringBefore(' ').takeIf { it.isNotBlank() }
+        ?: stringResource(R.string.home_default_name)
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return stringResource(
         when (hour) {

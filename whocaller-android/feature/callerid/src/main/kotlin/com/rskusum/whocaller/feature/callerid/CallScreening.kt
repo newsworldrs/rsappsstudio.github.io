@@ -38,7 +38,7 @@ class CallScreeningManager @Inject constructor(
      * @param canBlock false on Android 8–9, where apps can't reject calls without being the dialer.
      * @return the result, or null if identification failed or ran out of time (the call is then allowed).
      */
-    suspend fun screen(rawNumber: String?, canBlock: Boolean): CallerResult? {
+    suspend fun screen(rawNumber: String?, canBlock: Boolean, showAlert: Boolean = true): CallerResult? {
         val result = try {
             withTimeoutOrNull(TOTAL_BUDGET_MS) { identificationManager.identify(rawNumber) }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -55,7 +55,7 @@ class CallScreeningManager @Inject constructor(
             result
         }
         val settings = runCatching { settingsRepository.current() }.getOrNull()
-        if (settings != null && (settings.callerIdEnabled || effective.decision != CallDecision.ALLOW)) {
+        if (showAlert && settings != null && (settings.callerIdEnabled || effective.decision != CallDecision.ALLOW)) {
             notifier.buildAlert(effective)?.let { notifier.post(it, settings.disabledNotificationCategories) }
         }
         return effective
@@ -90,7 +90,9 @@ class WhoCallerScreeningService : CallScreeningService() {
             callDetails.handlePresentation != TelecomManager.PRESENTATION_ALLOWED
 
         scope.launch {
-            val result = screeningManager.screen(if (hidden) null else number, canBlock = true)
+            // As the default phone app, WhoCaller's call screen already shows who is calling.
+            val isDefaultDialer = getSystemService(TelecomManager::class.java)?.defaultDialerPackage == packageName
+            val result = screeningManager.screen(if (hidden) null else number, canBlock = true, showAlert = !isDefaultDialer)
             val response = if (result?.decision == CallDecision.BLOCK) {
                 CallScreeningService.CallResponse.Builder()
                     .setDisallowCall(true)

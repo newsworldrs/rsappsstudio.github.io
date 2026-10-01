@@ -38,6 +38,14 @@ enum class AppPermission(
         R.string.perm_contacts_denied,
         "contacts",
     ),
+    /** Place calls/video calls directly from WhoCaller and check whether the SIM supports video calling. */
+    PHONE_CALLS(
+        R.string.perm_phone_title,
+        R.string.perm_phone_summary,
+        R.string.perm_phone_explain,
+        R.string.perm_phone_denied,
+        "phone_calls",
+    ),
     NOTIFICATIONS(
         R.string.perm_notifications_title,
         R.string.perm_notifications_summary,
@@ -58,6 +66,7 @@ enum class AppPermission(
             }
             CALL_HISTORY -> arrayOf(Manifest.permission.READ_CALL_LOG)
             CONTACTS -> arrayOf(Manifest.permission.READ_CONTACTS)
+            PHONE_CALLS -> arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)
             NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS)
             } else {

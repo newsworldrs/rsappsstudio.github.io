@@ -32,4 +32,17 @@
     <string name="perm_notifications_summary">Used for caller alerts and spam warnings.</string>
     <string name="perm_notifications_explain">WhoCaller shows who is calling and warns you about suspected spam using notifications. You can switch individual alert types off in Settings.</string>
     <string name="perm_notifications_denied">You won\'t see caller alerts during calls.</string>
+
+    <string name="perm_phone_title">Phone calls</string>
+    <string name="perm_phone_summary">Used to call and video call directly from WhoCaller.</string>
+    <string name="perm_phone_explain">Lets WhoCaller place calls when you tap Call, and check whether your SIM and carrier support video calling so the Video call button only appears when it will work. WhoCaller never calls anyone without you tapping Call.</string>
+    <string name="perm_phone_denied">Calls open in your phone app instead, and video calling is hidden.</string>
+
+    <string name="role_dialer_title">Default phone app</string>
+    <string name="role_dialer_desc">Use WhoCaller for all calls: caller name before it rings, full-screen incoming calls, in-call controls and video calls.</string>
+    <string name="role_sms_title">Default SMS app</string>
+    <string name="role_sms_desc">Use WhoCaller for text messages, with scam warnings. Picture messages (MMS) aren't supported yet; switch back any time.</string>
+    <string name="role_is_default">WhoCaller is your default</string>
+    <string name="role_make_default">Set as default</string>
+    <string name="role_change">Change</string>
 </resources>

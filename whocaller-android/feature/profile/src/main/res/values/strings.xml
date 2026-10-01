@@ -44,4 +44,17 @@
     <string name="signin_code_sent">We sent a code by SMS.</string>
     <string name="signin_terms">By continuing you agree to the Terms of Service and Privacy Policy.</string>
     <string name="signin_success">Signed in</string>
+
+    <string name="profile_edit">Edit profile</string>
+    <string name="profile_profession">Profession</string>
+    <string name="profile_institute">Institute / organisation</string>
+    <string name="profile_photo">Profile photo</string>
+    <string name="profile_choose_photo">Choose photo</string>
+    <string name="profile_remove_photo">Remove photo</string>
+    <string name="profile_choose_avatar">Or pick an avatar</string>
+    <string name="profile_avatar_n">Avatar %1$d</string>
+    <string name="profile_saved">Profile saved</string>
+    <string name="profile_photo_failed">Couldn\'t use that photo</string>
+    <string name="profile_local_note">Your profile is stored on this device only.</string>
+    <string name="profile_your_picture">Your profile picture</string>
 </resources>

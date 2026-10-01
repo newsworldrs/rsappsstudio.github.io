@@ -65,6 +65,7 @@ import com.rskusum.whocaller.core.model.CallerLabel
 import com.rskusum.whocaller.core.permissions.findActivity
 import com.rskusum.whocaller.core.ui.component.CallerAvatar
 import com.rskusum.whocaller.core.ui.component.NavigationRow
+import com.rskusum.whocaller.core.ui.component.ProfileAvatar
 import com.rskusum.whocaller.core.ui.component.SectionHeader
 import com.rskusum.whocaller.core.ui.component.StatCard
 import com.rskusum.whocaller.core.ui.util.messageRes
@@ -76,10 +77,12 @@ import com.rskusum.whocaller.core.ui.R as UiR
 fun ProfileScreen(
     onBack: () -> Unit,
     onSignIn: () -> Unit,
+    onEditProfile: () -> Unit,
     onPrivacy: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user by viewModel.user.collectAsStateWithLifecycle()
+    val local by viewModel.localProfile.collectAsStateWithLifecycle()
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     var editName by rememberSaveable { mutableStateOf<String?>(null) }
     var showSecurity by rememberSaveable { mutableStateOf(false) }
@@ -99,14 +102,19 @@ fun ProfileScreen(
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    CallerAvatar(user.name ?: user.email, CallerLabel.PERSON, size = 80.dp)
+                    ProfileAvatar(local.copy(name = local.name.ifBlank { user.name.orEmpty() }), size = 96.dp, description = stringResource(R.string.profile_your_picture))
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        user.name ?: if (user.isGuest) stringResource(R.string.profile_guest) else user.email.orEmpty(),
+                        local.name.ifBlank { user.name ?: if (user.isGuest) stringResource(R.string.profile_guest) else user.email.orEmpty() },
                         style = MaterialTheme.typography.headlineSmall,
                     )
+                    val subtitle = listOf(local.profession, local.institute).filter { it.isNotBlank() }.joinToString(" · ")
+                    if (subtitle.isNotEmpty()) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    local.email.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = onEditProfile) { Text(stringResource(R.string.profile_edit)) }
                     if (user.isGuest) {
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(12.dp))
                         Text(stringResource(R.string.profile_guest_desc), style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = onSignIn) { Text(stringResource(R.string.profile_sign_in)) }

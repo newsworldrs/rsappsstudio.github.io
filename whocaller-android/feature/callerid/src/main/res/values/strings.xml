@@ -16,4 +16,9 @@
     <string name="callerid_blocked_list">Blocked a number on your block list</string>
     <string name="callerid_action_report">Report</string>
     <string name="callerid_action_details">Details</string>
+    <string name="callerid_incoming_from">Incoming call from %1$s</string>
+    <string name="callerid_identified_by">Identified by WhoCaller</string>
+    <string name="callerid_not_in_contacts">Not in your contacts · no reports</string>
+    <string name="callerid_private">a private number</string>
+    <string name="callerid_hidden_detail">The caller hid their number</string>
 </resources>

@@ -13,6 +13,8 @@ import com.rskusum.whocaller.core.model.Country
 import com.rskusum.whocaller.core.model.IdentifiedCall
 import com.rskusum.whocaller.core.model.ReportReason
 import com.rskusum.whocaller.core.model.SearchHistoryItem
+import com.rskusum.whocaller.core.model.LocalProfile
+import com.rskusum.whocaller.core.model.SmsConversation
 import com.rskusum.whocaller.core.model.SmsMessage
 import com.rskusum.whocaller.core.model.SpamReport
 import com.rskusum.whocaller.core.model.UserProfile
@@ -137,9 +139,28 @@ interface AuthRepository {
 }
 
 interface SmsRepository {
-    /** True only if the build declares READ_SMS and the user granted it (see docs/PRIVACY.md). */
+    /** True if WhoCaller may read SMS (default SMS app, or READ_SMS granted). */
     fun isInboxAvailable(): Boolean
+    /** True when WhoCaller is the default SMS app (it then stores and sends all messages). */
+    fun isDefaultSmsApp(): Boolean
+    fun canSend(): Boolean
     suspend fun loadInbox(limit: Int): List<SmsMessage>
+    suspend fun loadConversations(limit: Int): List<SmsConversation>
+    suspend fun loadThread(threadId: Long, limit: Int): List<SmsMessage>
+    /** Finds the conversation for an address, or 0 if there is none yet. */
+    suspend fun threadIdFor(address: String): Long
+    suspend fun send(address: String, body: String): AppResult<Unit>
+    suspend fun markThreadRead(threadId: Long)
+    /** Emits whenever the SMS provider changes. */
+    fun changes(): Flow<Unit>
+}
+
+interface LocalProfileRepository {
+    val profile: Flow<LocalProfile>
+    suspend fun update(transform: (LocalProfile) -> LocalProfile)
+    /** Copies a picked image (content:// URI string) into private storage, downscaled. Returns the stored path. */
+    suspend fun importPhoto(uri: String): AppResult<String>
+    suspend fun removePhoto()
 }
 
 interface CountryRepository {

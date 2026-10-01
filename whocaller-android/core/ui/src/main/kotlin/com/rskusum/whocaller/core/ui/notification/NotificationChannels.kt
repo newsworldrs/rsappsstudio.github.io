@@ -14,6 +14,11 @@ object NotificationChannels {
     const val SPAM_ALERTS = "spam_alerts"
     const val SECURITY = "security"
     const val GENERAL = "general"
+    /** Incoming calls when WhoCaller is the default phone app. Silent: Telecom plays the ringtone. */
+    const val INCOMING_CALLS = "incoming_calls"
+    const val ONGOING_CALLS = "ongoing_calls"
+    /** New SMS when WhoCaller is the default SMS app. */
+    const val MESSAGES = "messages"
 
     fun idFor(category: NotificationCategory): String = when (category) {
         NotificationCategory.CALLER_ALERTS -> CALLER_ALERTS
@@ -29,6 +34,10 @@ object NotificationChannels {
             channel(context, SPAM_ALERTS, R.string.channel_spam_alerts, R.string.channel_spam_alerts_desc, NotificationManager.IMPORTANCE_HIGH),
             channel(context, SECURITY, R.string.channel_security, R.string.channel_security_desc, NotificationManager.IMPORTANCE_DEFAULT),
             channel(context, GENERAL, R.string.channel_general, R.string.channel_general_desc, NotificationManager.IMPORTANCE_LOW),
+            channel(context, INCOMING_CALLS, R.string.channel_incoming_calls, R.string.channel_incoming_calls_desc, NotificationManager.IMPORTANCE_HIGH)
+                .apply { setSound(null, null) },
+            channel(context, ONGOING_CALLS, R.string.channel_ongoing_calls, R.string.channel_ongoing_calls_desc, NotificationManager.IMPORTANCE_LOW),
+            channel(context, MESSAGES, R.string.channel_messages, R.string.channel_messages_desc, NotificationManager.IMPORTANCE_HIGH),
         )
         nm.createNotificationChannels(channels)
     }

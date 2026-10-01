@@ -136,6 +136,34 @@ data class SmsMessage(
     val body: String,
     val timestamp: Long,
     val classification: SmsClassification,
+    val threadId: Long = 0,
+    val outgoing: Boolean = false,
+    val read: Boolean = true,
+)
+
+/** One SMS conversation, newest message first. */
+data class SmsConversation(
+    val threadId: Long,
+    val address: String,
+    /** Saved contact name or WhoCaller name for the address, if known. */
+    val displayName: String?,
+    val snippet: String,
+    val timestamp: Long,
+    val unreadCount: Int,
+    val classification: SmsClassification,
+)
+
+/** Profile details the user enters about themselves. Stored on this device only. */
+data class LocalProfile(
+    val name: String = "",
+    val profession: String = "",
+    val institute: String = "",
+    val email: String = "",
+    /** Absolute path of the profile photo inside app storage, if the user picked one. */
+    val photoPath: String? = null,
+    /** Index of a built-in avatar, used when there is no photo. */
+    val avatarId: Int? = null,
+    val updatedAt: Long = 0,
 )
 
 data class UserProfile(

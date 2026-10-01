@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Chat
 import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Block
@@ -72,6 +73,7 @@ import com.rskusum.whocaller.core.ui.component.EmptyState
 import com.rskusum.whocaller.core.ui.component.LoadingState
 import com.rskusum.whocaller.core.ui.component.SectionHeader
 import com.rskusum.whocaller.core.ui.util.ActionIntents
+import com.rskusum.whocaller.core.ui.util.TelecomActions
 import com.rskusum.whocaller.core.ui.util.callTime
 import com.rskusum.whocaller.core.ui.util.formatDuration
 import com.rskusum.whocaller.core.ui.util.messageRes
@@ -191,6 +193,8 @@ fun ContactDetailScreen(
     }
 
     val contact = state.contact
+    val videoSupported = androidx.compose.runtime.remember { TelecomActions.supportsVideoCalling(context) }
+    val hasWhatsApp = androidx.compose.runtime.remember { TelecomActions.whatsAppPackage(context) != null }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -240,8 +244,17 @@ fun ContactDetailScreen(
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, phone.number) }
                             DetailAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, phone.number) }
-                            // No universal video-call intent exists; the system contact card lists the user's video apps.
-                            DetailAction(Icons.Outlined.Videocam, stringResource(R.string.contact_video)) { ActionIntents.viewContact(context, contact.id) }
+                            // Video calls over the carrier network only when the SIM's phone account supports them.
+                            if (videoSupported) {
+                                DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_video_call)) {
+                                    TelecomActions.placeCall(context, phone.number, video = true)
+                                }
+                            }
+                            if (hasWhatsApp && phone.numberKey.startsWith("+")) {
+                                DetailAction(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) {
+                                    TelecomActions.openWhatsApp(context, phone.numberKey)
+                                }
+                            }
                             DetailAction(Icons.Outlined.Search, stringResource(UiR.string.action_search)) { onSearchNumber(phone.number) }
                             DetailAction(Icons.Outlined.Block, stringResource(UiR.string.action_block)) { viewModel.block(phone.number) }
                         }

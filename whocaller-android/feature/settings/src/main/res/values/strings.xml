@@ -69,4 +69,5 @@
     <string name="privacy_guest_no_account">You\'re using WhoCaller as a guest. There\'s no account to delete.</string>
     <string name="privacy_statement">WhoCaller never uploads your contacts, call history or messages. Numbers you search or report are sent to WhoCaller\'s servers to look them up.</string>
     <string name="action_confirm">Confirm</string>
+    <string name="settings_default_apps">Default apps</string>
 </resources>

@@ -2,7 +2,13 @@ package com.rskusum.whocaller.feature.settings
 
 import android.os.Build
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.outlined.Call
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import com.rskusum.whocaller.core.permissions.PermissionManager
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -84,7 +90,12 @@ object SupportedLanguages {
 class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val countryRepository: CountryRepository,
+    val permissionManager: PermissionManager,
 ) : ViewModel() {
+
+    /** Bumped when returning from a role dialog so the default-app rows refresh. */
+    val roleRefresh = MutableStateFlow(0)
+
     val settings: StateFlow<AppSettings> = settingsRepository.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
 
@@ -136,6 +147,9 @@ fun SettingsScreen(
     val detected by viewModel.detectedRegion.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
+    val roleTick by viewModel.roleRefresh.collectAsStateWithLifecycle()
+    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { viewModel.roleRefresh.value++ }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.roleRefresh.value++ }
 
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -148,6 +162,28 @@ fun SettingsScreen(
             item { NavigationRow(stringResource(R.string.settings_permissions), Icons.Outlined.VerifiedUser, onPermissions, subtitle = stringResource(R.string.settings_permissions_desc)) }
             item { NavigationRow(stringResource(R.string.settings_contacts), Icons.Outlined.Contacts, onContacts) }
             item { NavigationRow(stringResource(R.string.settings_messages), Icons.AutoMirrored.Outlined.Message, onMessages) }
+
+            item { SectionHeader(stringResource(R.string.settings_default_apps)) }
+            item {
+                DefaultAppRow(
+                    title = stringResource(com.rskusum.whocaller.core.permissions.R.string.role_dialer_title),
+                    description = stringResource(com.rskusum.whocaller.core.permissions.R.string.role_dialer_desc),
+                    icon = Icons.Outlined.Call,
+                    isDefault = roleTick.let { viewModel.permissionManager.isDefaultDialer() },
+                    onMakeDefault = { viewModel.permissionManager.defaultDialerIntent()?.let { roleLauncher.launch(it) } },
+                    onChange = { context.startActivity(viewModel.permissionManager.defaultAppsSettingsIntent()) },
+                )
+            }
+            item {
+                DefaultAppRow(
+                    title = stringResource(com.rskusum.whocaller.core.permissions.R.string.role_sms_title),
+                    description = stringResource(com.rskusum.whocaller.core.permissions.R.string.role_sms_desc),
+                    icon = Icons.AutoMirrored.Outlined.Message,
+                    isDefault = roleTick.let { viewModel.permissionManager.isDefaultSms() },
+                    onMakeDefault = { viewModel.permissionManager.defaultSmsIntent()?.let { roleLauncher.launch(it) } },
+                    onChange = { context.startActivity(viewModel.permissionManager.defaultAppsSettingsIntent()) },
+                )
+            }
 
             item { SectionHeader(stringResource(R.string.settings_appearance)) }
             item {
@@ -261,6 +297,33 @@ fun SettingsScreen(
             onDismiss = { dialog = null },
         )
     }
+}
+
+@Composable
+private fun DefaultAppRow(
+    title: String,
+    description: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isDefault: Boolean,
+    onMakeDefault: () -> Unit,
+    onChange: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = {
+            Text(if (isDefault) stringResource(com.rskusum.whocaller.core.permissions.R.string.role_is_default) else description)
+        },
+        leadingContent = { androidx.compose.material3.Icon(icon, contentDescription = null) },
+        trailingContent = {
+            if (isDefault) {
+                TextButton(onClick = onChange) { Text(stringResource(com.rskusum.whocaller.core.permissions.R.string.role_change)) }
+            } else {
+                androidx.compose.material3.Button(onClick = onMakeDefault) {
+                    Text(stringResource(com.rskusum.whocaller.core.permissions.R.string.role_make_default))
+                }
+            }
+        },
+    )
 }
 
 @Composable

@@ -47,6 +47,7 @@ import com.rskusum.whocaller.feature.contacts.ContactsScreen
 import com.rskusum.whocaller.feature.home.HomeScreen
 import com.rskusum.whocaller.feature.premium.AdsManager
 import com.rskusum.whocaller.feature.premium.PremiumScreen
+import com.rskusum.whocaller.feature.profile.EditProfileScreen
 import com.rskusum.whocaller.feature.profile.ProfileScreen
 import com.rskusum.whocaller.feature.profile.SignInConfig
 import com.rskusum.whocaller.feature.profile.SignInScreen
@@ -59,6 +60,8 @@ import com.rskusum.whocaller.feature.search.SearchViewModel
 import com.rskusum.whocaller.feature.settings.PrivacyScreen
 import com.rskusum.whocaller.feature.settings.SettingsLinks
 import com.rskusum.whocaller.feature.settings.SettingsScreen
+import com.rskusum.whocaller.feature.sms.ConversationScreen
+import com.rskusum.whocaller.feature.sms.ConversationViewModel
 import com.rskusum.whocaller.feature.sms.MessagesScreen
 import com.rskusum.whocaller.feature.sms.MessagesViewModel
 import com.rskusum.whocaller.feature.spam.ReportNumberRoute
@@ -84,6 +87,8 @@ object Routes {
     const val BUSINESSES = "businesses"
     const val BUSINESS_VERIFY = "business_verify"
     const val REPORT = "report/{${ReportViewModel.ARG_NUMBER}}"
+    const val PROFILE_EDIT = "profile/edit"
+    const val CONVERSATION = "sms/{${ConversationViewModel.ARG_THREAD}}?${ConversationViewModel.ARG_ADDRESS}={${ConversationViewModel.ARG_ADDRESS}}&${ConversationViewModel.ARG_BODY}={${ConversationViewModel.ARG_BODY}}"
 
     fun search(query: String? = null, record: Boolean = true) =
         if (query == null) "search" else "search?${SearchViewModel.ARG_QUERY}=${Uri.encode(query)}&${SearchViewModel.ARG_RECORD}=$record"
@@ -91,6 +96,8 @@ object Routes {
     fun messages(text: String?) = if (text == null) "messages" else "messages?${MessagesViewModel.ARG_TEXT}=${Uri.encode(text)}"
     fun business(id: String) = "business/${Uri.encode(id)}"
     fun report(number: String) = "report/${Uri.encode(number)}"
+    fun conversation(threadId: Long, address: String?, body: String? = null): String =
+        "sms/$threadId?${ConversationViewModel.ARG_ADDRESS}=${Uri.encode(address.orEmpty())}&${ConversationViewModel.ARG_BODY}=${Uri.encode(body.orEmpty())}"
 }
 
 private data class TopLevel(val route: String, val base: String, val label: Int, val icon: ImageVector, val selectedIcon: ImageVector)
@@ -206,8 +213,23 @@ fun WhoCallerApp(
                 Routes.MESSAGES,
                 arguments = listOf(navArgument(MessagesViewModel.ARG_TEXT) { type = NavType.StringType; nullable = true; defaultValue = null }),
             ) {
-                MessagesScreen(onBack = { navController.popBackStack() })
+                MessagesScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenConversation = { thread, address -> navController.navigate(Routes.conversation(thread, address)) },
+                    onNewMessage = { navController.navigate(Routes.conversation(0, null)) },
+                )
             }
+            composable(
+                Routes.CONVERSATION,
+                arguments = listOf(
+                    navArgument(ConversationViewModel.ARG_THREAD) { type = NavType.LongType },
+                    navArgument(ConversationViewModel.ARG_ADDRESS) { type = NavType.StringType; defaultValue = "" },
+                    navArgument(ConversationViewModel.ARG_BODY) { type = NavType.StringType; defaultValue = "" },
+                ),
+            ) {
+                ConversationScreen(onBack = { navController.popBackStack() })
+            }
+            composable(Routes.PROFILE_EDIT) { EditProfileScreen(onBack = { navController.popBackStack() }) }
             composable(Routes.PRIVACY) {
                 PrivacyScreen(
                     onBack = { navController.popBackStack() },
@@ -219,6 +241,7 @@ fun WhoCallerApp(
                 ProfileScreen(
                     onBack = { navController.popBackStack() },
                     onSignIn = { navController.navigate(Routes.SIGN_IN) },
+                    onEditProfile = { navController.navigate(Routes.PROFILE_EDIT) },
                     onPrivacy = { navController.navigate(Routes.PRIVACY) },
                 )
             }

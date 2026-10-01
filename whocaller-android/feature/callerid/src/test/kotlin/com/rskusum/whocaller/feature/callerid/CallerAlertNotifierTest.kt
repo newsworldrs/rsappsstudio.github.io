@@ -15,7 +15,6 @@ import com.rskusum.whocaller.core.model.NotificationCategory
 import com.rskusum.whocaller.core.model.SpamCategory
 import com.rskusum.whocaller.core.model.SpamScore
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,7 +35,7 @@ class CallerAlertNotifierTest {
         val info = CallerInfo(number.key, "ABC Internet Services", IdentityType.BUSINESS, SpamCategory.BUSINESS, verified = true)
         val alert = notifier.buildAlert(result(CallerLabel.VERIFIED_BUSINESS, info, SpamScore(2, SpamCategory.BUSINESS, 0.9f, 1)))!!
         assertEquals(NotificationCategory.CALLER_ALERTS, alert.category)
-        assertEquals("ABC Internet Services", alert.title)
+        assertEquals("Incoming call from ABC Internet Services", alert.title)
         assertTrue(alert.text.contains("Verified Business"))
     }
 
@@ -44,16 +43,16 @@ class CallerAlertNotifierTest {
     fun suspectedSpamShowsCategoryAndReports() {
         val info = CallerInfo(number.key, reportCount = 84, category = SpamCategory.TELEMARKETING)
         val alert = notifier.buildAlert(result(CallerLabel.TELEMARKETING, info, SpamScore(70, SpamCategory.TELEMARKETING, 0.8f, 84)))!!
-        assertEquals("⚠ Suspected Spam", alert.title)
-        assertEquals("Telemarketing · Reported by 84 users", alert.text)
+        assertEquals("Incoming call from +91 98765 43210", alert.title)
+        assertEquals("⚠ Suspected Spam · Telemarketing · Reported by 84 users", alert.text)
         assertEquals(NotificationCategory.SPAM_ALERTS, alert.category)
     }
 
     @Test
     fun possibleScam() {
         val alert = notifier.buildAlert(result(CallerLabel.POSSIBLE_SCAM, null, SpamScore(90, SpamCategory.SCAM, 0.9f, 50)))!!
-        assertEquals("⚠ Possible Scam", alert.title)
-        assertEquals("Multiple reports indicate suspicious activity.", alert.text)
+        assertEquals("Incoming call from +91 98765 43210", alert.title)
+        assertTrue(alert.text.startsWith("⚠ Possible Scam"))
     }
 
     @Test
@@ -65,7 +64,9 @@ class CallerAlertNotifierTest {
     }
 
     @Test
-    fun unknownCallerIsNotInterrupted() {
-        assertNull(notifier.buildAlert(result(CallerLabel.UNKNOWN, null, SpamScore.NONE)))
+    fun unknownCallerShowsTheNumberBeforeItRings() {
+        val alert = notifier.buildAlert(result(CallerLabel.UNKNOWN, null, SpamScore.NONE))!!
+        assertEquals("Incoming call from +91 98765 43210", alert.title)
+        assertEquals("Not in your contacts · no reports", alert.text)
     }
 }
