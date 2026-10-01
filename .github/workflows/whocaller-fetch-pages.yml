@@ -1,0 +1,51 @@
+name: WhoCaller fetch official pages
+
+# Downloads the official web pages listed in whocaller-android/backend/tools/official-sources.txt
+# and publishes their visible text as the "whocaller-official-pages" pre-release, so helpline
+# numbers can be taken from (and traced back to) the official sources.
+on:
+  push:
+    paths:
+      - "whocaller-android/backend/tools/official-sources.txt"
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pages
+        run: |
+          pip install -q beautifulsoup4
+          mkdir -p pages
+          i=0
+          grep -vE '^\s*(#|$)' whocaller-android/backend/tools/official-sources.txt | while read -r url; do
+            i=$((i+1)); name=$(printf "%03d" "$i")
+            echo "== $url"
+            if curl -fsSL --max-time 40 --retry 2 -A "Mozilla/5.0 (WhoCaller dataset builder)" "$url" -o "pages/$name.html"; then
+              python3 - "$url" "pages/$name.html" "pages/$name.txt" <<'PY'
+          import sys, re
+          from bs4 import BeautifulSoup
+          url, src, dst = sys.argv[1:4]
+          soup = BeautifulSoup(open(src, encoding="utf-8", errors="replace"), "html.parser")
+          for t in soup(["script", "style", "noscript"]): t.decompose()
+          text = re.sub(r"\n\s*\n+", "\n", soup.get_text("\n"))
+          open(dst, "w").write(f"SOURCE: {url}\nTITLE: {soup.title.string.strip() if soup.title and soup.title.string else ''}\n\n{text}")
+          PY
+              echo "ok $url" >> pages/_index.txt
+            else
+              echo "FAILED $url" >> pages/_index.txt
+            fi
+          done
+          cat pages/_index.txt
+          cd pages && tar czf ../official-pages.tgz *.txt _index.txt
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete whocaller-official-pages --yes --cleanup-tag || true
+          gh release create whocaller-official-pages official-pages.tgz --prerelease --target "$GITHUB_SHA" \
+            --title "Official helpline pages (text)" --notes "Text of official contact pages used to build the helpline list."
