@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="calls_title">Recent Calls</string>
+    <string name="calls_open_keypad">Open keypad</string>
     <string name="calls_tab_all">All</string>
     <string name="calls_tab_missed">Missed</string>
     <string name="calls_tab_incoming">Incoming</string>

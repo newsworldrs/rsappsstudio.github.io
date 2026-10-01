@@ -6,6 +6,14 @@
     <string name="dialer_call">Call</string>
     <string name="dialer_video_call">Video call</string>
     <string name="dialer_backspace">Delete digit</string>
+    <string name="dialer_clear">Clear number</string>
+    <string name="dialer_paste">Paste number</string>
+    <string name="dialer_nothing_to_paste">No phone number on the clipboard</string>
+    <string name="dialer_add_contact">Add to contacts</string>
+    <string name="dialer_sms">SMS</string>
+    <string name="dialer_whatsapp">WhatsApp</string>
+    <string name="dialer_identifying">Identifying caller…</string>
+    <string name="dialer_details_found">Contact details found</string>
     <string name="dialer_permission_needed">Allow phone calls to call from WhoCaller.</string>
 
     <string name="call_incoming_from">Incoming call from %1$s</string>

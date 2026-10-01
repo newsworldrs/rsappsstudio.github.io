@@ -11,7 +11,7 @@ WhoCaller is designed so that the phone's personal data stays on the phone.
 ## Sent to WhoCaller servers (only when a backend is configured)
 | Data | When | Why |
 |---|---|---|
-| A phone number you **search** | When you search | To look it up |
+| A phone number you **search** or type in the keypad (7+ digits, not a saved contact) | When you search or pause typing | To look it up |
 | An **incoming** number not in your contacts | When it rings and caller ID is on | To identify it (cached; repeated calls use the cache) |
 | A number you **report**, reason, optional comment | When you submit a report | Community spam protection. Comments are moderated and never shown publicly |
 | Account email/phone/name | If you sign in | Account management (Firebase Authentication) |

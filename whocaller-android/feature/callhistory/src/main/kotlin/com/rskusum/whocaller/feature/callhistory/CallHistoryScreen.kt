@@ -2,6 +2,7 @@ package com.rskusum.whocaller.feature.callhistory
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dialpad
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.CallMissed
 import androidx.compose.material.icons.automirrored.filled.CallReceived
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -157,7 +160,15 @@ fun CallHistoryScreen(
     }
     var selected by remember { mutableStateOf<CallLogEntry?>(null) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.calls_title)) }) }) { padding ->
+    val context = LocalContext.current
+    Scaffold(
+        topBar = { TopAppBar(title = { Text(stringResource(R.string.calls_title)) }) },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { openKeypad(context) }) {
+                Icon(Icons.Filled.Dialpad, contentDescription = stringResource(R.string.calls_open_keypad))
+            }
+        },
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             ScrollableTabRow(selectedTabIndex = filter.ordinal, edgePadding = 8.dp) {
                 CallFilter.entries.forEach { f ->
@@ -336,4 +347,9 @@ private fun CallType.icon(): ImageVector = when (this) {
     CallType.MISSED -> Icons.AutoMirrored.Filled.CallMissed
     CallType.BLOCKED, CallType.REJECTED -> Icons.Filled.Block
     else -> Icons.AutoMirrored.Filled.CallReceived
+}
+
+/** Opens WhoCaller's own keypad (feature:dialer), whether or not it is the default phone app. */
+private fun openKeypad(context: Context) {
+    context.startActivity(Intent().setClassName(context, "com.rskusum.whocaller.feature.dialer.DialerActivity"))
 }
