@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Recent calls screen, and incoming numbers on Android 9. Never uploaded. -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <!-- Deleting calls from Recents (WhoCaller as phone app). -->
+    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
     <!-- Recognise saved contacts. Never uploaded. -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Only requested when the user stars or deletes a contact inside WhoCaller. -->

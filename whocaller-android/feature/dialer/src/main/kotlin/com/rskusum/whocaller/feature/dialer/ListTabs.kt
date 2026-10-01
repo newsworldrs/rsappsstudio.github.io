@@ -3,9 +3,22 @@
 package com.rskusum.whocaller.feature.dialer
 
 import android.Manifest
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
+import androidx.compose.ui.res.pluralStringResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -124,25 +137,62 @@ private fun SmallRoundButton(icon: ImageVector, description: String, tint: Color
 @Composable
 fun RecentsTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails: (DetailsTarget) -> Unit) {
     val palette = LocalDialerPalette.current
-    val context = LocalContext.current
     val filter by viewModel.recentsFilter.collectAsState()
     val calls by viewModel.recents.collectAsState()
     val permitted by viewModel.callLogPermission.collectAsState()
-    var expanded by rememberSaveable { mutableStateOf<Long?>(null) }
-    val whatsApp = TelecomActions.whatsAppPackage(context) != null
+    val selected by viewModel.selected.collectAsState()
+    val withDeletePermission = rememberCallLogDeleter(viewModel)
+    var menu by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    var confirmSelected by remember { mutableStateOf(false) }
+    val selecting = selected.isNotEmpty()
+    BackHandler(enabled = selecting) { viewModel.clearSelection() }
 
     Column(Modifier.fillMaxSize()) {
-        TabHeader(stringResource(R.string.dialer_tab_recents))
+        if (selecting) {
+            // Selection bar: "3 selected · Select all · Delete".
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = viewModel::clearSelection) { Icon(Icons.Filled.Close, stringResource(R.string.dialer_cancel), tint = palette.text) }
+                Text(
+                    pluralStringResource(R.plurals.dialer_selected, selected.size, selected.size),
+                    color = palette.text,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = viewModel::selectAll) { Icon(Icons.Filled.SelectAll, stringResource(R.string.dialer_select_all), tint = palette.accent) }
+                IconButton(onClick = { confirmSelected = true }) { Icon(Icons.Filled.Delete, stringResource(R.string.dialer_delete), tint = WarnRed) }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { TabHeader(stringResource(R.string.dialer_tab_recents)) }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.padding(end = 8.dp)) {
+                        Icon(Icons.Filled.MoreVert, stringResource(R.string.dialer_more_options), tint = palette.accent)
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        MenuItem(Icons.Filled.Checklist, R.string.dialer_select_calls) {
+                            menu = false
+                            calls.firstOrNull()?.let { viewModel.toggleSelected(it.id) }
+                        }
+                        MenuItem(Icons.Filled.DeleteSweep, R.string.dialer_clear_history) {
+                            menu = false
+                            confirmClear = true
+                        }
+                    }
+                }
+            }
+        }
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(RecentsFilter.entries) { f ->
-                val selected = f == filter
+                val isOn = f == filter
                 Text(
                     stringResource(f.label()),
-                    color = if (selected) Color.White else palette.text,
+                    color = if (isOn) Color.White else palette.text,
                     style = MaterialTheme.typography.labelLarge,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(if (selected) palette.accent else palette.actionBg)
+                        .background(if (isOn) palette.accent else palette.actionBg)
                         .combinedClickable(role = Role.Tab) { viewModel.setRecentsFilter(f) }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
@@ -152,7 +202,7 @@ fun RecentsTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails: 
         when {
             !permitted -> PermissionPrompt(
                 stringResource(R.string.dialer_recents_permission),
-                arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.READ_CONTACTS),
+                arrayOf(Manifest.permission.READ_CALL_LOG, Manifest.permission.WRITE_CALL_LOG, Manifest.permission.READ_CONTACTS),
                 viewModel::refreshPermissions,
             )
             calls.isEmpty() -> EmptyText(stringResource(R.string.dialer_recents_empty))
@@ -160,17 +210,39 @@ fun RecentsTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails: 
                 items(calls, key = { it.id }) { entry ->
                     RecentRow(
                         entry = entry,
-                        expanded = expanded == entry.id,
-                        whatsApp = whatsApp,
-                        onToggle = { expanded = if (expanded == entry.id) null else entry.id },
+                        selecting = selecting,
+                        isSelected = entry.id in selected,
+                        onOpen = {
+                            if (selecting) viewModel.toggleSelected(entry.id) else onShowDetails(DetailsTarget(number = entry.rawNumber))
+                        },
+                        onSelect = { viewModel.toggleSelected(entry.id) },
                         onCall = { actions.call(entry.rawNumber) },
-                        onVideo = { actions.video(entry.rawNumber) },
-                        onSms = { ActionIntents.message(context, entry.rawNumber) },
-                        onWhatsApp = { actions.openWhatsAppChat(entry.rawNumber) },
-                        onDetails = { onShowDetails(DetailsTarget(number = entry.rawNumber)) },
                     )
                 }
             }
+        }
+    }
+
+    if (confirmClear) {
+        ConfirmDialog(
+            title = stringResource(R.string.dialer_clear_history),
+            text = stringResource(R.string.dialer_clear_history_confirm),
+            confirm = stringResource(R.string.dialer_delete),
+            onDismiss = { confirmClear = false },
+        ) {
+            confirmClear = false
+            withDeletePermission { viewModel.clearCallLog() }
+        }
+    }
+    if (confirmSelected) {
+        ConfirmDialog(
+            title = pluralStringResource(R.plurals.dialer_delete_calls_title, selected.size, selected.size),
+            text = stringResource(R.string.dialer_delete_calls_confirm),
+            confirm = stringResource(R.string.dialer_delete),
+            onDismiss = { confirmSelected = false },
+        ) {
+            confirmSelected = false
+            withDeletePermission { viewModel.deleteSelected() }
         }
     }
 }
@@ -182,22 +254,11 @@ private fun RecentsFilter.label() = when (this) {
     RecentsFilter.INCOMING -> R.string.dialer_filter_incoming
 }
 
+/** Icon, colour and label for a call type, shared by Recents and the per-number history. */
 @Composable
-private fun RecentRow(
-    entry: CallLogEntry,
-    expanded: Boolean,
-    whatsApp: Boolean,
-    onToggle: () -> Unit,
-    onCall: () -> Unit,
-    onVideo: () -> Unit,
-    onSms: () -> Unit,
-    onWhatsApp: () -> Unit,
-    onDetails: () -> Unit,
-) {
+internal fun callTypeLook(type: CallType): Triple<ImageVector, Color, Int> {
     val palette = LocalDialerPalette.current
-    val context = LocalContext.current
-    val name = entry.contactName ?: entry.cachedName
-    val (icon, color, typeLabel) = when (entry.type) {
+    return when (type) {
         CallType.INCOMING -> Triple(Icons.AutoMirrored.Filled.CallReceived, OkGreen, R.string.dialer_type_incoming)
         CallType.OUTGOING -> Triple(Icons.AutoMirrored.Filled.CallMade, palette.accent, R.string.dialer_type_outgoing)
         CallType.MISSED -> Triple(Icons.AutoMirrored.Filled.CallMissed, MissedRed, R.string.dialer_type_missed)
@@ -206,52 +267,96 @@ private fun RecentRow(
         CallType.VOICEMAIL -> Triple(Icons.Filled.Voicemail, palette.subtle, R.string.dialer_type_voicemail)
         CallType.UNKNOWN -> Triple(Icons.Filled.Call, palette.subtle, R.string.dialer_type_call)
     }
-    Column(
+}
+
+@Composable
+private fun RecentRow(
+    entry: CallLogEntry,
+    selecting: Boolean,
+    isSelected: Boolean,
+    onOpen: () -> Unit,
+    onSelect: () -> Unit,
+    onCall: () -> Unit,
+) {
+    val palette = LocalDialerPalette.current
+    val context = LocalContext.current
+    val name = entry.contactName ?: entry.cachedName
+    val (icon, color, typeLabel) = callTypeLook(entry.type)
+    val details = buildList {
+        add(stringResource(typeLabel))
+        add(relativeTime(context, entry.timestamp))
+        if (entry.durationSeconds > 0) add(talkTime(context, entry.durationSeconds))
+    }.joinToString(" · ")
+    Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 3.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(if (expanded) palette.surface else Color.Transparent)
-            .combinedClickable(onClick = onToggle, onLongClick = onDetails)
+            .background(if (isSelected) palette.accent.copy(alpha = 0.16f) else Color.Transparent)
+            .combinedClickable(onLongClickLabel = stringResource(R.string.dialer_select), onLongClick = onSelect, onClick = onOpen)
             .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Box {
             ContactAvatar(name ?: entry.displayNumber, null, 46.dp, warning = entry.isSpam)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    if (entry.isHidden) stringResource(R.string.call_private) else name ?: entry.displayNumber,
-                    color = if (entry.type == CallType.MISSED) MissedRed else palette.text,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        "${stringResource(typeLabel)} · ${relativeTime(context, entry.timestamp)}",
-                        color = palette.subtle,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                    )
-                }
-                if (entry.isSpam) {
-                    Text(stringResource(R.string.call_label_spam), color = WarnRed, style = MaterialTheme.typography.labelSmall)
+            if (isSelected) {
+                Box(Modifier.size(46.dp).clip(CircleShape).background(palette.accent), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White)
                 }
             }
-            if (!entry.isHidden) SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen, onCall)
         }
-        AnimatedVisibility(expanded && !entry.isHidden) {
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-                QuickAction(stringResource(R.string.dialer_video_call), Violet, size = 40.dp, onClick = onVideo) { QuickActionIcon(Icons.Filled.Videocam, Violet) }
-                QuickAction(stringResource(R.string.dialer_sms), Indigo, size = 40.dp, onClick = onSms) { QuickActionIcon(Icons.AutoMirrored.Filled.Message, Indigo) }
-                if (whatsApp) QuickAction(stringResource(R.string.dialer_whatsapp), WhatsAppGreen, size = 40.dp, onClick = onWhatsApp) { WhatsAppLogo(24.dp) }
-                QuickAction(stringResource(R.string.dialer_details), Sky, size = 40.dp, onClick = onDetails) { QuickActionIcon(Icons.Filled.Info, Sky) }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                if (entry.isHidden) stringResource(R.string.call_private) else name ?: entry.displayNumber,
+                color = if (entry.type == CallType.MISSED) MissedRed else palette.text,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(details, color = palette.subtle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            if (entry.isSpam) {
+                Text(stringResource(R.string.call_label_spam), color = WarnRed, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        if (!entry.isHidden && !selecting) SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen, onCall)
+    }
+}
+
+/** Runs [action] once WhoCaller may delete call log entries, asking for the permission if needed. */
+@Composable
+internal fun rememberCallLogDeleter(viewModel: DialerViewModel): (() -> Unit) -> Unit {
+    val context = LocalContext.current
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val next = pending
+        pending = null
+        if (granted) next?.invoke() else Toast.makeText(context, R.string.dialer_delete_permission, Toast.LENGTH_LONG).show()
+    }
+    return { action ->
+        if (viewModel.canDeleteCalls()) {
+            action()
+        } else {
+            pending = action
+            launcher.launch(Manifest.permission.WRITE_CALL_LOG)
         }
     }
+}
+
+@Composable
+internal fun ConfirmDialog(title: String, text: String, confirm: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirm, color = WarnRed) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.dialer_cancel)) } },
+    )
 }
 
 // ---------- Contacts ----------

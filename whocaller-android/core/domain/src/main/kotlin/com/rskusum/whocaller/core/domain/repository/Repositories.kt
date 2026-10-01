@@ -78,6 +78,14 @@ interface CallLogRepository {
     suspend fun recentUnidentified(limit: Int): List<CallLogEntry>
     /** Emits whenever the system call log changes. */
     fun changes(): Flow<Unit>
+    /** True when WhoCaller may delete call log entries (WRITE_CALL_LOG). */
+    fun canDelete(): Boolean
+    /** Deletes the given call log entries. Returns how many were removed. */
+    suspend fun delete(ids: Collection<Long>): AppResult<Int>
+    /** Deletes every call with these numbers (normalized keys). */
+    suspend fun deleteForNumbers(numberKeys: Collection<String>): AppResult<Int>
+    /** Empties the whole call log. */
+    suspend fun clearAll(): AppResult<Int>
 }
 
 interface IdentifiedCallRepository {

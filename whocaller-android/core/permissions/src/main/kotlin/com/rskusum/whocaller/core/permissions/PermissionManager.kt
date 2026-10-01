@@ -66,6 +66,7 @@ class PermissionManager @Inject constructor(
     // ---------- Default phone app ----------
 
     fun isDefaultDialer(): Boolean {
+        if (holdsRole(context, android.app.role.RoleManager.ROLE_DIALER)) return true
         val telecom = context.getSystemService(TelecomManager::class.java) ?: return false
         return telecom.defaultDialerPackage == context.packageName
     }
@@ -82,7 +83,9 @@ class PermissionManager @Inject constructor(
 
     // ---------- Default SMS app ----------
 
-    fun isDefaultSms(): Boolean = Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+    // Some phones (e.g. MIUI) update only the role, so check it first.
+    fun isDefaultSms(): Boolean =
+        holdsRole(context, android.app.role.RoleManager.ROLE_SMS) || Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
 
     fun defaultSmsIntent(): Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         context.getSystemService(RoleManager::class.java)
@@ -125,3 +128,8 @@ class PermissionManager @Inject constructor(
         const val KEY_PREFIX = "requested_"
     }
 }
+
+/** True if this app holds [role] (Android 10+ role system), which is what Settings › Default apps changes. */
+private fun holdsRole(context: android.content.Context, role: String): Boolean =
+    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
+        context.getSystemService(android.app.role.RoleManager::class.java)?.let { it.isRoleAvailable(role) && it.isRoleHeld(role) } == true

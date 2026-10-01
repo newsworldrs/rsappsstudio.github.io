@@ -242,3 +242,15 @@ fun relativeTime(context: Context, timestamp: Long, now: Long = System.currentTi
     }
     return DateUtils.formatDateTime(context, timestamp, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_ABBREV_MONTH or DateUtils.FORMAT_NO_YEAR)
 }
+
+/** Talk time like "45s", "2m 15s" or "1h 5m". */
+fun talkTime(context: Context, seconds: Long): String {
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    val s = seconds % 60
+    return when {
+        h > 0 -> context.getString(R.string.dialer_duration_hm, h, m)
+        m > 0 -> context.getString(R.string.dialer_duration_ms, m, s)
+        else -> context.getString(R.string.dialer_duration_s, s)
+    }
+}

@@ -92,6 +92,44 @@
     <string name="dialer_profile">Profile</string>
     <string name="dialer_privacy">Privacy</string>
     <string name="dialer_settings">Settings</string>
+    <string name="dialer_cancel">Cancel</string>
+    <string name="dialer_delete">Delete</string>
+    <string name="dialer_delete_all">Delete all</string>
+    <string name="dialer_delete_call">Delete this call</string>
+    <string name="dialer_select">Select</string>
+    <string name="dialer_select_all">Select all</string>
+    <string name="dialer_select_calls">Select calls to delete</string>
+    <string name="dialer_clear_history">Clear call history</string>
+    <string name="dialer_clear_history_confirm">Delete every call from your phone\'s call log? This can\'t be undone.</string>
+    <string name="dialer_delete_calls_confirm">The selected calls will be removed from your phone\'s call log. This can\'t be undone.</string>
+    <string name="dialer_delete_history_title">Delete call history with this number?</string>
+    <string name="dialer_delete_history_confirm">All calls with this number are removed from your phone\'s call log. The contact itself is kept.</string>
+    <string name="dialer_delete_permission">Allow WhoCaller to change your call log to delete calls.</string>
+    <string name="dialer_delete_failed">Couldn\'t delete. Make WhoCaller your phone app or allow call log access.</string>
+    <string name="dialer_call_history">Call history</string>
+    <string name="dialer_no_history">No calls with this number yet.</string>
+    <string name="dialer_talk_time">%1$s talk time</string>
+    <string name="dialer_show_all">Show all %1$d calls</string>
+    <string name="dialer_not_connected">Not connected</string>
+    <string name="dialer_duration_s">%1$ds</string>
+    <string name="dialer_duration_ms">%1$dm %2$ds</string>
+    <string name="dialer_duration_hm">%1$dh %2$dm</string>
+    <plurals name="dialer_selected">
+        <item quantity="one">%d selected</item>
+        <item quantity="other">%d selected</item>
+    </plurals>
+    <plurals name="dialer_delete_calls_title">
+        <item quantity="one">Delete %d call?</item>
+        <item quantity="other">Delete %d calls?</item>
+    </plurals>
+    <plurals name="dialer_calls_deleted">
+        <item quantity="one">%d call deleted</item>
+        <item quantity="other">%d calls deleted</item>
+    </plurals>
+    <plurals name="dialer_history_summary">
+        <item quantity="one">%d call</item>
+        <item quantity="other">%d calls</item>
+    </plurals>
     <string name="dialer_permission_needed">Allow phone calls to call from WhoCaller.</string>
 
     <string name="call_incoming_from">Incoming call from %1$s</string>

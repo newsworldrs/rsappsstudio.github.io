@@ -55,6 +55,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.rskusum.whocaller.core.model.ThemeMode
 
 @Composable
@@ -71,6 +73,8 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
         }
     }
     val sims = remember { Sims.list(context) }
+    // Picked in system settings? Re-check when the user comes back.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { isDefault = isDefaultDialer(context) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         TabHeader(stringResource(R.string.dialer_tab_more))
@@ -169,8 +173,9 @@ private fun MoreRow(icon: ImageVector, title: String, subtitle: String?, tint: C
     }
 }
 
-private fun isDefaultDialer(context: Context): Boolean =
-    context.getSystemService(TelecomManager::class.java)?.defaultDialerPackage == context.packageName
+internal fun isDefaultDialer(context: Context): Boolean =
+    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && context.getSystemService(RoleManager::class.java)?.isRoleHeld(RoleManager.ROLE_DIALER) == true) ||
+        context.getSystemService(TelecomManager::class.java)?.defaultDialerPackage == context.packageName
 
 private fun defaultDialerIntent(context: Context): Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
     context.getSystemService(RoleManager::class.java)

@@ -8,6 +8,10 @@ import com.rskusum.whocaller.core.domain.repository.BlockRepository
 import com.rskusum.whocaller.core.domain.repository.BusinessRepository
 import com.rskusum.whocaller.core.domain.repository.CallLogRepository
 import com.rskusum.whocaller.core.domain.repository.ContactsRepository
+import com.rskusum.whocaller.core.domain.repository.CountryRepository
+import com.rskusum.whocaller.core.common.phone.NormalizationResult
+import com.rskusum.whocaller.core.common.phone.PhoneNumberNormalizer
+import com.rskusum.whocaller.core.common.result.AppResult
 import com.rskusum.whocaller.core.domain.repository.SettingsRepository
 import com.rskusum.whocaller.core.domain.usecase.BlockNumberUseCase
 import com.rskusum.whocaller.core.model.Business
@@ -75,7 +79,13 @@ data class DetailsData(
     val result: CallerResult?,
     val facts: NumberFacts?,
     val blocked: Boolean,
-)
+    /** Calls with this number (all of a contact's numbers), newest first. */
+    val history: List<CallLogEntry> = emptyList(),
+    /** Normalized keys the history was matched on — used to delete it. */
+    val historyKeys: List<String> = emptyList(),
+) {
+    val totalTalkSeconds: Long get() = history.sumOf { it.durationSeconds }
+}
 
 /** Filter chips of the Recents tab. */
 enum class RecentsFilter(val filter: CallFilter) { ALL(CallFilter.ALL), MISSED(CallFilter.MISSED), OUTGOING(CallFilter.OUTGOING), INCOMING(CallFilter.INCOMING) }
@@ -91,6 +101,8 @@ class DialerViewModel @Inject constructor(
     private val blockRepository: BlockRepository,
     private val blockNumber: BlockNumberUseCase,
     private val settingsRepository: SettingsRepository,
+    private val normalizer: PhoneNumberNormalizer,
+    private val countryRepository: CountryRepository,
 ) : ViewModel() {
 
     val countryIso: String = NumberTools.countryIso(app)
@@ -201,7 +213,70 @@ class DialerViewModel @Inject constructor(
         }
         val facts = number?.let { NumberTools.facts(it, countryIso) }
         val blocked = result?.number?.key?.let { runCatching { blockRepository.isBlocked(it) }.getOrDefault(false) } ?: false
-        DetailsData(number, card, result, facts, blocked)
+        val raws = (card?.phones?.map { it.value }.orEmpty() + listOfNotNull(number)).distinct()
+        val keys = raws.mapNotNull { keyFor(it) }.distinct()
+        val history = if (callLog.hasPermission()) {
+            keys.flatMap { runCatching { callLog.callsForNumber(it, HISTORY_LIMIT) }.getOrDefault(emptyList()) }
+                .distinctBy { it.id }
+                .sortedByDescending { it.timestamp }
+        } else {
+            emptyList()
+        }
+        DetailsData(number, card, result, facts, blocked, history, keys)
+    }
+
+    private suspend fun keyFor(raw: String): String? =
+        (normalizer.normalize(raw, countryRepository.defaultRegion()) as? NormalizationResult.Parsed)?.number?.key
+
+    // ---------- Deleting from the call log ----------
+
+    fun canDeleteCalls(): Boolean = callLog.canDelete()
+
+    private val _selected = MutableStateFlow<Set<Long>>(emptySet())
+    /** Recents rows picked for deletion (long-press to start). */
+    val selected: StateFlow<Set<Long>> = _selected.asStateFlow()
+
+    fun toggleSelected(id: Long) {
+        _selected.value = _selected.value.let { if (id in it) it - id else it + id }
+    }
+
+    fun selectAll() {
+        _selected.value = recents.value.map { it.id }.toSet()
+    }
+
+    fun clearSelection() {
+        _selected.value = emptySet()
+    }
+
+    /** Messages for the UI after a delete ("3 calls deleted"). */
+    private val _events = MutableStateFlow<Int?>(null)
+    val deletedCount: StateFlow<Int?> = _events.asStateFlow()
+
+    fun consumeDeleted() {
+        _events.value = null
+    }
+
+    private fun report(result: AppResult<Int>) {
+        _events.value = (result as? AppResult.Success)?.data ?: -1
+        refreshPermissions()
+    }
+
+    fun deleteSelected() {
+        val ids = _selected.value
+        _selected.value = emptySet()
+        viewModelScope.launch { report(callLog.delete(ids)) }
+    }
+
+    fun deleteCalls(ids: Collection<Long>) {
+        viewModelScope.launch { report(callLog.delete(ids)) }
+    }
+
+    fun deleteHistory(keys: Collection<String>) {
+        viewModelScope.launch { report(callLog.deleteForNumbers(keys)) }
+    }
+
+    fun clearCallLog() {
+        viewModelScope.launch { report(callLog.clearAll()) }
     }
 
     fun setBlocked(number: String, numberKey: String?, label: String?, block: Boolean) {
@@ -307,6 +382,7 @@ class DialerViewModel @Inject constructor(
         private const val NETWORK_BUDGET_MS = 2_500L
         private const val MAX_SUGGESTIONS = 3
         private const val RECENTS_LIMIT = 200
+        private const val HISTORY_LIMIT = 200
 
         private const val T9 = "22233344455566677778889999"
 

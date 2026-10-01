@@ -3,7 +3,6 @@ package com.rskusum.whocaller.feature.dialer
 import android.Manifest
 import android.content.Context
 import android.telecom.PhoneAccountHandle
-import android.telecom.TelecomManager
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,13 +67,10 @@ class CallActions internal constructor(private val context: Context, private val
     internal data class SimRequest(val number: String, val video: Boolean, val sims: List<SimOption>)
     internal data class VideoRequest(val number: String, val whatsAppEntry: Long)
 
-    private fun isDefaultDialer(): Boolean =
-        context.getSystemService(TelecomManager::class.java)?.defaultDialerPackage == context.packageName
-
     /** Calls [number]. [pickSim] forces the SIM chooser (long-press on the Call button). */
     fun call(number: String, video: Boolean = false, pickSim: Boolean = false) {
         if (number.isBlank()) return
-        if (NumberTools.isEmergency(context, number) && !isDefaultDialer()) {
+        if (NumberTools.isEmergency(context, number) && !isDefaultDialer(context)) {
             // Only the default phone app may place emergency calls directly.
             NumberTools.dialEmergencyWithSystem(context, number)
             return

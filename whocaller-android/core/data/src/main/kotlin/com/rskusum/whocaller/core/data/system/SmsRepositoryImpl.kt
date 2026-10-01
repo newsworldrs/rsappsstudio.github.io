@@ -57,8 +57,9 @@ class SmsRepositoryImpl @Inject constructor(
     private fun granted(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
+    // Some phones (e.g. MIUI) update only the role, so check it first.
     override fun isDefaultSmsApp(): Boolean =
-        Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
+        holdsRole(context, android.app.role.RoleManager.ROLE_SMS) || Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
 
     override fun isInboxAvailable(): Boolean = granted(Manifest.permission.READ_SMS)
 
@@ -231,3 +232,8 @@ class SmsRepositoryImpl @Inject constructor(
         const val SNIPPET = 140
     }
 }
+
+/** True if this app holds [role] (Android 10+ role system), which is what Settings › Default apps changes. */
+private fun holdsRole(context: android.content.Context, role: String): Boolean =
+    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q &&
+        context.getSystemService(android.app.role.RoleManager::class.java)?.let { it.isRoleAvailable(role) && it.isRoleHeld(role) } == true

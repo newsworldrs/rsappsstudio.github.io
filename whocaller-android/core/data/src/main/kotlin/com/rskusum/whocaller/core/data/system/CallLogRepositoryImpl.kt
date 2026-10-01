@@ -10,6 +10,8 @@ import android.os.Looper
 import android.provider.CallLog
 import androidx.core.content.ContextCompat
 import com.rskusum.whocaller.core.common.IoDispatcher
+import com.rskusum.whocaller.core.common.result.AppError
+import com.rskusum.whocaller.core.common.result.AppResult
 import com.rskusum.whocaller.core.common.phone.NormalizationResult
 import com.rskusum.whocaller.core.common.phone.PhoneNumberNormalizer
 import com.rskusum.whocaller.core.common.spam.SpamScoreEngine
@@ -50,6 +52,48 @@ class CallLogRepositoryImpl @Inject constructor(
 
     override fun hasPermission(): Boolean =
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+
+    override fun canDelete(): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+
+    override suspend fun delete(ids: Collection<Long>): AppResult<Int> = withContext(io) {
+        if (!canDelete()) return@withContext AppResult.Failure(AppError.PERMISSION_DENIED)
+        if (ids.isEmpty()) return@withContext AppResult.Success(0)
+        deleteIds(ids.toList())
+    }
+
+    override suspend fun deleteForNumbers(numberKeys: Collection<String>): AppResult<Int> = withContext(io) {
+        if (!canDelete() || !hasPermission()) return@withContext AppResult.Failure(AppError.PERMISSION_DENIED)
+        val keys = numberKeys.toSet()
+        if (keys.isEmpty()) return@withContext AppResult.Success(0)
+        // Match the same way the call history does (normalized keys), then delete by id.
+        val ids = scanFiltered(0, DELETE_SCAN_LIMIT) { it.numberKey in keys }.map { it.id }
+        deleteIds(ids)
+    }
+
+    override suspend fun clearAll(): AppResult<Int> = withContext(io) {
+        if (!canDelete()) return@withContext AppResult.Failure(AppError.PERMISSION_DENIED)
+        try {
+            AppResult.Success(context.contentResolver.delete(CallLog.Calls.CONTENT_URI, null, null))
+        } catch (e: SecurityException) {
+            AppResult.Failure(AppError.PERMISSION_DENIED, e)
+        } catch (e: Exception) {
+            AppResult.Failure(AppError.STORAGE, e)
+        }
+    }
+
+    /** Deletes ids in chunks so the SQL "IN (…)" list stays small. */
+    private fun deleteIds(ids: List<Long>): AppResult<Int> = try {
+        var removed = 0
+        ids.distinct().chunked(DELETE_CHUNK).forEach { chunk ->
+            removed += context.contentResolver.delete(CallLog.Calls.CONTENT_URI, "${CallLog.Calls._ID} IN (${chunk.joinToString(",")})", null)
+        }
+        AppResult.Success(removed)
+    } catch (e: SecurityException) {
+        AppResult.Failure(AppError.PERMISSION_DENIED, e)
+    } catch (e: Exception) {
+        AppResult.Failure(AppError.STORAGE, e)
+    }
 
     override suspend fun loadPage(filter: CallFilter, offset: Int, limit: Int): List<CallLogEntry> = withContext(io) {
         if (!hasPermission()) return@withContext emptyList()
@@ -220,5 +264,7 @@ class CallLogRepositoryImpl @Inject constructor(
         const val HIDDEN_KEY = "hidden"
         const val SCAN_CHUNK = 200
         const val MAX_SCAN_ROWS = 3_000
+        const val DELETE_CHUNK = 200
+        const val DELETE_SCAN_LIMIT = 5_000
     }
 }

@@ -4,6 +4,7 @@ package com.rskusum.whocaller.feature.dialer
 
 import android.content.Intent
 import android.net.Uri
+import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Business
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.CheckCircle
@@ -44,6 +47,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -62,11 +66,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rskusum.whocaller.core.model.CallLogEntry
 import com.rskusum.whocaller.core.model.CallerLabel
 import com.rskusum.whocaller.core.model.IdentityType
 import com.rskusum.whocaller.core.ui.util.ActionIntents
@@ -182,6 +188,8 @@ private fun DetailsContent(d: DetailsData, viewModel: DialerViewModel, actions: 
             }
         }
 
+        CallHistorySection(d, viewModel, onChanged)
+
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             if (card != null) {
@@ -263,3 +271,113 @@ private fun MiniAction(icon: ImageVector, description: String, tint: Color, onCl
         contentAlignment = Alignment.Center,
     ) { Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(18.dp)) }
 }
+
+/** Every call with this person (all their numbers): type, date, time and how long you talked. */
+@Composable
+private fun CallHistorySection(d: DetailsData, viewModel: DialerViewModel, onChanged: () -> Unit) {
+    val palette = LocalDialerPalette.current
+    val context = LocalContext.current
+    val withDeletePermission = rememberCallLogDeleter(viewModel)
+    var confirmAll by remember { mutableStateOf(false) }
+    var showAll by remember { mutableStateOf(false) }
+    val history = d.history
+
+    Spacer(Modifier.height(16.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            stringResource(R.string.dialer_call_history),
+            color = palette.text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        if (history.isNotEmpty()) {
+            TextButton(onClick = { confirmAll = true }) {
+                Icon(Icons.Filled.DeleteSweep, contentDescription = null, tint = WarnRed)
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.dialer_delete_all), color = WarnRed)
+            }
+        }
+    }
+    if (history.isEmpty()) {
+        Text(stringResource(R.string.dialer_no_history), color = palette.subtle, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth())
+        return
+    }
+    val answered = history.count { it.durationSeconds > 0 }
+    Text(
+        pluralStringResource(R.plurals.dialer_history_summary, history.size, history.size) +
+            if (answered > 0) " · " + stringResource(R.string.dialer_talk_time, talkTime(context, d.totalTalkSeconds)) else "",
+        color = palette.subtle,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+    )
+    val multipleNumbers = history.map { it.numberKey }.distinct().size > 1
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(palette.actionBg.copy(alpha = 0.5f)).padding(vertical = 4.dp)) {
+        (if (showAll) history else history.take(HISTORY_PREVIEW)).forEach { entry ->
+            HistoryRow(entry, showNumber = multipleNumbers) {
+                withDeletePermission {
+                    viewModel.deleteCalls(listOf(entry.id))
+                    onChanged()
+                }
+            }
+        }
+        if (!showAll && history.size > HISTORY_PREVIEW) {
+            TextButton(onClick = { showAll = true }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                Text(stringResource(R.string.dialer_show_all, history.size))
+            }
+        }
+    }
+
+    if (confirmAll) {
+        ConfirmDialog(
+            title = stringResource(R.string.dialer_delete_history_title),
+            text = stringResource(R.string.dialer_delete_history_confirm),
+            confirm = stringResource(R.string.dialer_delete),
+            onDismiss = { confirmAll = false },
+        ) {
+            confirmAll = false
+            withDeletePermission {
+                viewModel.deleteHistory(d.historyKeys)
+                onChanged()
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryRow(entry: CallLogEntry, showNumber: Boolean, onDelete: () -> Unit) {
+    val palette = LocalDialerPalette.current
+    val context = LocalContext.current
+    val (icon, color, typeLabel) = callTypeLook(entry.type)
+    val whenText = DateUtils.formatDateTime(
+        context,
+        entry.timestamp,
+        DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_ABBREV_ALL,
+    )
+    Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(34.dp).clip(CircleShape).background(color.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                listOfNotNull(stringResource(typeLabel), entry.displayNumber.takeIf { showNumber }).joinToString(" · "),
+                color = palette.text,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(whenText, color = palette.subtle, style = MaterialTheme.typography.bodySmall)
+        }
+        Text(
+            if (entry.durationSeconds > 0) talkTime(context, entry.durationSeconds) else stringResource(R.string.dialer_not_connected),
+            color = if (entry.durationSeconds > 0) palette.text else palette.subtle,
+            style = MaterialTheme.typography.labelLarge,
+        )
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.dialer_delete_call), tint = palette.subtle, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+private const val HISTORY_PREVIEW = 8

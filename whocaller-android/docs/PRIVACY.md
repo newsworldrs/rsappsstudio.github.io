@@ -44,7 +44,8 @@ Delete account · Privacy Policy · Terms of Service.
 | `READ_PHONE_STATE` | Caller ID on Android 8–9; checking whether the SIM supports video calling | Video call button hidden |
 | `CALL_PHONE` | Placing calls/video calls when you tap Call | Calls open in the dialer instead |
 | `CAMERA` | Self-view during video calls only | Video calls without self-view |
-| `READ_CALL_LOG` | Recent calls; incoming number on Android 9 | Recent calls hidden |
+| `READ_CALL_LOG` | Recent calls, per-number call history and talk time; incoming number on Android 9 | Recent calls hidden |
+| `WRITE_CALL_LOG` | Only when you delete calls (one call, a number's history, or all) | Calls can't be deleted from WhoCaller |
 | `READ_CONTACTS` | Recognise saved contacts | Contacts not recognised; "block unknown" disabled |
 | `WRITE_CONTACTS` | Only when you star/delete a contact in WhoCaller | Those two actions unavailable |
 | `READ_SMS`, `SEND_SMS`, `RECEIVE_SMS`, `RECEIVE_MMS`, `RECEIVE_WAP_PUSH` | Only used as the default SMS app (granted with that role) | — |

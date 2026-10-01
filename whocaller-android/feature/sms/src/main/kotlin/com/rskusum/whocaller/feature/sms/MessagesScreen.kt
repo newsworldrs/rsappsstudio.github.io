@@ -35,6 +35,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -180,6 +181,13 @@ fun MessagesScreen(
         if (!viewModel.isDefaultSms()) viewModel.openDefaultAppsSettings(context)
     }
     val readLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { viewModel.refresh() }
+    // Some phones make WhoCaller the SMS app without granting the SMS permissions that come with it.
+    val smsLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { viewModel.refresh() }
+    LaunchedEffect(state.isDefault, state.canRead) {
+        if (state.isDefault && !state.canRead) {
+            smsLauncher.launch(arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS, Manifest.permission.RECEIVE_SMS))
+        }
+    }
 
     Scaffold(
         topBar = {

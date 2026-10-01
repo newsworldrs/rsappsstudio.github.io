@@ -3,6 +3,7 @@ package com.rskusum.whocaller.feature.dialer
 import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -54,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -131,6 +133,18 @@ private fun DialerHome(viewModel: DialerViewModel, openKeypad: Int) {
     val actions = rememberCallActions()
     LaunchedEffect(openKeypad) { if (openKeypad > 0) tab = DialerTab.KEYPAD }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshPermissions() }
+    val context = LocalContext.current
+    val deleted by viewModel.deletedCount.collectAsState()
+    LaunchedEffect(deleted) {
+        val n = deleted ?: return@LaunchedEffect
+        val text = if (n < 0) {
+            context.getString(R.string.dialer_delete_failed)
+        } else {
+            context.resources.getQuantityString(R.plurals.dialer_calls_deleted, n, n)
+        }
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+        viewModel.consumeDeleted()
+    }
 
     Column(Modifier.fillMaxSize().background(palette.background)) {
         Box(Modifier.weight(1f).fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars)) {
