@@ -177,6 +177,18 @@ interface SmsRepository {
     suspend fun isMarkedNotSpam(address: String): Boolean
 }
 
+/**
+ * The user's public WhoCaller ID: the name shown to other WhoCaller users when this user calls
+ * them, tied to their verified mobile number. Stored in the backend (Firestore).
+ */
+interface WhoCallerIdRepository {
+    val isAvailable: Boolean
+    /** Saves the account (name + verified number) and, if [showName], publishes the name for caller ID. */
+    suspend fun save(name: String, e164: String, showName: Boolean): AppResult<Unit>
+    /** Name/number saved for this account in the backend, e.g. after reinstalling the app. */
+    suspend fun load(): AppResult<Pair<String, String>?>
+}
+
 interface LocalProfileRepository {
     val profile: Flow<LocalProfile>
     suspend fun update(transform: (LocalProfile) -> LocalProfile)

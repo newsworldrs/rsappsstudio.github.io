@@ -71,7 +71,13 @@ number come from libphonenumber's offline data bundled in the app (no network). 
 button only reads the "Video call" entry WhatsApp itself adds to your contacts, on-device.
 
 ### Profile
-Name, profession, institute, email and the profile photo or avatar are stored on this device only.
+Profession, institute and the profile photo or avatar are stored on this device only.
+
+**WhoCaller ID.** To use the app, a user signs in with Google or email and adds their name and
+mobile number, confirmed by an SMS code. These are saved in their account (`whocallerUsers`, readable
+only by them). If "Show my name to people I call" is on, the name is also published for that number
+(`registeredCallers`) so other WhoCaller users see it on calls and searches; turning it off removes
+it. Deleting the account deletes both.
 The photo is picked with the system photo picker (no storage permission) and saved downscaled in
 private app storage.
 

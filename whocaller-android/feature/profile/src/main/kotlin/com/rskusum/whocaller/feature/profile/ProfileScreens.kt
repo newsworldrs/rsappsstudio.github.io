@@ -185,6 +185,8 @@ fun SignInScreen(
     config: SignInConfig,
     onBack: () -> Unit,
     onDone: () -> Unit,
+    /** First-run sign-in: no guest option, no back button (an account is required for the WhoCaller ID). */
+    mandatory: Boolean = false,
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val state by viewModel.signIn.collectAsStateWithLifecycle()
@@ -222,8 +224,10 @@ fun SignInScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.signin_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { if (mode == "choose") onBack() else mode = "choose" }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(UiR.string.action_back))
+                    if (!mandatory || mode != "choose") {
+                        IconButton(onClick = { if (mode == "choose") onBack() else mode = "choose" }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(UiR.string.action_back))
+                        }
                     }
                 },
             )
@@ -297,6 +301,7 @@ fun SignInScreen(
                     }
                 }
                 else -> {
+                    if (mandatory) Text(stringResource(R.string.signin_required_intro), style = MaterialTheme.typography.bodyLarge)
                     val googleReady = config.googleWebClientId.isNotBlank()
                     Button(onClick = ::googleSignIn, enabled = googleReady && !state.busy, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.signin_google))
@@ -305,10 +310,10 @@ fun SignInScreen(
                         Text(stringResource(R.string.signin_google_unavailable), style = MaterialTheme.typography.bodySmall)
                     }
                     OutlinedButton(onClick = { mode = "email" }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.signin_email)) }
-                    if (viewModel.phoneAvailable) {
+                    if (viewModel.phoneAvailable && !mandatory) {
                         OutlinedButton(onClick = { mode = "phone" }, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.signin_phone)) }
                     }
-                    TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.signin_guest)) }
+                    if (!mandatory) TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.signin_guest)) }
                     Text(stringResource(R.string.signin_terms), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

@@ -63,7 +63,7 @@ import com.rskusum.whocaller.core.ui.R as UiR
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltViewModel()) {
+fun EditProfileScreen(onBack: () -> Unit, onChangeNumber: () -> Unit = {}, viewModel: ProfileViewModel = hiltViewModel()) {
     val profile by viewModel.localProfile.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var loaded by rememberSaveable { mutableStateOf(false) }
@@ -72,6 +72,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
     var institute by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var avatarId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var showName by rememberSaveable { mutableStateOf(true) }
 
     // Fill the form once from the stored profile.
     LaunchedEffect(profile.updatedAt) {
@@ -81,6 +82,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
             institute = profile.institute
             email = profile.email
             avatarId = profile.avatarId
+            showName = profile.showNameToCallers
             loaded = profile.updatedAt > 0 || profile.name.isNotEmpty()
         }
     }
@@ -155,6 +157,22 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
             }
             Spacer(Modifier.height(20.dp))
             Field(name, R.string.profile_name, KeyboardType.Text, KeyboardCapitalization.Words) { name = it.take(80) }
+            // WhoCaller ID number: verified by SMS code, changed only through verification.
+            androidx.compose.material3.ListItem(
+                headlineContent = { Text(profile.phoneNumber.ifBlank { stringResource(R.string.profile_mobile_missing) }) },
+                overlineContent = { Text(stringResource(R.string.profile_mobile)) },
+                supportingContent = if (profile.phoneVerified) {
+                    { Text(stringResource(R.string.complete_verified), color = MaterialTheme.colorScheme.primary) }
+                } else {
+                    null
+                },
+                trailingContent = { TextButton(onClick = onChangeNumber) { Text(stringResource(R.string.complete_change)) } },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.complete_show_name), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                androidx.compose.material3.Switch(checked = showName, onCheckedChange = { showName = it })
+            }
             Field(profession, R.string.profile_profession, KeyboardType.Text, KeyboardCapitalization.Sentences) { profession = it.take(80) }
             Field(institute, R.string.profile_institute, KeyboardType.Text, KeyboardCapitalization.Words) { institute = it.take(80) }
             Field(email, R.string.profile_email, KeyboardType.Email, KeyboardCapitalization.None) { email = it.take(80) }
@@ -169,7 +187,7 @@ fun EditProfileScreen(onBack: () -> Unit, viewModel: ProfileViewModel = hiltView
             PrimaryWideButton(
                 stringResource(R.string.profile_save),
                 onClick = {
-                    viewModel.saveProfile(name, profession, institute, email, avatarId)
+                    viewModel.saveProfile(name, profession, institute, email, avatarId, showName)
                     onBack()
                 },
             )

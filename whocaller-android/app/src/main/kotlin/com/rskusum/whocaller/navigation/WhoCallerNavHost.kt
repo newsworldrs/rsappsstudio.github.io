@@ -88,6 +88,7 @@ object Routes {
     const val BUSINESS_VERIFY = "business_verify"
     const val REPORT = "report/{${ReportViewModel.ARG_NUMBER}}"
     const val PROFILE_EDIT = "profile/edit"
+    const val PROFILE_PHONE = "profile/phone"
     const val CONVERSATION = "sms/{${ConversationViewModel.ARG_THREAD}}?${ConversationViewModel.ARG_ADDRESS}={${ConversationViewModel.ARG_ADDRESS}}&${ConversationViewModel.ARG_BODY}={${ConversationViewModel.ARG_BODY}}"
 
     fun search(query: String? = null, record: Boolean = true) =
@@ -229,7 +230,15 @@ fun WhoCallerApp(
             ) {
                 ConversationScreen(onBack = { navController.popBackStack() })
             }
-            composable(Routes.PROFILE_EDIT) { EditProfileScreen(onBack = { navController.popBackStack() }) }
+            composable(Routes.PROFILE_EDIT) {
+                EditProfileScreen(onBack = { navController.popBackStack() }, onChangeNumber = { navController.navigate(Routes.PROFILE_PHONE) })
+            }
+            composable(Routes.PROFILE_PHONE) {
+                com.rskusum.whocaller.feature.profile.CompleteProfileScreen(
+                    onDone = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Routes.PRIVACY) {
                 PrivacyScreen(
                     onBack = { navController.popBackStack() },
@@ -283,7 +292,7 @@ fun WhoCallerApp(
 
 /** OAuth web client id generated from google-services.json by the Google Services plugin, if present. */
 @android.annotation.SuppressLint("DiscouragedApi")
-private fun defaultWebClientId(context: android.content.Context): String {
+internal fun defaultWebClientId(context: android.content.Context): String {
     val id = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
     return if (id != 0) context.getString(id) else ""
 }

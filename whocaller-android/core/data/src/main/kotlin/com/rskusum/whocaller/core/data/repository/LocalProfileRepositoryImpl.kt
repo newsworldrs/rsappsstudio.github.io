@@ -8,6 +8,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -48,6 +49,9 @@ class LocalProfileRepositoryImpl @Inject constructor(
                 photoPath = p[PHOTO]?.takeIf { File(it).exists() },
                 avatarId = p[AVATAR],
                 updatedAt = p[UPDATED] ?: 0L,
+                phoneNumber = p[PHONE].orEmpty(),
+                phoneVerified = p[PHONE_VERIFIED] ?: false,
+                showNameToCallers = p[SHOW_NAME] ?: true,
             )
         }
 
@@ -60,8 +64,14 @@ class LocalProfileRepositoryImpl @Inject constructor(
                 email = p[EMAIL].orEmpty(),
                 photoPath = p[PHOTO],
                 avatarId = p[AVATAR],
+                phoneNumber = p[PHONE].orEmpty(),
+                phoneVerified = p[PHONE_VERIFIED] ?: false,
+                showNameToCallers = p[SHOW_NAME] ?: true,
             )
             val next = transform(current)
+            p[PHONE] = next.phoneNumber.trim().take(MAX_FIELD)
+            p[PHONE_VERIFIED] = next.phoneVerified
+            p[SHOW_NAME] = next.showNameToCallers
             p[NAME] = next.name.trim().take(MAX_FIELD)
             p[PROFESSION] = next.profession.trim().take(MAX_FIELD)
             p[INSTITUTE] = next.institute.trim().take(MAX_FIELD)
@@ -115,6 +125,9 @@ class LocalProfileRepositoryImpl @Inject constructor(
         val EMAIL = stringPreferencesKey("profile_email")
         val PHOTO = stringPreferencesKey("profile_photo")
         val AVATAR = intPreferencesKey("profile_avatar")
+        val PHONE = stringPreferencesKey("profile_phone")
+        val PHONE_VERIFIED = booleanPreferencesKey("profile_phone_verified")
+        val SHOW_NAME = booleanPreferencesKey("profile_show_name")
         val UPDATED = longPreferencesKey("profile_updated")
         const val MAX_FIELD = 80
         const val TARGET_PX = 512

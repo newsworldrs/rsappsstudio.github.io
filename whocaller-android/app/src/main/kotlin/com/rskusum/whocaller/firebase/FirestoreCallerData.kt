@@ -51,8 +51,19 @@ class FirestoreNetworkDataSource(
         if (!E164.matches(e164)) return@firestore AppResult.Failure(AppError.INVALID_NUMBER)
         uid()
         val snap = db.collection(CALLERS).document(e164).get().await()
+        // Name a WhoCaller user registered for their own (verified) number.
+        val registered = runCatching {
+            db.collection(FirestoreWhoCallerIdRepository.CALLERS).document(e164).get().await().getString("name")
+        }.getOrNull()?.takeIf { it.isNotBlank() }
         when {
-            snap.exists() -> AppResult.Success(snap.toNumberInfo(e164))
+            snap.exists() -> {
+                val info = snap.toNumberInfo(e164)
+                // A business name from the dataset wins; otherwise the person's own registered name.
+                AppResult.Success(
+                    if (registered != null && info.identityType != "BUSINESS") info.copy(name = registered, identityType = "PERSON") else info,
+                )
+            }
+            registered != null -> AppResult.Success(NumberInfoDto(number = e164, name = registered, identityType = "PERSON", confidence = 0.9f))
             base.isConfigured -> base.getNumber(e164)
             else -> AppResult.Failure(AppError.NOT_FOUND)
         }
@@ -83,6 +94,7 @@ class FirestoreNetworkDataSource(
     /** Removes this user's reports (they're the only per-user data in Firestore), then the base backend's data. */
     override suspend fun deleteAccount(): AppResult<Unit> = firestore {
         val uid = auth.currentUser?.uid
+        if (uid != null) FirestoreWhoCallerIdRepository.deleteFor(db, uid, auth.currentUser?.phoneNumber)
         if (uid != null) {
             val mine = db.collection(REPORTS).whereEqualTo("userId", uid).get().await()
             mine.documents.chunked(400).forEach { chunk ->

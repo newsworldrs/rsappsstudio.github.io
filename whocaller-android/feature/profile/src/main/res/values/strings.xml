@@ -55,6 +55,26 @@
     <string name="profile_avatar_n">Avatar %1$d</string>
     <string name="profile_saved">Profile saved</string>
     <string name="profile_photo_failed">Couldn\'t use that photo</string>
-    <string name="profile_local_note">Your profile is stored on this device only.</string>
+    <string name="profile_local_note">Your photo, profession and institute stay on this device. Your name and verified mobile number form your WhoCaller ID.</string>
     <string name="profile_your_picture">Your profile picture</string>
+    <string name="complete_title">Your WhoCaller ID</string>
+    <string name="complete_intro">Add your name and mobile number to finish setting up. Other WhoCaller users will see this name when you call them.</string>
+    <string name="complete_name_label">Full name</string>
+    <string name="complete_mobile_label">Mobile number</string>
+    <string name="complete_mobile_hint">We\'ll send a code by SMS to confirm it\'s your number</string>
+    <string name="complete_verified">Verified</string>
+    <string name="complete_change">Change number</string>
+    <string name="complete_phone_verified">Mobile number verified</string>
+    <string name="complete_show_name">Show my name to people I call</string>
+    <string name="complete_show_name_desc">When off, your number is saved to your account but your name isn\'t shown as caller ID.</string>
+    <string name="complete_save">Save and continue</string>
+    <string name="complete_name_required">Enter your name (2–60 characters).</string>
+    <string name="complete_phone_required">Verify your mobile number first.</string>
+    <string name="complete_number_taken">This number is already linked to another WhoCaller account.</string>
+    <string name="complete_privacy">Your name and number are stored in your WhoCaller account. Your contacts, call log and messages are never uploaded.</string>
+    <string name="complete_other_account">Use a different account</string>
+    <string name="complete_skip_test">Skip for now (test build only)</string>
+    <string name="signin_required_intro">Sign in with Google or email to create your WhoCaller ID.</string>
+    <string name="profile_mobile">Mobile number</string>
+    <string name="profile_mobile_missing">Add your mobile number</string>
 </resources>

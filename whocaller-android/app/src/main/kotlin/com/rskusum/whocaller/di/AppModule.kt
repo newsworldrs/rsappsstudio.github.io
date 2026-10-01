@@ -39,6 +39,7 @@ abstract class AppBindingsModule {
     @Binds abstract fun auth(impl: FirebaseAuthRepository): AuthRepository
     @Binds abstract fun appCheck(impl: FirebaseAppCheckTokenProvider): AppCheckTokenProvider
     @Binds abstract fun phoneAuth(impl: FirebasePhoneAuthGateway): PhoneAuthGateway
+    @Binds abstract fun whoCallerId(impl: com.rskusum.whocaller.firebase.FirestoreWhoCallerIdRepository): com.rskusum.whocaller.core.domain.repository.WhoCallerIdRepository
     @Binds abstract fun adsPolicy(impl: FirebaseRemoteFlags): AdsPolicy
 }
 

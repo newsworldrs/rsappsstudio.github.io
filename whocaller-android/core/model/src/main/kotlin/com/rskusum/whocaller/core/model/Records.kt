@@ -166,7 +166,15 @@ data class LocalProfile(
     /** Index of a built-in avatar, used when there is no photo. */
     val avatarId: Int? = null,
     val updatedAt: Long = 0,
-)
+    /** The user's own mobile number (E.164), confirmed with an SMS code. Part of their WhoCaller ID. */
+    val phoneNumber: String = "",
+    val phoneVerified: Boolean = false,
+    /** Show this name to WhoCaller users when this person calls them (their public WhoCaller ID). */
+    val showNameToCallers: Boolean = true,
+) {
+    /** Name and a verified mobile number are required before the app can be used. */
+    val isComplete: Boolean get() = name.isNotBlank() && phoneVerified && phoneNumber.isNotBlank()
+}
 
 data class UserProfile(
     val uid: String,

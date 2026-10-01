@@ -33,6 +33,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
@@ -58,10 +59,11 @@ class FirebaseAuthRepository @Inject constructor(
 
     override val currentUser: Flow<UserProfile> = auth?.let { a ->
         callbackFlow {
-            val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser.toProfile()) }
-            a.addAuthStateListener(listener)
-            awaitClose { a.removeAuthStateListener(listener) }
-        }.conflate()
+            // ID-token listener: also fires after a phone number is linked (token refresh), not only on sign-in/out.
+            val listener = FirebaseAuth.IdTokenListener { trySend(it.currentUser.toProfile()) }
+            a.addIdTokenListener(listener)
+            awaitClose { a.removeIdTokenListener(listener) }
+        }.conflate().distinctUntilChanged()
     } ?: flowOf(UserProfile.GUEST)
 
     override suspend fun signInWithGoogleIdToken(idToken: String): AppResult<UserProfile> = authCall { a ->

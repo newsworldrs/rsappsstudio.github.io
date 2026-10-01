@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -62,6 +63,7 @@ class ProfileViewModel @Inject constructor(
     private val phoneAuth: PhoneAuthGateway,
     private val normalizer: PhoneNumberNormalizer,
     private val countryRepository: CountryRepository,
+    private val whoCallerId: com.rskusum.whocaller.core.domain.repository.WhoCallerIdRepository,
     statsRepository: StatsRepository,
 ) : ViewModel() {
 
@@ -72,17 +74,23 @@ class ProfileViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LocalProfile())
 
     // NonCancellable: the screen closes right after Save, which clears this ViewModel.
-    fun saveProfile(name: String, profession: String, institute: String, email: String, avatarId: Int?) = viewModelScope.launch(kotlinx.coroutines.NonCancellable) {
+    fun saveProfile(name: String, profession: String, institute: String, email: String, avatarId: Int?, showName: Boolean = true) = viewModelScope.launch(kotlinx.coroutines.NonCancellable) {
         val cleanEmail = email.trim()
         if (cleanEmail.isNotEmpty() && !validEmail(cleanEmail)) {
             _toasts.emit(R.string.signin_invalid_email)
             return@launch
         }
+        val before = localProfileRepository.profile.first()
         localProfileRepository.update {
-            it.copy(name = name, profession = profession, institute = institute, email = cleanEmail, avatarId = avatarId)
+            it.copy(name = name, profession = profession, institute = institute, email = cleanEmail, avatarId = avatarId, showNameToCallers = showName)
         }
-        // Keep the account display name in sync when signed in.
+        // Keep the account display name and the WhoCaller ID (Firestore) in sync when signed in.
         if (!user.value.isGuest && name.isNotBlank()) authRepository.updateDisplayName(name)
+        if (before.phoneVerified && before.phoneNumber.isNotBlank() && name.trim().length >= 2 &&
+            (before.name != name || before.showNameToCallers != showName) && whoCallerId.isAvailable
+        ) {
+            whoCallerId.save(name, before.phoneNumber, showName)
+        }
         _toasts.emit(R.string.profile_saved)
     }
 

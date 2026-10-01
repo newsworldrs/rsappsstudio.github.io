@@ -25,6 +25,10 @@ import com.rskusum.whocaller.navigation.navigateTopLevel
 import com.rskusum.whocaller.ui.OnboardingScreen
 import com.rskusum.whocaller.ui.SplashContent
 import com.rskusum.whocaller.widget.WhoCallerWidgetProvider
+import com.rskusum.whocaller.feature.profile.CompleteProfileScreen
+import com.rskusum.whocaller.feature.profile.SignInConfig
+import com.rskusum.whocaller.feature.profile.SignInScreen
+import com.rskusum.whocaller.navigation.defaultWebClientId
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -62,6 +66,17 @@ class MainActivity : AppCompatActivity() {
                             permissionManager = permissionManager,
                             onFinished = viewModel::completePermissionSetup,
                             onResult = viewModel::onPermissionResult,
+                        )
+                        StartState.Registration -> SignInScreen(
+                            config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID.ifBlank { defaultWebClientId(this@MainActivity) }),
+                            onBack = {},
+                            onDone = {},
+                            mandatory = true,
+                        )
+                        StartState.CompleteProfile -> CompleteProfileScreen(
+                            onDone = {},
+                            onSkip = if (BuildConfig.DEBUG) viewModel::skipRegistration else null,
+                            onSignOut = { viewModel.signOut() },
                         )
                         is StartState.Ready -> {
                             val navController = rememberNavController()

@@ -6,6 +6,7 @@ The app reads and writes Firestore directly. There are two kinds of data:
 |---|---|---|
 | **Caller dataset** | A file you upload once (and again whenever you update it) with `npm run seed` | `callerNumbers` |
 | **User reports** | The app's "Know this caller?" screen after an unknown call, and the Report screen | `reports` → summarised into `callerNumbers` |
+| **WhoCaller IDs** | Created automatically when a user signs up (Google or email) and completes their profile | `whocallerUsers`, `registeredCallers` |
 
 Nothing from the user's phonebook, call log or SMS is ever uploaded. Saving a caller to contacts
 uses Android's own contact editor and stays on the phone.
@@ -39,7 +40,22 @@ reports/{E.164 digits}_{uid}       e.g. reports/919876543210_Xy12…   (one per 
   callAnswered   true / false
   reportedAt     server time
   appVersion     "1.0.0"
+
+whocallerUsers/{uid}               the account's WhoCaller ID (only the owner can read it)
+  name               "Rahul Sharma"
+  phoneNumber        "+919876543210"    verified by SMS code, must equal the account's phone number
+  email              account email (may be empty)
+  showNameToCallers  true / false
+  createdAt, updatedAt
+
+registeredCallers/{E.164}          public caller ID, e.g. registeredCallers/+919876543210
+  name, uid, updatedAt             only when showNameToCallers is on; removed when it's turned off
 ```
+
+Firestore creates both collections by itself the first time a user saves their profile: there's
+nothing to create in the console. The rules only accept a number that the user verified by SMS
+code (Firebase Auth's `phone_number`), so nobody can put their name on someone else's number. When
+a number is looked up, a business name from the dataset wins; otherwise the registered name is shown.
 
 `BUSINESS_SERVICE` and `DELIVERY` describe a legitimate caller: they label the number but don't raise
 its spam score. Because each user has exactly one report per number, re-reporting replaces the old
@@ -48,8 +64,12 @@ vote and one person can't push a number's score up.
 ## One-time setup (Firebase console)
 
 1. **Firestore Database** → Create database → production mode → region `asia-south1` (Mumbai).
-2. **Authentication → Sign-in method** → enable **Anonymous**. The app signs users in anonymously
-   so they can read caller data and report without creating an account.
+2. **Authentication → Sign-in method** → enable **Google**, **Email/Password**, **Phone** and
+   **Anonymous**. New users must sign in with Google or email and verify their mobile number by SMS
+   code (Phone). Anonymous is used for lookups in the background.
+   - Google sign-in and SMS codes on a real phone need your signing key's **SHA-1 and SHA-256** under
+     Project settings → Your apps → Android app (debug key for test APKs, Play App Signing key for release).
+   - For testing without real SMS: Authentication → Sign-in method → Phone → *Phone numbers for testing*.
 3. **Rules** — your project `calculator-6935be9a` is shared with your other apps, so **don't replace
    its rules**. Open Firestore → Rules and paste the two blocks marked `WHOCALLER` from
    [`firestore.rules`](firestore.rules) (the `callerNumbers` and `reports` matches plus the
