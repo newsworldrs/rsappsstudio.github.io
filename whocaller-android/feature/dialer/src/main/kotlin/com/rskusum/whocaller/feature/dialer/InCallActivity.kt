@@ -661,7 +661,7 @@ private fun VideoSurfaces(call: CallUi, previewOnly: Boolean) {
         var last = -1
         val listener = object : android.view.OrientationEventListener(context) {
             override fun onOrientationChanged(degrees: Int) {
-                if (degrees == ORIENTATION_UNKNOWN) return
+                if (degrees == android.view.OrientationEventListener.ORIENTATION_UNKNOWN) return
                 val rotation = ((degrees + 45) / 90 % 4) * 90
                 if (rotation != last) {
                     last = rotation

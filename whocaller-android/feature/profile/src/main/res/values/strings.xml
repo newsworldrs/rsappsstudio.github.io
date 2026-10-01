@@ -77,4 +77,9 @@
     <string name="signin_required_intro">Sign in with Google or email to create your WhoCaller ID.</string>
     <string name="profile_mobile">Mobile number</string>
     <string name="profile_mobile_missing">Add your mobile number</string>
+    <string name="complete_your_sims">SIMs in this phone (tap to use)</string>
+    <string name="complete_sim_n">SIM %1$d</string>
+    <string name="complete_sim_no_number">number not stored on SIM</string>
+    <string name="complete_sim_type_number">Your operator didn\'t store the number on the SIM. Type it below.</string>
+    <string name="complete_detect_sims">Detect my SIM numbers</string>
 </resources>

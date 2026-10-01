@@ -1,5 +1,21 @@
 package com.rskusum.whocaller.feature.profile
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.rskusum.whocaller.core.ui.util.SimCards
+import com.rskusum.whocaller.core.ui.util.SimCard
+import androidx.core.content.ContextCompat
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.outlined.SimCard
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.os.Build
+import android.content.pm.PackageManager
+import android.Manifest
 import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -192,6 +208,31 @@ fun CompleteProfileScreen(
     val context = LocalContext.current
     LaunchedEffect(state.saved) { if (state.saved) onDone() }
 
+    // The phone's own SIMs (number + network, as SIM settings show them), to pick from.
+    var sims by remember { mutableStateOf<List<SimCard>>(emptyList()) }
+    var simsLoaded by remember { mutableStateOf(false) }
+    suspend fun loadSims() {
+        sims = withContext(Dispatchers.IO) { SimCards.list(context) }
+        simsLoaded = true
+        // One SIM with a stored number: fill it in.
+        sims.singleOrNull()?.number?.let { n ->
+            if (viewModel.state.value.phone.isBlank() && viewModel.state.value.verifiedPhone == null) viewModel.edit { it.copy(phone = n) }
+        }
+    }
+    val scope = rememberCoroutineScope()
+    val simPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        scope.launch { loadSims() }
+    }
+    LaunchedEffect(Unit) {
+        if (SimCards.hasPermission(context) &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED)
+        ) {
+            loadSims()
+        } else {
+            simPermission.launch(SimCards.PERMISSIONS)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -227,11 +268,38 @@ fun CompleteProfileScreen(
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.complete_mobile_label), style = MaterialTheme.typography.labelMedium)
                         Text(verified, style = MaterialTheme.typography.titleMedium)
-                        Text(stringResource(R.string.complete_verified), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        val network = remember(verified, sims) { SimCards.forNumber(context, verified)?.network }
+                        Text(
+                            listOfNotNull(stringResource(R.string.complete_verified), network).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                     TextButton(onClick = viewModel::changeNumber) { Text(stringResource(R.string.complete_change)) }
                 }
             } else {
+                if (sims.isNotEmpty()) {
+                    Text(stringResource(R.string.complete_your_sims), style = MaterialTheme.typography.labelLarge)
+                    sims.forEach { sim ->
+                        val label = listOfNotNull(
+                            stringResource(R.string.complete_sim_n, sim.slot),
+                            sim.network,
+                            sim.number ?: stringResource(R.string.complete_sim_no_number),
+                        ).joinToString(" · ")
+                        FilterChip(
+                            selected = sim.number?.filter(Char::isDigit)?.takeLast(10)?.let { it.isNotEmpty() && it == state.phone.filter(Char::isDigit).takeLast(10) } == true,
+                            onClick = { sim.number?.let { n -> viewModel.edit { it.copy(phone = n, codeSent = false) } } },
+                            enabled = !state.codeSent && sim.number != null,
+                            label = { Text(label) },
+                            leadingIcon = { Icon(Icons.Outlined.SimCard, contentDescription = null) },
+                        )
+                    }
+                    if (sims.all { it.number == null }) {
+                        Text(stringResource(R.string.complete_sim_type_number), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else if (simsLoaded && !SimCards.hasPermission(context)) {
+                    TextButton(onClick = { simPermission.launch(SimCards.PERMISSIONS) }) { Text(stringResource(R.string.complete_detect_sims)) }
+                }
                 OutlinedTextField(
                     value = state.phone,
                     onValueChange = { v -> viewModel.edit { it.copy(phone = v.filter { c -> c.isDigit() || c in "+ -()" }.take(24)) } },

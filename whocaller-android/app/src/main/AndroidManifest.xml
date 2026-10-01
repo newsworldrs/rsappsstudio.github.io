@@ -12,6 +12,10 @@
 
     <!-- Caller ID on Android 8–9, and video-calling capability check (phone accounts). -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Your own SIM numbers and networks (as shown in SIM settings), to fill in and verify your
+         WhoCaller ID and show your correct network after porting. Never uploaded except your own
+         verified number and network name. -->
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <!-- Recent calls screen, and incoming numbers on Android 9. Never uploaded. -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <!-- Deleting calls from Recents (WhoCaller as phone app). -->

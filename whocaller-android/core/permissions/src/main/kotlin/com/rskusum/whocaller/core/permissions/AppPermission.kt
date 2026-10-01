@@ -66,7 +66,8 @@ enum class AppPermission(
             }
             CALL_HISTORY -> arrayOf(Manifest.permission.READ_CALL_LOG)
             CONTACTS -> arrayOf(Manifest.permission.READ_CONTACTS)
-            PHONE_CALLS -> arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)
+            // Same "Phone" permission group: one dialog. Phone numbers = the user's own SIM numbers.
+            PHONE_CALLS -> arrayOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_NUMBERS)
             NOTIFICATIONS -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS)
             } else {

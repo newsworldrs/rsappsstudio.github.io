@@ -54,10 +54,10 @@ object TelecomActions {
     fun isVideoCallingSwitchOn(context: Context): Boolean? {
         if (!granted(context, Manifest.permission.READ_PHONE_STATE)) return null
         val tm = context.getSystemService(android.telephony.TelephonyManager::class.java) ?: return null
+        // Not in the public SDK any more, but still present on devices: read it if we can.
         return try {
-            @Suppress("DEPRECATION")
-            tm.isVideoCallingEnabled
-        } catch (_: SecurityException) {
+            tm.javaClass.getMethod("isVideoCallingEnabled").invoke(tm) as? Boolean
+        } catch (_: Exception) {
             null
         }
     }
