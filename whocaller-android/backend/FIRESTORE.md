@@ -75,7 +75,11 @@ vote and one person can't push a number's score up.
    [`firestore.rules`](firestore.rules) (the `callerNumbers` and `reports` matches plus the
    `validReport` function) inside your existing `match /databases/{database}/documents { … }`.
    Leave your other apps' rules as they are. Publish.
-4. **Service account key** (for the upload command): Project settings → Service accounts →
+4. **Index** — the app downloads each country's top spam numbers for offline protection
+   (`callerNumbers` where `region ==` and `spamScore >=`, newest score first). Firestore → Indexes →
+   Composite → Add: collection `callerNumbers`, fields `region` Ascending, `spamScore` Descending,
+   scope Collection (also in [`firestore.indexes.json`](firestore.indexes.json)).
+5. **Service account key** (for the upload command): Project settings → Service accounts →
    *Generate new private key*. Keep this file private — never put it in the repository.
 
 ## Upload your caller dataset

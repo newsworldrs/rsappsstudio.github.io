@@ -1,45 +1,11 @@
 {
   "indexes": [
     {
-      "collectionGroup": "numbers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "region",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "spamScore",
-          "order": "DESCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "businesses",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "country",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "nameLower",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "callerNumbers",
       "queryScope": "COLLECTION",
       "fields": [
-        {
-          "fieldPath": "region",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "spamScore",
-          "order": "DESCENDING"
-        }
+        { "fieldPath": "region", "order": "ASCENDING" },
+        { "fieldPath": "spamScore", "order": "DESCENDING" }
       ]
     }
   ],
