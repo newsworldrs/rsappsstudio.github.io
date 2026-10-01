@@ -378,4 +378,5 @@ internal fun SmsSignal.labelRes(): Int = when (this) {
     SmsSignal.PROMOTION -> R.string.sms_sig_promotion
     SmsSignal.SENDER_BLOCKED -> R.string.sms_sig_blocked
     SmsSignal.SENDER_REPORTED -> R.string.sms_sig_reported
+    SmsSignal.SPAM_WORDING -> R.string.sms_sig_spam_wording
 }

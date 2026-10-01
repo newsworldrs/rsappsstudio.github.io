@@ -121,6 +121,8 @@ enum class SmsSignal {
     PROMOTION,
     SENDER_BLOCKED,
     SENDER_REPORTED,
+    /** Worded like known spam (on-device learned model). */
+    SPAM_WORDING,
 }
 
 data class SmsClassification(

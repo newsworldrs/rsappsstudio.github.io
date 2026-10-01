@@ -72,5 +72,5 @@
     <string name="settings_default_apps">Default apps</string>
     <string name="privacy_post_call">Ask about unknown callers</string>
     <string name="privacy_post_call_desc">After you answer or decline a number that isn\'t in your contacts, offer to save it or report spam.</string>
-    <string name="privacy_data_sources">Business names come from public sources: the RBI bank branch list, Wikidata, and map data © OpenStreetMap contributors (ODbL). Spam labels come from WhoCaller users\' reports.</string>
+    <string name="privacy_data_sources">Business names come from public sources: the RBI bank branch list, Wikidata, and map data © OpenStreetMap contributors (ODbL). Spam labels come from WhoCaller users\' reports. The SMS spam check was trained on the SMS Spam Collection (Almeida &amp; Gómez Hidalgo, UCI, CC BY 4.0).</string>
 </resources>

@@ -14,6 +14,9 @@ import javax.inject.Inject
  */
 class SmsClassifier @Inject constructor() {
 
+    /** Learned wording model; null only if the bundled file couldn't be read. */
+    private val model: SpamTextModel? = SpamTextModel.bundled
+
     fun classify(
         sender: String,
         body: String,
@@ -39,6 +42,14 @@ class SmsClassifier @Inject constructor() {
         if (senderBlocked) signals += SmsSignal.SENDER_BLOCKED
         if (senderReported) signals += SmsSignal.SENDER_REPORTED
 
+        // Learned wording model. Only for messages from ordinary phone numbers: in India real businesses
+        // must send from registered alphanumeric senders (e.g. VM-HDFCBK), and the training data (UK
+        // messages) would otherwise mistake genuine OTPs and bank alerts for spam.
+        val fromPhoneNumber = sender.none { it.isLetter() } && sender.count { it.isDigit() } >= 7
+        val transactional = SmsSignal.OTP in signals || SmsSignal.TRANSACTION in signals
+        val spamProbability = if (fromPhoneNumber && !transactional) model?.spamProbability(body) ?: 0.0 else 0.0
+        if (spamProbability >= SpamTextModel.THRESHOLD) signals += SmsSignal.SPAM_WORDING
+
         val phishingIndicators = listOf(
             SmsSignal.SHORTENED_LINK, SmsSignal.URGENCY, SmsSignal.PRIZE_OR_LOTTERY,
             SmsSignal.ACCOUNT_THREAT, SmsSignal.CREDENTIAL_REQUEST, SmsSignal.PAYMENT_REQUEST,
@@ -48,6 +59,7 @@ class SmsClassifier @Inject constructor() {
         var risk = phishingIndicators * 18 + (if (hasLink) 10 else 0)
         if (senderReported) risk += 25
         if (senderBlocked) risk += 30
+        if (SmsSignal.SPAM_WORDING in signals) risk += if (spamProbability >= SpamTextModel.STRONG) 50 else 30
         // A genuine OTP usually tells you NOT to share it; asking for it back is a red flag.
         if (SmsSignal.OTP in signals && SmsSignal.CREDENTIAL_REQUEST !in signals) risk -= 10
         risk = risk.coerceIn(0, 100)

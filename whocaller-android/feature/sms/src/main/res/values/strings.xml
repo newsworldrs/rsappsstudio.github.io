@@ -54,4 +54,5 @@
     <string name="sms_mms_unsupported">WhoCaller can\'t show picture messages yet. Switch your SMS app in Settings › Default apps to view it.</string>
     <string name="sms_unread">%1$d new</string>
     <string name="sms_warning_short">Possible phishing</string>
+    <string name="sms_sig_spam_wording">Worded like known spam messages</string>
 </resources>

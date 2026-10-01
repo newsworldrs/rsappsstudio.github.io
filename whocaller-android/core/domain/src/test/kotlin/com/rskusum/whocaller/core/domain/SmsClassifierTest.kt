@@ -45,4 +45,35 @@ class SmsClassifierTest {
     fun `blocked sender is spam`() {
         assertEquals(SmsCategory.SPAM, classifier.classify("+919812345678", "hello", senderBlocked = true).category)
     }
+
+    @Test
+    fun `lottery scam from a phone number is caught by the learned model`() {
+        val c = classifier.classify(
+            "+919876543210",
+            "Congratulations! You have won Rs 25,00,000 in KBC lucky draw. Call 9876543210 to claim your prize now",
+        )
+        assertTrue(SmsSignal.SPAM_WORDING in c.signals)
+        assertTrue(c.category == SmsCategory.SPAM || c.category == SmsCategory.SCAM)
+    }
+
+    @Test
+    fun `bank alerts are never judged by the learned model`() {
+        val debit = classifier.classify(
+            "VM-HDFCBK",
+            "Rs.2,500.00 debited from A/c XX1234 to VPA swiggy@icici. Avl Bal Rs.10,234.50. Not you? Call 18002586161",
+        )
+        assertTrue(SmsSignal.SPAM_WORDING !in debit.signals)
+        assertEquals(SmsCategory.TRANSACTIONS, debit.category)
+        val otp = classifier.classify("+919812345678", "123456 is your OTP for login. Do not share it with anyone.")
+        assertTrue(SmsSignal.SPAM_WORDING !in otp.signals)
+    }
+
+    @Test
+    fun `model file is bundled and tokenised like the training script`() {
+        assertTrue(com.rskusum.whocaller.core.domain.sms.SpamTextModel.bundled != null)
+        assertEquals(
+            setOf("win", "zzmoney", "zznum", "call", "zzlongnum", "zzurl"),
+            com.rskusum.whocaller.core.domain.sms.SpamTextModel.tokens("WIN Rs 500! Call 08452810075 www.example.com"),
+        )
+    }
 }
