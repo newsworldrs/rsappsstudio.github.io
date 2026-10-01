@@ -102,9 +102,10 @@ different state than the branch are dropped.
 
 - **mode = preview** builds the CSVs only. Download them from the run page (*Artifacts → whocaller-datasets*) and check them.
 - **mode = upload** also writes them to Firestore (needs the `FIREBASE_SERVICE_ACCOUNT` secret).
-- **Free Spark plan:** Firestore allows 20,000 writes a day, so `max_writes` defaults to 18,000. When a
+- **Blaze plan (default):** `max_writes = 0` uploads everything in one run.
+- **Free Spark plan:** Firestore allows 20,000 writes a day, so set `max_writes` to 18,000. When a
   run stops at the limit, its log says `Continue another day with: --start N` — run it again the next
-  day with `start = N`. On the Blaze plan set `max_writes = 0` (100,000 writes cost about ₹15).
+  day with `start = N`.
 
 Big brands' **customer-care numbers** are the most useful entries for spotting fake "bank" calls.
 `tools/data/customer-care-template.csv` lists 30 companies with their official websites: copy each
