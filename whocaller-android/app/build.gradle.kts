@@ -8,7 +8,7 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// Firebase is optional: the Google Services and Crashlytics plugins are applied only when the
+// developer has added app/google-services.json (a temporary test copy is committed; replace it before release). Without it, WhoCaller runs with
 // developer has added app/google-services.json (never committed). Without it, WhoCaller runs with
 // no-op analytics/crash reporting and guest-only accounts. See docs/README.md.
 val hasFirebaseConfig = file("google-services.json").exists()

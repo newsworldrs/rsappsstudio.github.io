@@ -12,7 +12,7 @@ captures/
 # Never commit secrets or per-developer config
 keystore.properties
 .env
-app/google-services.json
+# Temporary test Firebase config is committed (owner's choice); replace before release.
 *.p12
 *.pem
 

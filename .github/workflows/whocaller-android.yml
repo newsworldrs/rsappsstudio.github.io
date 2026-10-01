@@ -37,10 +37,10 @@ jobs:
       - name: Check that no secrets are committed
         run: |
           set -e
-          ! git ls-files | grep -v '^app/debug\.keystore$' | grep -E '(^|/)(google-services\.json|keystore\.properties|local\.properties|\.env)$|\.(jks|keystore|p12|pem)$'
-          ! git grep -nE 'AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|"private_key_id"' -- . ':!*.md'
+          ! git ls-files | grep -vE '^app/(debug\.keystore|google-services\.json)$' | grep -E '(^|/)(google-services\.json|keystore\.properties|local\.properties|\.env)$|\.(jks|keystore|p12|pem)$'
+          ! git grep -nE 'AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|"private_key_id"' -- . ':!*.md' ':!app/google-services.json'
 
-      - name: Add Firebase config from repository secret (if set)
+      - name: Override Firebase config from repository secret (if set)
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
@@ -53,7 +53,7 @@ jobs:
             fi
             echo "Firebase config added."
           else
-            echo "No GOOGLE_SERVICES_JSON secret: building without Firebase."
+            echo "No GOOGLE_SERVICES_JSON secret: using the committed test app/google-services.json."
           fi
 
       - name: Build debug APK
