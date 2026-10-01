@@ -91,9 +91,21 @@ jobs:
 
       - name: Businesses (OpenStreetMap India, ODbL)
         if: env.TASK == 'import-all' || env.TASK == 'import-osm'
+        continue-on-error: true
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
-          curl -sSL -o /tmp/india.osm.pbf https://download.geofabrik.de/asia/india-latest.osm.pbf
+          # Geofabrik first, then mirrors (Geofabrik sometimes answers with a redirect loop).
+          ok=""
+          for url in \
+            https://download.geofabrik.de/asia/india-latest.osm.pbf \
+            https://download.openstreetmap.fr/extracts/asia/india-latest.osm.pbf \
+            https://download.openstreetmap.fr/extracts/asia/india.osm.pbf; do
+            echo "Downloading $url"
+            if curl -fsSL --retry 3 --max-redirs 10 -A "WhoCallerDatasetImporter/1.0" -o /tmp/india.osm.pbf "$url" \
+               && [ "$(stat -c %s /tmp/india.osm.pbf)" -gt 100000000 ]; then ok=1; break; fi
+          done
+          [ -n "$ok" ] || { echo "Could not download OpenStreetMap India"; exit 1; }
+          ls -lh /tmp/india.osm.pbf
           osmium tags-filter /tmp/india.osm.pbf nwr/phone nwr/contact:phone nwr/contact:mobile -o /tmp/phones.osm.pbf --overwrite
           osmium export /tmp/phones.osm.pbf -f geojsonseq -o /tmp/phones.geojsonseq --overwrite
           node import-osm.mjs /tmp/phones.geojsonseq --out data/osm-callers.csv
