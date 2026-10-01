@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.telecom.PhoneAccount
+import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import android.telecom.VideoProfile
 import android.widget.Toast
@@ -48,13 +49,14 @@ object TelecomActions {
      * Places a call via Telecom (audio or bidirectional video). Without CALL_PHONE it falls back to
      * the dialer with the number filled in, so the user still confirms the call.
      */
-    fun placeCall(context: Context, number: String, video: Boolean = false) {
+    fun placeCall(context: Context, number: String, video: Boolean = false, account: PhoneAccountHandle? = null) {
         val uri = Uri.fromParts(PhoneAccount.SCHEME_TEL, number, null)
         val telecom = context.getSystemService(TelecomManager::class.java)
         if (telecom != null && ContextCompat.checkSelfPermission(context, Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
             try {
                 val extras = Bundle()
                 if (video) extras.putInt(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, VideoProfile.STATE_BIDIRECTIONAL)
+                if (account != null) extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account)
                 telecom.placeCall(uri, extras)
                 return
             } catch (_: SecurityException) {
@@ -62,6 +64,18 @@ object TelecomActions {
             }
         }
         ActionIntents.dial(context, number)
+    }
+
+    /** Calls voicemail through Telecom (needs CALL_PHONE). */
+    fun callVoicemail(context: Context): Boolean {
+        val telecom = context.getSystemService(TelecomManager::class.java) ?: return false
+        if (!canPlaceCalls(context)) return false
+        return try {
+            telecom.placeCall(Uri.fromParts(PhoneAccount.SCHEME_VOICEMAIL, "", null), Bundle())
+            true
+        } catch (_: SecurityException) {
+            false
+        }
     }
 
     // ---------- WhatsApp ----------

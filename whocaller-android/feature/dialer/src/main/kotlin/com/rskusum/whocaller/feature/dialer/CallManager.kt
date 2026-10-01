@@ -5,6 +5,7 @@ import android.os.Build
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.InCallService
+import android.telecom.PhoneAccountHandle
 import android.telecom.VideoProfile
 import com.rskusum.whocaller.core.model.CallerLabel
 import com.rskusum.whocaller.core.model.CallerResult
@@ -36,9 +37,20 @@ data class CallUi(
     val incomingVideo: Boolean,
     val connectTimeMillis: Long,
     val canHold: Boolean,
+    /** Raw number of the other party (null when withheld). */
+    val number: String? = null,
+    val isConference: Boolean = false,
+    val childCount: Int = 0,
+    /** Part of a conference: shown through its parent, not on its own. */
+    val isChild: Boolean = false,
+    val canMerge: Boolean = false,
+    val canSwapConference: Boolean = false,
 ) {
     val isRinging: Boolean get() = state == Call.STATE_RINGING
     val isActive: Boolean get() = state == Call.STATE_ACTIVE
+    val isHeld: Boolean get() = state == Call.STATE_HOLDING
+    /** Telecom is waiting for the user to choose a SIM ("ask every time"). */
+    val needsAccount: Boolean get() = state == Call.STATE_SELECT_PHONE_ACCOUNT
 }
 
 /**
@@ -61,6 +73,9 @@ object CallManager {
         override fun onStateChanged(call: Call, state: Int) = refresh()
         override fun onDetailsChanged(call: Call, details: Call.Details) = refresh()
         override fun onVideoCallChanged(call: Call, videoCall: InCallService.VideoCall?) = refresh()
+        override fun onConferenceableCallsChanged(call: Call, conferenceableCalls: MutableList<Call>) = refresh()
+        override fun onChildrenChanged(call: Call, children: MutableList<Call>) = refresh()
+        override fun onParentChanged(call: Call, parent: Call?) = refresh()
     }
 
     internal fun attach(s: InCallService) {
@@ -98,7 +113,7 @@ object CallManager {
     }
 
     /** The call the screen should focus on: ringing first, then active/dialing, then held. */
-    fun primary(): CallUi? = _calls.value.let { all ->
+    fun primary(): CallUi? = _calls.value.filterNot { it.isChild }.let { all ->
         all.firstOrNull { it.isRinging }
             ?: all.firstOrNull { it.state == Call.STATE_ACTIVE || it.state == Call.STATE_DIALING || it.state == Call.STATE_CONNECTING }
             ?: all.firstOrNull()
@@ -114,6 +129,35 @@ object CallManager {
     fun toggleHold(call: Call) {
         if (stateOf(call) == Call.STATE_HOLDING) call.unhold() else call.hold()
     }
+
+    /** Joins the active and held calls into a conference, if the network allows it. */
+    fun merge(call: Call) {
+        val other = call.conferenceableCalls.firstOrNull()
+        when {
+            other != null -> call.conference(other)
+            call.details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE) -> call.mergeConference()
+        }
+    }
+
+    /** Switches between the active call and the held one. */
+    fun swap() {
+        val all = _calls.value.filterNot { it.isChild }
+        val active = all.firstOrNull { it.isActive }
+        val held = all.firstOrNull { it.isHeld }
+        when {
+            active != null && active.canSwapConference -> active.call.swapConference()
+            held != null -> held.call.unhold() // Telecom puts the active call on hold.
+            active != null -> active.call.hold()
+        }
+    }
+
+    /** Ends the active call and answers the ringing one. */
+    fun endAndAnswer(ringing: Call) {
+        _calls.value.filter { it.isActive && it.call != ringing }.forEach { it.call.disconnect() }
+        answer(ringing, video = false)
+    }
+
+    fun selectAccount(call: Call, handle: PhoneAccountHandle) = call.phoneAccountSelected(handle, false)
 
     fun setMuted(muted: Boolean) {
         service?.get()?.setMuted(muted)
@@ -149,6 +193,12 @@ object CallManager {
                 incomingVideo = state == Call.STATE_RINGING && VideoProfile.isVideo(details.videoState),
                 connectTimeMillis = details.connectTimeMillis,
                 canHold = details.can(Call.Details.CAPABILITY_HOLD) || details.can(Call.Details.CAPABILITY_SUPPORT_HOLD),
+                number = details.handle?.schemeSpecificPart?.takeIf { it.isNotBlank() },
+                isConference = details.hasProperty(Call.Details.PROPERTY_CONFERENCE),
+                childCount = call.children.size,
+                isChild = call.parent != null,
+                canMerge = call.conferenceableCalls.isNotEmpty() || details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE),
+                canSwapConference = details.can(Call.Details.CAPABILITY_SWAP_CONFERENCE),
             )
         }
     }

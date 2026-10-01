@@ -35,3 +35,31 @@ class DialerSuggestionsTest {
         assertTrue(DialerViewModel.match("5", contacts).isEmpty())
     }
 }
+
+class DialerEditingTest {
+
+    @Test
+    fun `insert and backspace work at the cursor`() {
+        val start = DialInput("98765", 2)
+        assertEquals(DialInput("981765", 3), Editing.insert(start, "1"))
+        assertEquals(DialInput("9765", 1), Editing.backspace(start))
+        assertEquals(DialInput("98765", 0), Editing.backspace(DialInput("98765", 0)))
+    }
+
+    @Test
+    fun `insert never exceeds the maximum length`() {
+        val full = DialInput("1".repeat(DialerViewModel.MAX_LENGTH), DialerViewModel.MAX_LENGTH)
+        assertEquals(full, Editing.insert(full, "2"))
+    }
+
+    @Test
+    fun `cursor maps between raw and formatted text`() {
+        val formatted = "+91 94616 93096"
+        // Raw "+919461693096": cursor after "+91" sits before the space.
+        assertEquals(3, Editing.toFormatted(formatted, 3))
+        assertEquals(5, Editing.toFormatted(formatted, 4))
+        assertEquals(formatted.length, Editing.toFormatted(formatted, 13))
+        assertEquals(4, Editing.toRaw(formatted, 5))
+        assertEquals(13, Editing.toRaw(formatted, formatted.length))
+    }
+}

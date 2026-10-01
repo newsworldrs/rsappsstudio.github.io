@@ -119,6 +119,15 @@ class MainActivity : AppCompatActivity() {
             "calls" -> "calls"
             "protection" -> "protection"
             "blocked" -> Routes.BLOCKED
+            "settings" -> "settings"
+            "privacy" -> Routes.PRIVACY
+            "profile" -> Routes.PROFILE
+            "contacts" -> Routes.CONTACTS
+            "premium" -> Routes.PREMIUM
+            "report" -> data.lastPathSegment
+                ?.filter { it.isDigit() || it == '+' }
+                ?.takeIf { it.length in 3..20 }
+                ?.let(Routes::report)
             "messages" -> Routes.messages(null)
             "sms" -> {
                 val thread = data.lastPathSegment?.toLongOrNull() ?: return null

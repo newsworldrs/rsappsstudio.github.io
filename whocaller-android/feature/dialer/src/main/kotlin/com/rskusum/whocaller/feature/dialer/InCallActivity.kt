@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.telecom.Call
 import android.telecom.CallAudioState
+import android.telecom.PhoneAccountHandle
 import android.view.Surface
 import android.view.TextureView
 import android.view.WindowManager
@@ -20,6 +21,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,23 +40,26 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.CallMerge
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AddIcCall
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.SwapCalls
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,22 +71,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.rskusum.whocaller.core.model.CallerLabel
-import com.rskusum.whocaller.core.ui.component.CallerAvatar
 import com.rskusum.whocaller.core.ui.theme.WhoCallerTheme
 import com.rskusum.whocaller.core.ui.util.formatDuration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 /** Full-screen call UI used while WhoCaller is the default phone app. Shows over the lock screen. */
 class InCallActivity : ComponentActivity() {
@@ -100,19 +111,22 @@ class InCallActivity : ComponentActivity() {
 
         setContent {
             WhoCallerTheme(dynamicColor = false) {
-                val calls by CallManager.calls.collectAsStateWithLifecycle()
-                val audio by CallManager.audio.collectAsStateWithLifecycle()
-                val current = calls.firstOrNull { it.isRinging }
-                    ?: calls.firstOrNull { it.state != Call.STATE_HOLDING && it.state != Call.STATE_DISCONNECTED }
-                    ?: calls.firstOrNull()
-                LaunchedEffect(calls.isEmpty()) {
-                    if (calls.isEmpty()) {
-                        delay(600)
-                        finish()
+                CompositionLocalProvider(LocalDialerPalette provides remember { dialerPalette(true) }) {
+                    val calls by CallManager.calls.collectAsStateWithLifecycle()
+                    val audio by CallManager.audio.collectAsStateWithLifecycle()
+                    val visible = calls.filterNot { it.isChild }
+                    val current = visible.firstOrNull { it.isRinging }
+                        ?: visible.firstOrNull { it.state != Call.STATE_HOLDING && it.state != Call.STATE_DISCONNECTED }
+                        ?: visible.firstOrNull()
+                    LaunchedEffect(calls.isEmpty()) {
+                        if (calls.isEmpty()) {
+                            delay(600)
+                            finish()
+                        }
                     }
-                }
-                Surface(color = Color(0xFF0B1F1D), contentColor = Color.White, modifier = Modifier.fillMaxSize()) {
-                    if (current != null) InCallScreen(current, audio)
+                    Box(Modifier.fillMaxSize().background(CALL_BACKGROUND)) {
+                        if (current != null) InCallScreen(current, visible.filter { it.call != current.call }, audio)
+                    }
                 }
             }
         }
@@ -137,78 +151,191 @@ class InCallActivity : ComponentActivity() {
     }
 }
 
+private val CALL_BACKGROUND = Brush.verticalGradient(listOf(Color(0xFF0B1026), Color(0xFF1B1F4A), Color(0xFF0B1026)))
+private val GLASS = Color.White.copy(alpha = 0.12f)
+private val END_RED = listOf(Color(0xFFFF6B6B), Color(0xFFD92D20))
+
 @Composable
-private fun InCallScreen(call: CallUi, audio: CallAudioState?) {
+private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioState?) {
     val context = LocalContext.current
     var showKeypad by rememberSaveable { mutableStateOf(false) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && call.isRinging) CallManager.answer(call.call, video = true)
     }
+    // Contact photo and offline location/operator for the other party.
+    var photoUri by remember(call.number) { mutableStateOf<String?>(null) }
+    var facts by remember(call.number) { mutableStateOf<NumberFacts?>(null) }
+    LaunchedEffect(call.number) {
+        val n = call.number ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            photoUri = ContactLookup.byNumber(context, n)?.photoUri
+            facts = NumberTools.facts(n, NumberTools.countryIso(context))
+        }
+    }
+    val activeOther = others.firstOrNull { it.isActive }
+    val heldOther = others.firstOrNull { it.isHeld }
 
     Box(Modifier.fillMaxSize()) {
         if (call.isVideo && call.isActive) VideoSurfaces(call.call)
 
         Column(
-            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
+            Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(32.dp))
-            if (!call.isVideo || !call.isActive) {
-                CallerAvatar(call.display.title.takeIf { call.display.number != null }, call.display.callerLabel, size = 96.dp)
-                Spacer(Modifier.height(16.dp))
+            // Another call waiting on hold.
+            (heldOther ?: activeOther)?.takeIf { !call.isRinging }?.let { other ->
+                OtherCallBanner(other, canSwap = true)
+                Spacer(Modifier.height(12.dp))
             }
-            Text(call.display.title, style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
-            call.display.number?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.8f)) }
-            call.display.label?.let { label ->
-                Spacer(Modifier.height(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = if (call.display.warning) Color(0xFFB3261E) else Color.White.copy(alpha = 0.15f),
-                    contentColor = Color.White,
+            Spacer(Modifier.height(24.dp))
+            if (!call.isVideo || !call.isActive) {
+                Box(
+                    Modifier.size(132.dp).border(3.dp, Brush.sweepGradient(if (call.display.warning) listOf(WarnRed, Color(0xFFFF9F43), WarnRed) else listOf(Indigo, Violet, Sky, Indigo)), CircleShape),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(label, Modifier.padding(horizontal = 14.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+                    if (call.isConference) {
+                        Box(Modifier.size(112.dp).clip(CircleShape).background(Brush.linearGradient(avatarColors("conference"))), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Groups, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
+                        }
+                    } else {
+                        ContactAvatar(call.display.title.takeIf { call.display.number != null }, photoUri, 112.dp, warning = call.display.warning)
+                    }
                 }
+                Spacer(Modifier.height(18.dp))
+            }
+            Text(
+                if (call.isConference) stringResource(R.string.call_conference, call.childCount) else call.display.title,
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            call.display.number?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.8f)) }
+            listOfNotNull(facts?.location, facts?.carrier).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
+            }
+            call.display.label?.let { label ->
+                Spacer(Modifier.height(10.dp))
+                StatusChip(if (call.display.warning) Icons.Filled.Warning else null, label, if (call.display.warning) Color(0xFFFF8A80) else Color.White)
             }
             Spacer(Modifier.height(12.dp))
             CallStatus(call)
             Spacer(Modifier.weight(1f))
 
-            if (call.isRinging) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                    RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_decline), Color(0xFFB3261E)) { CallManager.decline(call.call) }
-                    if (call.incomingVideo) {
-                        RoundAction(Icons.Filled.Videocam, stringResource(R.string.call_answer_video), Color(0xFF1B6D3B)) {
-                            if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                                CallManager.answer(call.call, video = true)
-                            } else {
-                                cameraLauncher.launch(Manifest.permission.CAMERA)
+            when {
+                call.needsAccount -> AccountChooser(call)
+                call.isRinging -> RingingActions(call, activeOther != null) {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        CallManager.answer(call.call, video = true)
+                    } else {
+                        cameraLauncher.launch(Manifest.permission.CAMERA)
+                    }
+                }
+                else -> {
+                    if (showKeypad) {
+                        DtmfPad { CallManager.dtmf(call.call, it) }
+                        TextButton(onClick = { showKeypad = false }) { Text(stringResource(R.string.call_hide_keypad), color = Color.White) }
+                    } else {
+                        val muted = audio?.isMuted == true
+                        val speaker = audio?.route == CallAudioState.ROUTE_SPEAKER
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Toggle(Icons.Filled.MicOff, stringResource(R.string.call_mute), muted) { CallManager.setMuted(!muted) }
+                            Toggle(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.call_speaker), speaker) { CallManager.setSpeaker(!speaker) }
+                            Toggle(Icons.Filled.Dialpad, stringResource(R.string.call_keypad), false) { showKeypad = true }
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Toggle(Icons.Filled.Pause, stringResource(R.string.call_hold), call.isHeld, enabled = call.canHold) { CallManager.toggleHold(call.call) }
+                            Toggle(Icons.Filled.AddIcCall, stringResource(R.string.call_add), false) { addCall(context) }
+                            when {
+                                call.canMerge && others.isNotEmpty() ->
+                                    Toggle(Icons.AutoMirrored.Filled.CallMerge, stringResource(R.string.call_merge), false) { CallManager.merge(call.call) }
+                                others.isNotEmpty() ->
+                                    Toggle(Icons.Filled.SwapCalls, stringResource(R.string.call_swap), false) { CallManager.swap() }
+                                else ->
+                                    Toggle(Icons.AutoMirrored.Filled.CallMerge, stringResource(R.string.call_merge), false, enabled = false) {}
                             }
                         }
                     }
-                    RoundAction(Icons.Filled.Call, stringResource(R.string.call_answer), Color(0xFF1B6D3B)) { CallManager.answer(call.call, video = false) }
+                    Spacer(Modifier.height(28.dp))
+                    RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_end), END_RED) { CallManager.hangUp(call.call) }
                 }
-            } else {
-                if (showKeypad) {
-                    DtmfPad { CallManager.dtmf(call.call, it) }
-                    TextButton(onClick = { showKeypad = false }) { Text(stringResource(R.string.call_hide_keypad), color = Color.White) }
-                } else {
-                    val muted = audio?.isMuted == true
-                    val speaker = audio?.route == CallAudioState.ROUTE_SPEAKER
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        Toggle(Icons.Filled.MicOff, stringResource(R.string.call_mute), muted) { CallManager.setMuted(!muted) }
-                        Toggle(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.call_speaker), speaker) { CallManager.setSpeaker(!speaker) }
-                        if (call.canHold) {
-                            Toggle(Icons.Filled.Pause, stringResource(R.string.call_hold), call.state == Call.STATE_HOLDING) { CallManager.toggleHold(call.call) }
-                        }
-                        Toggle(Icons.Filled.Dialpad, stringResource(R.string.call_keypad), false) { showKeypad = true }
-                    }
-                }
-                Spacer(Modifier.height(24.dp))
-                RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_end), Color(0xFFB3261E)) { CallManager.hangUp(call.call) }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
         }
     }
+}
+
+@Composable
+private fun RingingActions(call: CallUi, hasActiveCall: Boolean, onAnswerVideo: () -> Unit) {
+    val green = listOf(CallGreenLight, CallGreen)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+        RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_decline), END_RED) { CallManager.decline(call.call) }
+        if (call.incomingVideo) RoundAction(Icons.Filled.Videocam, stringResource(R.string.call_answer_video), listOf(Color(0xFF6366F1), Color(0xFF4338CA)), onAnswerVideo)
+        if (hasActiveCall) {
+            RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_end_and_answer), listOf(Color(0xFFFBBF24), Color(0xFFF97316))) { CallManager.endAndAnswer(call.call) }
+            RoundAction(Icons.Filled.Pause, stringResource(R.string.call_hold_and_answer), green) { CallManager.answer(call.call, video = false) }
+        } else {
+            RoundAction(Icons.Filled.Call, stringResource(R.string.call_answer), green) { CallManager.answer(call.call, video = false) }
+        }
+    }
+}
+
+/** Telecom asks which SIM to use ("ask every time"). */
+@Composable
+private fun AccountChooser(call: CallUi) {
+    val context = LocalContext.current
+    val sims = remember(call.call) {
+        val offered: List<PhoneAccountHandle> = call.call.details.intentExtras?.let { extras ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                extras.getParcelableArrayList(Call.AVAILABLE_PHONE_ACCOUNTS, PhoneAccountHandle::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                extras.getParcelableArrayList(Call.AVAILABLE_PHONE_ACCOUNTS)
+            }
+        }.orEmpty()
+        val all = Sims.list(context)
+        if (offered.isEmpty()) all else all.filter { it.handle in offered }.ifEmpty { all }
+    }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(GLASS)) {
+        SimPicker(sims, LocalDialerPalette.current) { CallManager.selectAccount(call.call, it.handle) }
+        TextButton(onClick = { CallManager.hangUp(call.call) }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text(stringResource(android.R.string.cancel), color = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun OtherCallBanner(other: CallUi, canSwap: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(GLASS).padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(if (other.isHeld) Icons.Filled.Pause else Icons.Filled.Call, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(other.display.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                stringResource(if (other.isHeld) R.string.call_state_on_hold else R.string.call_state_active),
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (canSwap) {
+            TextButton(onClick = { CallManager.swap() }) {
+                Icon(Icons.Filled.SwapCalls, contentDescription = null, tint = Color.White)
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.call_swap), color = Color.White)
+            }
+        }
+    }
+}
+
+/** Opens the keypad to dial a second call; Telecom holds the current one when it starts. */
+private fun addCall(context: Context) {
+    context.startActivity(Intent(context, DialerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 @Composable
@@ -221,40 +348,52 @@ private fun CallStatus(call: CallUi) {
         }
     }
     val text = when (call.state) {
-        Call.STATE_RINGING -> stringResource(R.string.call_state_incoming)
+        Call.STATE_RINGING -> stringResource(if (call.incomingVideo) R.string.call_state_incoming_video else R.string.call_state_incoming)
         Call.STATE_DIALING -> stringResource(R.string.call_state_dialing)
         Call.STATE_CONNECTING, Call.STATE_NEW -> stringResource(R.string.call_state_connecting)
+        Call.STATE_SELECT_PHONE_ACCOUNT -> stringResource(R.string.dialer_choose_sim)
         Call.STATE_HOLDING -> stringResource(R.string.call_state_on_hold)
         Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> stringResource(R.string.call_state_ended)
         Call.STATE_ACTIVE -> if (call.connectTimeMillis > 0) formatDuration((now - call.connectTimeMillis).coerceAtLeast(0) / 1000) else ""
         else -> ""
     }
-    Text(text, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.85f))
+    Text(text, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f))
 }
 
 @Composable
-private fun RoundAction(icon: ImageVector, label: String, color: Color, onClick: () -> Unit) {
+private fun RoundAction(icon: ImageVector, label: String, colors: List<Color>, onClick: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        FilledIconButton(
-            onClick = onClick,
-            modifier = Modifier.size(72.dp).semantics { contentDescription = label },
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = color, contentColor = Color.White),
-        ) { Icon(icon, contentDescription = null, modifier = Modifier.size(32.dp)) }
-        Spacer(Modifier.height(6.dp))
-        Text(label, style = MaterialTheme.typography.labelMedium)
+        GradientCallButton(icon = icon, description = label, colors = colors, size = 72.dp, enabled = true, onClick = onClick)
+        Spacer(Modifier.height(8.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White)
     }
 }
 
 @Composable
-private fun Toggle(icon: ImageVector, label: String, checked: Boolean, onToggle: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        FilledTonalIconToggleButton(
-            checked = checked,
-            onCheckedChange = { onToggle() },
-            modifier = Modifier.size(60.dp).semantics { contentDescription = label },
-        ) { Icon(icon, contentDescription = null) }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall)
+private fun Toggle(icon: ImageVector, label: String, checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(84.dp)) {
+        Box(
+            Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .background(if (checked) Color.White else GLASS)
+                .clickable(enabled = enabled, role = Role.Switch, onClick = onToggle)
+                .semantics { contentDescription = label },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = when {
+                    !enabled -> Color.White.copy(alpha = 0.35f)
+                    checked -> Color(0xFF1B1F4A)
+                    else -> Color.White
+                },
+                modifier = Modifier.size(28.dp),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = if (enabled) 1f else 0.5f), maxLines = 1)
     }
 }
 
@@ -265,10 +404,10 @@ internal fun DtmfPad(onDigit: (Char) -> Unit) {
         rows.forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                 row.forEach { c ->
-                    TextButton(
-                        onClick = { onDigit(c) },
-                        modifier = Modifier.size(72.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.1f)),
-                    ) { Text(c.toString(), style = MaterialTheme.typography.headlineSmall, color = Color.White) }
+                    Box(
+                        Modifier.size(70.dp).clip(CircleShape).background(GLASS).clickable(role = Role.Button) { onDigit(c) },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(c.toString(), fontSize = 28.sp, color = Color.White) }
                 }
             }
             Spacer(Modifier.height(10.dp))

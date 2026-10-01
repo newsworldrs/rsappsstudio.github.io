@@ -59,6 +59,12 @@ As the default SMS app WhoCaller stores every incoming message (it never deletes
 and records messages you send. Picture messages (MMS) are not downloaded yet: the user is told to
 view them in another SMS app. Google Play only allows SMS permissions for default SMS apps.
 
+### Phone app (keypad, recents, contacts)
+Recents, contacts, favourites, contact photos and the contact details card are read on-device from
+the Android call log and Contacts Provider and are never uploaded. Location and operator shown for a
+number come from libphonenumber's offline data bundled in the app (no network). The WhatsApp video
+button only reads the "Video call" entry WhatsApp itself adds to your contacts, on-device.
+
 ### Profile
 Name, profession, institute, email and the profile photo or avatar are stored on this device only.
 The photo is picked with the system photo picker (no storage permission) and saved downscaled in

@@ -51,9 +51,10 @@
         <activity
             android:name=".DialerActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/dialer_label"
-            android:theme="@style/Theme.WhoCaller.Call"
-            android:windowSoftInputMode="stateHidden">
+            android:theme="@style/Theme.WhoCaller.Dialer"
+            android:windowSoftInputMode="stateHidden|adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.DIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
