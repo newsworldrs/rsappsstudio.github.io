@@ -16,6 +16,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.res.pluralStringResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -519,13 +523,72 @@ fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails
     }
 }
 
+/** Star with a pop animation and haptic tick, so the tap is felt and seen at once. */
 @Composable
 internal fun StarButton(starred: Boolean, onToggle: () -> Unit) {
-    IconButton(onClick = onToggle) {
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val scale = remember { androidx.compose.animation.core.Animatable(1f) }
+    var first by remember { mutableStateOf(true) }
+    LaunchedEffect(starred) {
+        if (first) {
+            first = false
+        } else {
+            scale.animateTo(1.4f, androidx.compose.animation.core.tween(110))
+            scale.animateTo(1f, androidx.compose.animation.core.spring(dampingRatio = 0.4f))
+        }
+    }
+    IconButton(onClick = {
+        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        onToggle()
+    }) {
         Icon(
             if (starred) Icons.Filled.Star else Icons.Filled.StarBorder,
             contentDescription = stringResource(if (starred) R.string.dialer_unfavorite else R.string.dialer_favorite),
             tint = Color(0xFFF59E0B),
+            modifier = Modifier.graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            },
         )
+    }
+}
+
+/**
+ * Favourite toggle: shows the new state immediately, asks for "edit contacts" permission the first
+ * time, saves in the background and reverts (with a message) if saving fails.
+ */
+@Composable
+internal fun rememberStarToggle(viewModel: DialerViewModel): (contactId: Long, current: Boolean, show: (Boolean) -> Unit) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val next = pending
+        pending = null
+        if (granted) next?.invoke() else android.widget.Toast.makeText(context, R.string.dialer_star_permission, android.widget.Toast.LENGTH_LONG).show()
+    }
+    return remember(viewModel) {
+        fun toggle(contactId: Long, current: Boolean, show: (Boolean) -> Unit) {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CONTACTS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                pending = { toggle(contactId, current, show) }
+                launcher.launch(Manifest.permission.WRITE_CONTACTS)
+                return
+            }
+            val target = !current
+            show(target)
+            scope.launch {
+                if (viewModel.setStarred(contactId, target)) {
+                    android.widget.Toast.makeText(context, if (target) R.string.dialer_star_added else R.string.dialer_star_removed, android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    show(current)
+                    android.widget.Toast.makeText(context, R.string.dialer_star_failed, android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        ::toggle
     }
 }

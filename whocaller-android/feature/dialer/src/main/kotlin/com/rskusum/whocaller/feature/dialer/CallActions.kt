@@ -2,6 +2,8 @@ package com.rskusum.whocaller.feature.dialer
 
 import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.telecom.PhoneAccountHandle
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -62,30 +64,41 @@ class CallActions internal constructor(private val context: Context, private val
     internal var simChoice by mutableStateOf<SimRequest?>(null)
     internal var videoChoice by mutableStateOf<VideoRequest?>(null)
     internal var pending: (() -> Unit)? = null
-    internal var requestPermission: () -> Unit = {}
+    internal var requestPermission: (Array<String>) -> Unit = {}
 
     internal data class SimRequest(val number: String, val video: Boolean, val sims: List<SimOption>)
     internal data class VideoRequest(val number: String, val whatsAppEntry: Long)
 
     /** Calls [number]. [pickSim] forces the SIM chooser (long-press on the Call button). */
-    fun call(number: String, video: Boolean = false, pickSim: Boolean = false) {
+    fun call(number: String, video: Boolean = false, pickSim: Boolean = false, cameraAsked: Boolean = false) {
         if (number.isBlank()) return
         if (NumberTools.isEmergency(context, number) && !isDefaultDialer(context)) {
             // Only the default phone app may place emergency calls directly.
             NumberTools.dialEmergencyWithSystem(context, number)
             return
         }
-        if (!TelecomActions.canPlaceCalls(context)) {
-            pending = { call(number, video, pickSim) }
-            requestPermission()
+        // Video needs the camera for the self-view; without it the network can't start video.
+        val needCamera = video && !cameraAsked &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+        if (!TelecomActions.canPlaceCalls(context) || needCamera) {
+            pending = { call(number, video, pickSim, cameraAsked = true) }
+            requestPermission(
+                listOfNotNull(
+                    Manifest.permission.CALL_PHONE,
+                    Manifest.permission.READ_PHONE_STATE,
+                    Manifest.permission.CAMERA.takeIf { video },
+                ).toTypedArray(),
+            )
             return
         }
+        val withVideo = video && ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (video && !withVideo) Toast.makeText(context, R.string.call_camera_needed, Toast.LENGTH_LONG).show()
         val sims = Sims.list(context)
         if (sims.size > 1 && (pickSim || Sims.default(context) == null)) {
-            simChoice = SimRequest(number, video, sims)
+            simChoice = SimRequest(number, withVideo, sims)
             return
         }
-        TelecomActions.placeCall(context, number, video)
+        TelecomActions.placeCall(context, number, withVideo)
     }
 
     internal fun callWith(request: SimRequest, handle: PhoneAccountHandle) {
@@ -98,14 +111,9 @@ class CallActions internal constructor(private val context: Context, private val
         if (number.isBlank()) return
         scope.launch {
             val entry = withContext(Dispatchers.IO) { ContactLookup.whatsAppVideoEntry(context, number) }
-            val carrier = TelecomActions.supportsVideoCalling(context)
-            when {
-                carrier && entry != null -> videoChoice = VideoRequest(number, entry)
-                carrier -> call(number, video = true)
-                entry != null -> if (!ContactLookup.startWhatsAppVideo(context, entry)) openWhatsAppChat(number, hint = true)
-                TelecomActions.whatsAppPackage(context) != null -> openWhatsAppChat(number, hint = true)
-                else -> Toast.makeText(context, R.string.dialer_video_unavailable, Toast.LENGTH_LONG).show()
-            }
+            // Many phones don't report video support until the call starts, so always offer the SIM
+            // video call (4G/VoLTE): the network connects it as video, or as voice if it can't.
+            if (entry != null) videoChoice = VideoRequest(number, entry) else call(number, video = true)
         }
     }
 
@@ -122,7 +130,7 @@ class CallActions internal constructor(private val context: Context, private val
     fun voicemail() {
         if (!TelecomActions.canPlaceCalls(context)) {
             pending = { voicemail() }
-            requestPermission()
+            requestPermission(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE))
             return
         }
         if (!TelecomActions.callVoicemail(context)) Toast.makeText(context, R.string.dialer_voicemail_unavailable, Toast.LENGTH_SHORT).show()
@@ -143,7 +151,7 @@ fun rememberCallActions(): CallActions {
             Toast.makeText(context, R.string.dialer_permission_needed, Toast.LENGTH_SHORT).show()
         }
     }
-    actions.requestPermission = { launcher.launch(arrayOf(Manifest.permission.CALL_PHONE, Manifest.permission.READ_PHONE_STATE)) }
+    actions.requestPermission = { launcher.launch(it) }
     return actions
 }
 
@@ -161,6 +169,7 @@ fun CallActionsHost(actions: CallActions) {
         AlertDialog(
             onDismissRequest = { actions.videoChoice = null },
             title = { Text(stringResource(R.string.dialer_video_how)) },
+            text = { Text(stringResource(R.string.dialer_video_sim_hint)) },
             confirmButton = {
                 TextButton(onClick = {
                     actions.videoChoice = null

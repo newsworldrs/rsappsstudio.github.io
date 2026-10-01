@@ -6,4 +6,6 @@
     <exclude domain="database" path="whocaller.db" />
     <exclude domain="database" path="whocaller.db-shm" />
     <exclude domain="database" path="whocaller.db-wal" />
+    <!-- Call recordings never leave the phone. -->
+    <exclude domain="file" path="call_recordings/" />
 </full-backup-content>

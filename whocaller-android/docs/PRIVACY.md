@@ -70,6 +70,14 @@ the Android call log and Contacts Provider and are never uploaded. Location and 
 number come from libphonenumber's offline data bundled in the app (no network). The WhatsApp video
 button only reads the "Video call" entry WhatsApp itself adds to your contacts, on-device.
 
+### Call recordings
+Recording starts only when the user taps Record during a call (the first time, the app explains it
+and asks for microphone access). Recordings are AAC files in WhoCaller's private storage on the
+phone. They are never uploaded, never sent to WhoCaller's servers, and excluded from Google
+backups and device transfer. The user can play, share (through the system share sheet, their
+choice) or delete each one. Android only allows recording through the microphone, so the other
+person is recorded clearly on speaker.
+
 ### Profile
 Profession, institute and the profile photo or avatar are stored on this device only.
 

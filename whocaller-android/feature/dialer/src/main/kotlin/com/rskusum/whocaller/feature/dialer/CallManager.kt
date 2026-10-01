@@ -2,6 +2,10 @@ package com.rskusum.whocaller.feature.dialer
 
 import android.content.Context
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.telecom.Connection
+import android.telecom.TelecomManager
 import android.telecom.Call
 import android.telecom.CallAudioState
 import android.telecom.InCallService
@@ -9,7 +13,10 @@ import android.telecom.PhoneAccountHandle
 import android.telecom.VideoProfile
 import com.rskusum.whocaller.core.model.CallerLabel
 import com.rskusum.whocaller.core.model.CallerResult
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.lang.ref.WeakReference
@@ -45,6 +52,10 @@ data class CallUi(
     val isChild: Boolean = false,
     val canMerge: Boolean = false,
     val canSwapConference: Boolean = false,
+    /** The network and both phones allow switching this call to video. */
+    val canVideo: Boolean = false,
+    /** The other person asked to switch this call to video. */
+    val videoRequested: Boolean = false,
 ) {
     val isRinging: Boolean get() = state == Call.STATE_RINGING
     val isActive: Boolean get() = state == Call.STATE_ACTIVE
@@ -65,6 +76,16 @@ object CallManager {
 
     private val _calls = MutableStateFlow<List<CallUi>>(emptyList())
     val calls: StateFlow<List<CallUi>> = _calls.asStateFlow()
+
+    /** One-off messages for the call screen (string resource ids). */
+    private val _messages = MutableSharedFlow<Int>(extraBufferCapacity = 4)
+    val messages: SharedFlow<Int> = _messages.asSharedFlow()
+
+    private val videoCallbacks = ConcurrentHashMap<Call, Pair<InCallService.VideoCall, InCallService.VideoCall.Callback>>()
+    private val videoRequests: MutableSet<Call> = ConcurrentHashMap.newKeySet()
+    /** Video calls that the network connected as voice (told once). */
+    private val downgradeNoticed: MutableSet<Call> = ConcurrentHashMap.newKeySet()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val _audio = MutableStateFlow<CallAudioState?>(null)
     val audio: StateFlow<CallAudioState?> = _audio.asStateFlow()
@@ -102,6 +123,9 @@ object CallManager {
     }
 
     internal fun remove(call: Call) {
+        videoCallbacks.remove(call)?.let { (vc, cb) -> runCatching { vc.unregisterCallback(cb) } }
+        videoRequests.remove(call)
+        downgradeNoticed.remove(call)
         call.unregisterCallback(callback)
         list.remove(call)
         displays.remove(call)
@@ -157,6 +181,58 @@ object CallManager {
         answer(ringing, video = false)
     }
 
+    /** Asks the network to turn video on (or off) for an ongoing call. Returns false if it can't. */
+    fun requestVideo(call: Call, on: Boolean): Boolean {
+        val vc = call.videoCall ?: return false
+        return runCatching {
+            vc.sendSessionModifyRequest(VideoProfile(if (on) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY))
+        }.isSuccess
+    }
+
+    /** Answers the other person's request to switch to video. */
+    fun respondToVideoRequest(call: Call, accept: Boolean) {
+        videoRequests.remove(call)
+        runCatching {
+            call.videoCall?.sendSessionModifyResponse(
+                VideoProfile(if (accept) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY),
+            )
+        }
+        refresh()
+    }
+
+    /** Listens to the video session (upgrade requests, answers) for each call that has one. */
+    private fun watchVideo(call: Call) {
+        val vc = call.videoCall
+        val known = videoCallbacks[call]
+        if (vc == null || known?.first === vc) return
+        known?.let { (old, oldCb) -> runCatching { old.unregisterCallback(oldCb) } }
+        val cb = object : InCallService.VideoCall.Callback() {
+            override fun onSessionModifyRequestReceived(videoProfile: VideoProfile) {
+                if (VideoProfile.isVideo(videoProfile.videoState) && !VideoProfile.isVideo(call.details.videoState)) {
+                    videoRequests += call
+                    refresh()
+                }
+            }
+
+            override fun onSessionModifyResponseReceived(status: Int, requestedProfile: VideoProfile?, responseProfile: VideoProfile?) {
+                if (status != Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS) {
+                    _messages.tryEmit(
+                        if (status == Connection.VideoProvider.SESSION_MODIFY_REQUEST_REJECTED_BY_REMOTE) R.string.call_video_declined else R.string.call_video_failed,
+                    )
+                }
+                refresh()
+            }
+
+            override fun onCallSessionEvent(event: Int) = Unit
+            override fun onPeerDimensionsChanged(width: Int, height: Int) = Unit
+            override fun onVideoQualityChanged(videoQuality: Int) = Unit
+            override fun onCallDataUsageChanged(dataUsage: Long) = Unit
+            override fun onCameraCapabilitiesChanged(cameraCapabilities: VideoProfile.CameraCapabilities?) = Unit
+        }
+        runCatching { vc.registerCallback(cb, mainHandler) }
+        videoCallbacks[call] = vc to cb
+    }
+
     fun selectAccount(call: Call, handle: PhoneAccountHandle) = call.phoneAccountSelected(handle, false)
 
     fun setMuted(muted: Boolean) {
@@ -185,6 +261,16 @@ object CallManager {
         _calls.value = list.map { call ->
             val details = call.details
             val state = stateOf(call)
+            watchVideo(call)
+            val video = VideoProfile.isVideo(details.videoState)
+            // Asked for a video call, but the network connected it as voice: say so once.
+            if (state == Call.STATE_ACTIVE && !video && call !in downgradeNoticed &&
+                details.intentExtras?.getInt(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, VideoProfile.STATE_AUDIO_ONLY)
+                    ?.let(VideoProfile::isVideo) == true
+            ) {
+                downgradeNoticed += call
+                _messages.tryEmit(R.string.call_video_became_voice)
+            }
             CallUi(
                 call = call,
                 state = state,
@@ -199,6 +285,11 @@ object CallManager {
                 isChild = call.parent != null,
                 canMerge = call.conferenceableCalls.isNotEmpty() || details.can(Call.Details.CAPABILITY_MERGE_CONFERENCE),
                 canSwapConference = details.can(Call.Details.CAPABILITY_SWAP_CONFERENCE),
+                canVideo = call.videoCall != null && (
+                    details.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL) ||
+                        details.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_TX)
+                    ),
+                videoRequested = call in videoRequests && !video,
             )
         }
     }

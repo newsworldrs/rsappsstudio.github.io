@@ -78,31 +78,52 @@ import com.rskusum.whocaller.core.model.IdentityType
 import com.rskusum.whocaller.core.ui.util.ActionIntents
 import com.rskusum.whocaller.core.ui.util.TelecomActions
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 
 /** Contact details card: numbers, email, company, location and every action for the person. */
 @Composable
 fun DetailsSheet(target: DetailsTarget, viewModel: DialerViewModel, actions: CallActions, onDismiss: () -> Unit) {
     val palette = LocalDialerPalette.current
+    val scope = rememberCoroutineScope()
     var data by remember(target) { mutableStateOf<DetailsData?>(null) }
-    var reload by remember { mutableIntStateOf(0) }
-    LaunchedEffect(target, reload) {
-        // After block/star changes, give the write a moment before re-reading.
-        if (reload > 0) delay(400)
-        data = viewModel.loadDetails(target)
+    LaunchedEffect(target) {
+        // Phone data first (instant), then the WhoCaller lookup fills in name/spam info.
+        val local = viewModel.loadDetailsLocal(target)
+        data = local
+        val result = viewModel.identifyDetails(local.number)
+        data = data?.copy(result = result)
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = palette.surface) {
         val d = data
         if (d == null) {
-            Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = palette.accent) }
+            Box(Modifier.fillMaxWidth().height(160.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = palette.accent) }
         } else {
-            DetailsContent(d, viewModel, actions, onChanged = { reload++ })
+            DetailsContent(
+                d,
+                viewModel,
+                actions,
+                onUpdate = { data = it },
+                onHistoryChanged = {
+                    scope.launch {
+                        delay(300) // let the call-log delete land
+                        data = data?.let { viewModel.reloadHistory(it) }
+                    }
+                },
+            )
         }
     }
 }
 
 @Composable
-private fun DetailsContent(d: DetailsData, viewModel: DialerViewModel, actions: CallActions, onChanged: () -> Unit) {
+private fun DetailsContent(
+    d: DetailsData,
+    viewModel: DialerViewModel,
+    actions: CallActions,
+    onUpdate: (DetailsData) -> Unit,
+    onHistoryChanged: () -> Unit,
+) {
     val palette = LocalDialerPalette.current
     val context = LocalContext.current
     val card = d.card
@@ -188,14 +209,28 @@ private fun DetailsContent(d: DetailsData, viewModel: DialerViewModel, actions: 
             }
         }
 
-        CallHistorySection(d, viewModel, onChanged)
+        CallHistorySection(d, viewModel, onHistoryChanged)
+
+        // This person's call recordings (saved on the phone only).
+        number?.let { n ->
+            RecordingsList(n, showNames = false, hideWhenEmpty = true) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.rec_title),
+                    color = palette.text,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
 
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             if (card != null) {
+                val star = rememberStarToggle(viewModel)
                 StarButton(card.starred) {
-                    viewModel.setStarred(card.contactId, !card.starred)
-                    onChanged()
+                    star(card.contactId, card.starred) { starred -> onUpdate(d.copy(card = card.copy(starred = starred))) }
                 }
                 TextButton(onClick = { ActionIntents.editContact(context, card.contactId) }) {
                     Icon(Icons.Filled.Edit, contentDescription = null)
@@ -211,8 +246,8 @@ private fun DetailsContent(d: DetailsData, viewModel: DialerViewModel, actions: 
             }
             if (number != null) {
                 TextButton(onClick = {
-                    viewModel.setBlocked(number, result?.number?.key, name, block = !d.blocked)
-                    onChanged()
+                    viewModel.setBlocked(number, d.numberKey ?: result?.number?.key, name, block = !d.blocked)
+                    onUpdate(d.copy(blocked = !d.blocked))
                 }) {
                     Icon(Icons.Filled.Block, contentDescription = null, tint = WarnRed)
                     Spacer(Modifier.width(6.dp))

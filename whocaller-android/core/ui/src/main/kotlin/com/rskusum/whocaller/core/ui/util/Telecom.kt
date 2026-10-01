@@ -36,7 +36,11 @@ object TelecomActions {
             val handles = listOfNotNull(preferred) + accounts
             handles.any { handle ->
                 val account = telecom.getPhoneAccount(handle)
-                account != null && account.hasCapabilities(PhoneAccount.CAPABILITY_VIDEO_CALLING)
+                // VIDEO_CALLING = ready now; SUPPORTS_VIDEO_CALLING = the SIM can do it (IMS may register later).
+                account != null && (
+                    account.hasCapabilities(PhoneAccount.CAPABILITY_VIDEO_CALLING) ||
+                        account.hasCapabilities(PhoneAccount.CAPABILITY_SUPPORTS_VIDEO_CALLING)
+                    )
             }
         } catch (_: SecurityException) {
             false

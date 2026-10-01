@@ -106,7 +106,13 @@ class CallLogRepositoryImpl @Inject constructor(
 
     override suspend fun callsForNumber(numberKey: String, limit: Int): List<CallLogEntry> = withContext(io) {
         if (!hasPermission()) return@withContext emptyList()
-        scanFiltered(0, limit) { it.numberKey == numberKey }
+        // Ask the provider for rows ending in the same digits (fast, indexed by the provider), then
+        // confirm each match by its normalized key. Scanning the whole log was very slow.
+        val tail = numberKey.filter(Char::isDigit).takeLast(TAIL_DIGITS)
+        if (tail.length < 3) return@withContext scanFiltered(0, limit) { it.numberKey == numberKey }
+        val like = "%$tail"
+        val selection = "(${CallLog.Calls.NUMBER} LIKE ? OR ${CallLog.Calls.CACHED_NORMALIZED_NUMBER} LIKE ?)" to arrayOf(like, like)
+        enrich(queryRaw(selection, 0, limit * 2)).filter { it.numberKey == numberKey }.take(limit)
     }
 
     override suspend fun recentUnidentified(limit: Int): List<CallLogEntry> = withContext(io) {
@@ -263,6 +269,7 @@ class CallLogRepositoryImpl @Inject constructor(
     private companion object {
         const val HIDDEN_KEY = "hidden"
         const val SCAN_CHUNK = 200
+        const val TAIL_DIGITS = 8
         const val MAX_SCAN_ROWS = 3_000
         const val DELETE_CHUNK = 200
         const val DELETE_SCAN_LIMIT = 5_000

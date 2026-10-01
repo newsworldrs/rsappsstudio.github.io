@@ -30,6 +30,7 @@ import androidx.compose.material.icons.automirrored.filled.Message
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
@@ -74,6 +75,8 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
         }
     }
     val sims = remember { Sims.list(context) }
+    var showRecordings by remember { mutableStateOf(false) }
+    if (showRecordings) RecordingsSheet(number = null) { showRecordings = false }
     // Picked in system settings? Re-check when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { isDefault = isDefaultDialer(context) }
 
@@ -98,6 +101,7 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
                 }
             }
             MoreRow(Icons.Filled.Voicemail, stringResource(R.string.dialer_call_voicemail), null, Violet) { actions.voicemail() }
+            MoreRow(Icons.Filled.FiberManualRecord, stringResource(R.string.rec_title), stringResource(R.string.rec_local_note), WarnRed) { showRecordings = true }
         }
 
         Section(stringResource(R.string.dialer_section_protection)) {

@@ -45,7 +45,6 @@
     <string name="dialer_video_sim">SIM video call</string>
     <string name="dialer_video_whatsapp">WhatsApp</string>
     <string name="dialer_video_in_whatsapp">Tap the video icon in WhatsApp to start the video call.</string>
-    <string name="dialer_video_unavailable">Video calling isn\'t available on this SIM, and WhatsApp isn\'t installed.</string>
     <string name="dialer_phone_number">Phone number</string>
     <string name="dialer_email">Email</string>
     <string name="dialer_company">Company</string>
@@ -54,6 +53,10 @@
     <string name="dialer_operator">Operator</string>
     <string name="dialer_whocaller_reports">WhoCaller community</string>
     <string name="dialer_favorite">Add to favorites</string>
+    <string name="dialer_star_added">Added to favorites</string>
+    <string name="dialer_star_removed">Removed from favorites</string>
+    <string name="dialer_star_failed">Couldn\'t update favorites</string>
+    <string name="dialer_star_permission">Allow "Contacts" access to mark favorites</string>
     <string name="dialer_unfavorite">Remove from favorites</string>
     <string name="dialer_allow">Allow</string>
     <string name="dialer_yesterday">Yesterday</string>
@@ -174,4 +177,42 @@
         <item quantity="one">Reported by %d user</item>
         <item quantity="other">Reported by %d users</item>
     </plurals>
+    <string name="dialer_video_sim_hint">Uses your SIM\'s 4G/VoLTE video calling. If your network or the other phone can\'t do video, it connects as a voice call.</string>
+
+    <!-- In-call video -->
+    <string name="call_video">Video</string>
+    <string name="call_video_off">Video off</string>
+    <string name="call_video_asking">Asking to switch to video…</string>
+    <string name="call_video_declined">They declined the video call</string>
+    <string name="call_video_failed">Couldn\'t switch to video on this call</string>
+    <string name="call_video_became_voice">Your network connected this as a voice call (video isn\'t available for this call)</string>
+    <string name="call_video_request_title">%1$s wants to switch to video</string>
+    <string name="call_video_accept">Turn on video</string>
+    <string name="call_video_decline">Stay on voice</string>
+    <string name="call_video_unavailable_title">Video isn\'t available on this call</string>
+    <string name="call_video_unavailable_text">Your network or the other person\'s phone doesn\'t support switching this call to video (it needs 4G/VoLTE video calling on both sides). You can continue on WhatsApp video instead.</string>
+    <string name="call_video_use_whatsapp">WhatsApp video</string>
+    <string name="call_camera_needed">Allow camera access to make video calls</string>
+
+    <!-- Call recorder (local only) -->
+    <string name="rec_record">Record</string>
+    <string name="rec_stop">Stop recording</string>
+    <string name="rec_saved">Recording saved on this phone</string>
+    <string name="rec_failed">Couldn\'t start recording: the microphone is busy or blocked</string>
+    <string name="rec_mic_needed">Allow microphone access to record calls</string>
+    <string name="rec_recording">Recording · %1$s</string>
+    <string name="rec_tip_speaker">Tip: turn on speaker so the other person is recorded clearly</string>
+    <string name="rec_notification">Recording call</string>
+    <string name="rec_notification_text">Saved on this phone only</string>
+    <string name="rec_share">Share recording</string>
+    <string name="rec_notice_title">Record this call?</string>
+    <string name="rec_notice_text">The recording is saved only on this phone. WhoCaller never uploads it. Android lets apps record only through the microphone, so the other person is clearest on speaker.\n\nRecording laws differ by place: let the other person know you\'re recording.</string>
+    <string name="rec_title">Call recordings</string>
+    <string name="rec_empty">No recordings yet. Tap Record during a call.</string>
+    <string name="rec_delete">Delete recording</string>
+    <string name="rec_delete_confirm">Delete this recording? This can\'t be undone.</string>
+    <string name="rec_play">Play</string>
+    <string name="rec_pause">Pause</string>
+    <string name="rec_private">Private number</string>
+    <string name="rec_local_note">Stored only on this phone. Not uploaded or backed up.</string>
 </resources>

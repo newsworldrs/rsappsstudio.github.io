@@ -52,6 +52,11 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.SwapCalls
 import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.VideocamOff
+import com.rskusum.whocaller.core.ui.util.TelecomActions
+import androidx.compose.material3.AlertDialog
+import android.widget.Toast
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
@@ -159,9 +164,45 @@ private val END_RED = listOf(Color(0xFFFF6B6B), Color(0xFFD92D20))
 private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioState?) {
     val context = LocalContext.current
     var showKeypad by rememberSaveable { mutableStateOf(false) }
+    // Camera is needed for every video action; run the action once it's granted.
+    var afterCamera by remember { mutableStateOf<(() -> Unit)?>(null) }
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted && call.isRinging) CallManager.answer(call.call, video = true)
+        val next = afterCamera
+        afterCamera = null
+        if (granted) next?.invoke() else Toast.makeText(context, R.string.call_camera_needed, Toast.LENGTH_LONG).show()
     }
+    fun withCamera(action: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            action()
+        } else {
+            afterCamera = action
+            cameraLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+    var afterMic by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val next = afterMic
+        afterMic = null
+        if (granted) next?.invoke() else Toast.makeText(context, R.string.rec_mic_needed, Toast.LENGTH_LONG).show()
+    }
+    val recording by CallRecorder.active.collectAsStateWithLifecycle()
+    var recordNotice by remember { mutableStateOf(false) }
+    var videoUnavailable by remember { mutableStateOf(false) }
+    fun startRecording() {
+        val go = {
+            CallRecorder.start(context, call.number)
+            if (CallManager.audio.value?.route != CallAudioState.ROUTE_SPEAKER) {
+                Toast.makeText(context, R.string.rec_tip_speaker, Toast.LENGTH_LONG).show()
+            }
+        }
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            go()
+        } else {
+            afterMic = go
+            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    LaunchedEffect(Unit) { CallManager.messages.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() } }
     // Contact photo and offline location/operator for the other party.
     var photoUri by remember(call.number) { mutableStateOf<String?>(null) }
     var facts by remember(call.number) { mutableStateOf<NumberFacts?>(null) }
@@ -176,7 +217,9 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
     val heldOther = others.firstOrNull { it.isHeld }
 
     Box(Modifier.fillMaxSize()) {
-        if (call.isVideo && call.isActive) VideoSurfaces(call.call)
+        // Self-view starts while a video call is still dialing, like the system phone app.
+        val showVideo = call.isVideo && !call.isRinging && !call.isHeld
+        if (showVideo) VideoSurfaces(call.call)
 
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 24.dp, vertical = 16.dp),
@@ -188,7 +231,7 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                 Spacer(Modifier.height(12.dp))
             }
             Spacer(Modifier.height(24.dp))
-            if (!call.isVideo || !call.isActive) {
+            if (!showVideo) {
                 Box(
                     Modifier.size(132.dp).border(3.dp, Brush.sweepGradient(if (call.display.warning) listOf(WarnRed, Color(0xFFFF9F43), WarnRed) else listOf(Indigo, Violet, Sky, Indigo)), CircleShape),
                     contentAlignment = Alignment.Center,
@@ -222,16 +265,13 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
             }
             Spacer(Modifier.height(12.dp))
             CallStatus(call)
+            recording?.let { RecordingBadge(it.startedAt) }
             Spacer(Modifier.weight(1f))
 
             when {
                 call.needsAccount -> AccountChooser(call)
                 call.isRinging -> RingingActions(call, activeOther != null) {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        CallManager.answer(call.call, video = true)
-                    } else {
-                        cameraLauncher.launch(Manifest.permission.CAMERA)
-                    }
+                    withCamera { CallManager.answer(call.call, video = true) }
                 }
                 else -> {
                     if (showKeypad) {
@@ -240,14 +280,52 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                     } else {
                         val muted = audio?.isMuted == true
                         val speaker = audio?.route == CallAudioState.ROUTE_SPEAKER
+                        val isRecording = recording != null
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             Toggle(Icons.Filled.MicOff, stringResource(R.string.call_mute), muted) { CallManager.setMuted(!muted) }
                             Toggle(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.call_speaker), speaker) { CallManager.setSpeaker(!speaker) }
-                            Toggle(Icons.Filled.Dialpad, stringResource(R.string.call_keypad), false) { showKeypad = true }
+                            Toggle(
+                                if (call.isVideo) Icons.Filled.VideocamOff else Icons.Filled.Videocam,
+                                stringResource(if (call.isVideo) R.string.call_video_off else R.string.call_video),
+                                call.isVideo,
+                                enabled = call.isActive,
+                            ) {
+                                when {
+                                    call.isVideo -> CallManager.requestVideo(call.call, on = false)
+                                    call.canVideo -> withCamera {
+                                        if (CallManager.requestVideo(call.call, on = true)) {
+                                            Toast.makeText(context, R.string.call_video_asking, Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            videoUnavailable = true
+                                        }
+                                    }
+                                    else -> videoUnavailable = true
+                                }
+                            }
                         }
-                        Spacer(Modifier.height(18.dp))
+                        Spacer(Modifier.height(14.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Toggle(
+                                Icons.Filled.FiberManualRecord,
+                                stringResource(if (isRecording) R.string.rec_stop else R.string.rec_record),
+                                isRecording,
+                                enabled = call.isActive || isRecording,
+                                activeTint = Color(0xFFD92D20),
+                            ) {
+                                if (isRecording) {
+                                    CallRecorder.stop()
+                                    Toast.makeText(context, R.string.rec_saved, Toast.LENGTH_SHORT).show()
+                                } else if (!recordNoticeSeen(context)) {
+                                    recordNotice = true
+                                } else {
+                                    startRecording()
+                                }
+                            }
+                            Toggle(Icons.Filled.Dialpad, stringResource(R.string.call_keypad), false) { showKeypad = true }
                             Toggle(Icons.Filled.Pause, stringResource(R.string.call_hold), call.isHeld, enabled = call.canHold) { CallManager.toggleHold(call.call) }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             Toggle(Icons.Filled.AddIcCall, stringResource(R.string.call_add), false) { addCall(context) }
                             when {
                                 call.canMerge && others.isNotEmpty() ->
@@ -265,6 +343,95 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
             }
             Spacer(Modifier.height(12.dp))
         }
+    }
+
+    // The other person wants to switch to video.
+    if (call.videoRequested) {
+        AlertDialog(
+            onDismissRequest = {},
+            icon = { Icon(Icons.Filled.Videocam, contentDescription = null) },
+            title = { Text(stringResource(R.string.call_video_request_title, call.display.title)) },
+            confirmButton = {
+                TextButton(onClick = { withCamera { CallManager.respondToVideoRequest(call.call, accept = true) } }) {
+                    Text(stringResource(R.string.call_video_accept))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { CallManager.respondToVideoRequest(call.call, accept = false) }) { Text(stringResource(R.string.call_video_decline)) }
+            },
+        )
+    }
+    if (videoUnavailable) {
+        val whatsApp = remember { TelecomActions.whatsAppPackage(context) != null }
+        AlertDialog(
+            onDismissRequest = { videoUnavailable = false },
+            icon = { Icon(Icons.Filled.VideocamOff, contentDescription = null) },
+            title = { Text(stringResource(R.string.call_video_unavailable_title)) },
+            text = { Text(stringResource(R.string.call_video_unavailable_text)) },
+            confirmButton = {
+                if (whatsApp && call.number != null) {
+                    TextButton(onClick = {
+                        videoUnavailable = false
+                        val e164 = NumberTools.international(call.number, NumberTools.countryIso(context)) ?: call.number
+                        TelecomActions.openWhatsApp(context, e164)
+                        Toast.makeText(context, R.string.dialer_video_in_whatsapp, Toast.LENGTH_LONG).show()
+                    }) { Text(stringResource(R.string.call_video_use_whatsapp)) }
+                } else {
+                    TextButton(onClick = { videoUnavailable = false }) { Text(stringResource(android.R.string.ok)) }
+                }
+            },
+            dismissButton = if (whatsApp && call.number != null) {
+                { TextButton(onClick = { videoUnavailable = false }) { Text(stringResource(android.R.string.cancel)) } }
+            } else {
+                null
+            },
+        )
+    }
+    if (recordNotice) {
+        AlertDialog(
+            onDismissRequest = { recordNotice = false },
+            icon = { Icon(Icons.Filled.FiberManualRecord, contentDescription = null, tint = Color(0xFFD92D20)) },
+            title = { Text(stringResource(R.string.rec_notice_title)) },
+            text = { Text(stringResource(R.string.rec_notice_text)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    recordNotice = false
+                    markRecordNoticeSeen(context)
+                    startRecording()
+                }) { Text(stringResource(R.string.rec_record)) }
+            },
+            dismissButton = { TextButton(onClick = { recordNotice = false }) { Text(stringResource(android.R.string.cancel)) } },
+        )
+    }
+}
+
+private const val REC_PREFS = "call_recorder"
+private fun recordNoticeSeen(context: Context) = context.getSharedPreferences(REC_PREFS, Context.MODE_PRIVATE).getBoolean("notice_seen", false)
+private fun markRecordNoticeSeen(context: Context) =
+    context.getSharedPreferences(REC_PREFS, Context.MODE_PRIVATE).edit().putBoolean("notice_seen", true).apply()
+
+/** Red dot + running time while the call is being recorded. */
+@Composable
+private fun RecordingBadge(startedAt: Long) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(startedAt) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(
+        Modifier.clip(RoundedCornerShape(50)).background(Color(0x33D92D20)).padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF5A4E)))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            stringResource(R.string.rec_recording, formatDuration((now - startedAt).coerceAtLeast(0) / 1000)),
+            color = Color.White,
+            style = MaterialTheme.typography.labelMedium,
+        )
     }
 }
 
@@ -370,7 +537,7 @@ private fun RoundAction(icon: ImageVector, label: String, colors: List<Color>, o
 }
 
 @Composable
-private fun Toggle(icon: ImageVector, label: String, checked: Boolean, enabled: Boolean = true, onToggle: () -> Unit) {
+private fun Toggle(icon: ImageVector, label: String, checked: Boolean, enabled: Boolean = true, activeTint: Color = Color(0xFF1B1F4A), onToggle: () -> Unit) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(84.dp)) {
         Box(
             Modifier
@@ -386,7 +553,7 @@ private fun Toggle(icon: ImageVector, label: String, checked: Boolean, enabled: 
                 contentDescription = null,
                 tint = when {
                     !enabled -> Color.White.copy(alpha = 0.35f)
-                    checked -> Color(0xFF1B1F4A)
+                    checked -> activeTint
                     else -> Color.White
                 },
                 modifier = Modifier.size(28.dp),
@@ -427,7 +594,13 @@ private fun VideoSurfaces(call: Call) {
     val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     LaunchedEffect(useFront, hasCamera) {
-        if (hasCamera) videoCall.setCamera(cameraId(context, useFront))
+        if (hasCamera) {
+            runCatching {
+                videoCall.setCamera(cameraId(context, useFront))
+                videoCall.setDeviceOrientation(0)
+                videoCall.requestCameraCapabilities()
+            }
+        }
     }
     DisposableEffect(videoCall) {
         onDispose {
@@ -440,12 +613,12 @@ private fun VideoSurfaces(call: Call) {
     }
     Box(Modifier.fillMaxSize()) {
         AndroidView(
-            factory = { ctx -> surfaceView(ctx) { videoCall.setDisplaySurface(it) } },
+            factory = { ctx -> surfaceView(ctx) { runCatching { videoCall.setDisplaySurface(it) } } },
             modifier = Modifier.fillMaxSize(),
         )
         if (hasCamera) {
             AndroidView(
-                factory = { ctx -> surfaceView(ctx) { videoCall.setPreviewSurface(it) } },
+                factory = { ctx -> surfaceView(ctx) { runCatching { videoCall.setPreviewSurface(it) } } },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .windowInsetsPadding(WindowInsets.safeDrawing)

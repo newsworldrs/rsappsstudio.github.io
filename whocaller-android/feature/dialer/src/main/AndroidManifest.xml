@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Only for the self-view during video calls. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Local call recorder (asked for the first time the user taps Record). Recordings stay on the phone. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <uses-feature
         android:name="android.hardware.camera"
@@ -71,6 +75,21 @@
                 <data android:scheme="tel" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".CallRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <provider
+            android:name=".RecordingFileProvider"
+            android:authorities="${applicationId}.recordings"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/recording_paths" />
+        </provider>
 
         <receiver
             android:name=".CallActionReceiver"

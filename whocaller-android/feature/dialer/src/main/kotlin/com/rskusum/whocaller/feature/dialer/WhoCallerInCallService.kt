@@ -82,6 +82,8 @@ class WhoCallerInCallService : InCallService() {
         val declined = details.disconnectCause?.code == DisconnectCause.REJECTED
         val display = CallManager.calls.value.firstOrNull { it.call == call }?.display
         CallManager.remove(call)
+        // Last call ended: save the recording, if one is running.
+        if (CallManager.calls.value.isEmpty()) CallRecorder.stop()
         // "Know this caller?" for unknown numbers the user answered or declined (never for contacts).
         if (wasIncoming && number != null && display?.callerLabel != CallerLabel.CONTACT && (answered || declined)) {
             val showNow = CallManager.calls.value.isEmpty()
@@ -95,6 +97,7 @@ class WhoCallerInCallService : InCallService() {
     }
 
     override fun onDestroy() {
+        CallRecorder.stop()
         observer?.cancel()
         scope.cancel()
         CallNotifications.cancelAll(this)

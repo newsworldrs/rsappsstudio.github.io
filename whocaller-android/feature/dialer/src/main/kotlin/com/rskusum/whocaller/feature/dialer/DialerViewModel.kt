@@ -83,6 +83,8 @@ data class DetailsData(
     val history: List<CallLogEntry> = emptyList(),
     /** Normalized keys the history was matched on — used to delete it. */
     val historyKeys: List<String> = emptyList(),
+    /** Normalized key of [number] (for block/unblock before the WhoCaller lookup returns). */
+    val numberKey: String? = null,
 ) {
     val totalTalkSeconds: Long get() = history.sumOf { it.durationSeconds }
 }
@@ -198,11 +200,31 @@ class DialerViewModel @Inject constructor(
         }
     }
 
-    /** Loads the details sheet: contact data, WhoCaller identification and offline number facts. */
-    suspend fun loadDetails(target: DetailsTarget): DetailsData = withContext(Dispatchers.IO) {
+    /**
+     * Details sheet, step 1: everything on the phone (contact, number facts, block state, call
+     * history). Fast, so the sheet fills in at once; the WhoCaller lookup follows in [identifyDetails].
+     */
+    suspend fun loadDetailsLocal(target: DetailsTarget): DetailsData = withContext(Dispatchers.IO) {
         val card = target.contactId?.let { ContactLookup.details(app, it) } ?: target.number?.let { ContactLookup.byNumber(app, it) }
         val number = target.number ?: card?.phones?.firstOrNull()?.value
-        val result = number?.let {
+        val facts = number?.let { runCatching { NumberTools.facts(it, countryIso) }.getOrNull() }
+        val raws = (card?.phones?.map { it.value }.orEmpty() + listOfNotNull(number)).distinct()
+        val keys = raws.mapNotNull { keyFor(it) }.distinct()
+        val ownKey = number?.let { keyFor(it) }
+        val blocked = ownKey?.let { runCatching { blockRepository.isBlocked(it) }.getOrDefault(false) } ?: false
+        val history = if (callLog.hasPermission()) {
+            keys.flatMap { runCatching { callLog.callsForNumber(it, HISTORY_LIMIT) }.getOrDefault(emptyList()) }
+                .distinctBy { it.id }
+                .sortedByDescending { it.timestamp }
+        } else {
+            emptyList()
+        }
+        DetailsData(number, card, null, facts, blocked, history, keys, ownKey)
+    }
+
+    /** Details sheet, step 2: WhoCaller identification (cache first, then a short network lookup). */
+    suspend fun identifyDetails(number: String?): CallerResult? = number?.let {
+        withContext(Dispatchers.IO) {
             try {
                 identification.identify(it, networkBudgetMs = NETWORK_BUDGET_MS, record = false)
             } catch (e: CancellationException) {
@@ -211,18 +233,18 @@ class DialerViewModel @Inject constructor(
                 null
             }
         }
-        val facts = number?.let { NumberTools.facts(it, countryIso) }
-        val blocked = result?.number?.key?.let { runCatching { blockRepository.isBlocked(it) }.getOrDefault(false) } ?: false
-        val raws = (card?.phones?.map { it.value }.orEmpty() + listOfNotNull(number)).distinct()
-        val keys = raws.mapNotNull { keyFor(it) }.distinct()
+    }
+
+    /** Re-reads only the call history (after deleting calls). */
+    suspend fun reloadHistory(d: DetailsData): DetailsData = withContext(Dispatchers.IO) {
         val history = if (callLog.hasPermission()) {
-            keys.flatMap { runCatching { callLog.callsForNumber(it, HISTORY_LIMIT) }.getOrDefault(emptyList()) }
+            d.historyKeys.flatMap { runCatching { callLog.callsForNumber(it, HISTORY_LIMIT) }.getOrDefault(emptyList()) }
                 .distinctBy { it.id }
                 .sortedByDescending { it.timestamp }
         } else {
             emptyList()
         }
-        DetailsData(number, card, result, facts, blocked, history, keys)
+        d.copy(history = history)
     }
 
     private suspend fun keyFor(raw: String): String? =
@@ -327,11 +349,11 @@ class DialerViewModel @Inject constructor(
         .map { list -> list.filter { it.starred } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun setStarred(contactId: Long, starred: Boolean) {
-        viewModelScope.launch {
-            contacts.setStarred(contactId, starred)
-            refreshPermissions()
-        }
+    /** Saves the favourite flag. The UI has already shown the new state; returns false if it failed. */
+    suspend fun setStarred(contactId: Long, starred: Boolean): Boolean {
+        val ok = contacts.setStarred(contactId, starred) is AppResult.Success
+        if (ok) refreshPermissions()
+        return ok
     }
 
     /** Up to three contacts whose number contains the digits, or whose name matches them on a T9 keypad. */
