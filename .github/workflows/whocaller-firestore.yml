@@ -27,8 +27,8 @@ on:
         options: [preview, upload]
         default: preview
       max_writes:
-        description: "Upload at most this many numbers (free Spark plan: 20,000 writes/day). 0 = no limit (Blaze plan)."
-        default: "18000"
+        description: "Upload at most this many numbers. 0 = no limit (Blaze plan). Use 18000 on the free Spark plan (20,000 writes/day)."
+        default: "0"
       start:
         description: "Continue from this number (the previous run prints it when it stops at the limit)"
         default: "0"
@@ -116,7 +116,7 @@ jobs:
         if: steps.creds.outputs.ok == 'true' && env.MODE == 'upload' && startsWith(env.TASK, 'import-')
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          MAX_WRITES: ${{ github.event.inputs.max_writes || '18000' }}
+          MAX_WRITES: ${{ github.event.inputs.max_writes || '0' }}
           START: ${{ github.event.inputs.start || '0' }}
         run: |
           # Later files win for the same number, so the most trusted source (RBI) goes last.
