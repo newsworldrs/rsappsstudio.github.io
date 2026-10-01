@@ -141,3 +141,40 @@ export function args(argv) {
   }
   return out;
 }
+
+// ---------- Helpers for the dataset importers ----------
+
+/** Valid number with its libphonenumber type (FIXED_LINE, MOBILE, TOLL_FREE, …), or null. */
+export function strictNumber(raw, defaultRegion) {
+  const parsed = parsePhoneNumberFromString(String(raw ?? "").trim(), defaultRegion);
+  if (!parsed || !parsed.isValid()) return null;
+  const national = String(parsed.nationalNumber);
+  if (isPlaceholder(national)) return null;
+  return { e164: parsed.number, type: parsed.getType() ?? null, region: parsed.country ?? null };
+}
+
+/** 1234567890, 9999999999, 0000… — filler values found in public datasets. */
+export function isPlaceholder(digits) {
+  if (/^(\d)\1+$/.test(digits)) return true;
+  if ("01234567890123456789".includes(digits) || "98765432109876543210".includes(digits)) return true;
+  return /(\d)\1{6,}/.test(digits);
+}
+
+/** "STATE BANK OF INDIA" → "State Bank Of India", keeping short acronyms (SBI, HDFC) as they are. */
+export function titleCase(text) {
+  return String(text ?? "").trim().replace(/\s+/g, " ").toLowerCase()
+    .replace(/\b([a-z])([a-z]*)/g, (_, a, b) => a.toUpperCase() + b)
+    .replace(/\b(Sbi|Hdfc|Icici|Idbi|Uco|Idfc|Rbl|Au|Dcb|Csb|Yes|Axis|Pnb|Ltd|Co|Op)\b/g, (w) =>
+      ["Ltd", "Co", "Op", "Yes", "Axis"].includes(w) ? w : w.toUpperCase());
+}
+
+const csvCell = (v) => {
+  const s = v === undefined || v === null ? "" : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/** Writes rows in the seed format. */
+export function toSeedCsv(rows) {
+  const cols = ["phoneNumber", "displayName", "businessName", "categories", "spamScore", "isVerified"];
+  return [cols.join(","), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(","))].join("\n") + "\n";
+}

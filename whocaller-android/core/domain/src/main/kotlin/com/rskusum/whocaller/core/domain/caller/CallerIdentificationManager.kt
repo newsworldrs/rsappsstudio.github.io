@@ -3,6 +3,7 @@ package com.rskusum.whocaller.core.domain.caller
 import com.rskusum.whocaller.core.common.Clock
 import com.rskusum.whocaller.core.common.analytics.AnalyticsEvent
 import com.rskusum.whocaller.core.common.analytics.AnalyticsTracker
+import com.rskusum.whocaller.core.common.phone.IndianCallSeries
 import com.rskusum.whocaller.core.common.phone.NormalizationResult
 import com.rskusum.whocaller.core.common.phone.PhoneNumberNormalizer
 import com.rskusum.whocaller.core.common.result.AppResult
@@ -103,6 +104,8 @@ class CallerIdentificationManager @Inject constructor(
 
         val info = if (settings.callerIdEnabled || settings.spamProtectionEnabled) {
             lookupWithBudget(number.key, networkBudgetMs)
+                // TRAI's 140 (telemarketing) and 1600 (bank/financial service) series.
+                ?: IndianCallSeries.infoFor(number.key, number.e164 ?: rawNumber, clock.now())
         } else {
             null
         }

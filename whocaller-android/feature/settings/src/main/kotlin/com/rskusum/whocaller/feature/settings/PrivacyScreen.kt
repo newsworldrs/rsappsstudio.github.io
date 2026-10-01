@@ -216,6 +216,15 @@ fun PrivacyScreen(
             }
             item { NavigationRow(stringResource(R.string.privacy_policy), Icons.Outlined.Policy, onClick = { ActionIntents.openUrl(context, privacyPolicyUrl) }) }
             item { NavigationRow(stringResource(R.string.privacy_terms), Icons.Outlined.Description, onClick = { ActionIntents.openUrl(context, termsUrl) }) }
+            item {
+                // Required credit for OpenStreetMap data (ODbL) used in caller identification.
+                Text(
+                    stringResource(R.string.privacy_data_sources),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                )
+            }
         }
     }
 

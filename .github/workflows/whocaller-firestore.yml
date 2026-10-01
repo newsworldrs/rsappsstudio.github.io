@@ -1,8 +1,10 @@
 name: WhoCaller Firestore
 
-# Recomputes callerNumbers (spam score, report counts, categories) from user reports.
-# Needed on the free Spark plan, where the onReportWritten Cloud Function can't be deployed.
-# Requires the repository secret FIREBASE_SERVICE_ACCOUNT (service-account JSON); skips without it.
+# Two jobs in one workflow:
+#  1. Nightly: recompute callerNumbers (spam score, report counts, categories) from user reports.
+#  2. On demand (Actions tab → Run workflow): build caller datasets from public sources and
+#     preview them (downloadable CSV) or upload them to Firestore.
+# Uploading and aggregating need the repository secret FIREBASE_SERVICE_ACCOUNT (service-account JSON).
 on:
   schedule:
     - cron: "17 21 * * *" # every night, 02:47 IST
@@ -11,8 +13,25 @@ on:
       task:
         description: "What to run"
         type: choice
-        options: [aggregate, seed-sample]
-        default: aggregate
+        options:
+          - import-all
+          - import-ifsc
+          - import-osm
+          - import-wikidata
+          - aggregate
+          - seed-sample
+        default: import-all
+      mode:
+        description: "preview = build CSVs only (download them from the run page); upload = also write to Firestore"
+        type: choice
+        options: [preview, upload]
+        default: preview
+      max_writes:
+        description: "Upload at most this many numbers (free Spark plan: 20,000 writes/day). 0 = no limit (Blaze plan)."
+        default: "18000"
+      start:
+        description: "Continue from this number (the previous run prints it when it stops at the limit)"
+        default: "0"
 
 permissions:
   contents: read
@@ -20,9 +39,13 @@ permissions:
 jobs:
   firestore:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     defaults:
       run:
         working-directory: whocaller-android/backend/tools
+    env:
+      TASK: ${{ github.event.inputs.task || 'aggregate' }}
+      MODE: ${{ github.event.inputs.mode || 'upload' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -35,32 +58,84 @@ jobs:
             echo "ok=true" >> "$GITHUB_OUTPUT"
           else
             echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set - nothing to do."
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set - previews only, nothing is uploaded."
           fi
 
       - uses: actions/setup-node@v4
-        if: steps.creds.outputs.ok == 'true'
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: whocaller-android/backend/tools/package-lock.json
 
       - name: Install
-        if: steps.creds.outputs.ok == 'true'
         run: npm ci --no-audit --no-fund
 
       - name: Test
-        if: steps.creds.outputs.ok == 'true'
         run: npm test
 
+      # ---------- Build datasets ----------
+
+      - name: Bank branches (RBI IFSC list, public domain)
+        if: env.TASK == 'import-all' || env.TASK == 'import-ifsc'
+        run: node import-ifsc.mjs --out data/ifsc-callers.csv
+
+      - name: Organisations (Wikidata, CC0)
+        if: env.TASK == 'import-all' || env.TASK == 'import-wikidata'
+        continue-on-error: true
+        run: node import-wikidata.mjs --out data/wikidata-callers.csv
+
+      - name: Businesses (OpenStreetMap India, ODbL)
+        if: env.TASK == 'import-all' || env.TASK == 'import-osm'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          curl -sSL -o /tmp/india.osm.pbf https://download.geofabrik.de/asia/india-latest.osm.pbf
+          osmium tags-filter /tmp/india.osm.pbf nwr/phone nwr/contact:phone nwr/contact:mobile -o /tmp/phones.osm.pbf --overwrite
+          osmium export /tmp/phones.osm.pbf -f geojsonseq -o /tmp/phones.geojsonseq --overwrite
+          node import-osm.mjs /tmp/phones.geojsonseq --out data/osm-callers.csv
+
+      - name: Check the files
+        if: startsWith(env.TASK, 'import-')
+        run: |
+          for f in data/*-callers.csv; do
+            [ -f "$f" ] || continue
+            [ "$f" = "data/sample-callers.csv" ] && continue
+            echo "== $f"; node seed.mjs "$f" --region IN --dry-run || true
+          done
+
+      - name: Keep the CSVs (download from this run's page)
+        if: startsWith(env.TASK, 'import-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: whocaller-datasets
+          path: whocaller-android/backend/tools/data/*-callers.csv
+          retention-days: 14
+
+      # ---------- Upload ----------
+
+      - name: Upload datasets to Firestore
+        if: steps.creds.outputs.ok == 'true' && env.MODE == 'upload' && startsWith(env.TASK, 'import-')
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          MAX_WRITES: ${{ github.event.inputs.max_writes || '18000' }}
+          START: ${{ github.event.inputs.start || '0' }}
+        run: |
+          # Later files win for the same number, so the most trusted source (RBI) goes last.
+          files=""
+          for f in data/osm-callers.csv data/wikidata-callers.csv data/ifsc-callers.csv; do
+            [ -f "$f" ] && files="$files $f"
+          done
+          limit=""
+          [ "$MAX_WRITES" != "0" ] && limit="--max-writes $MAX_WRITES"
+          npm run seed -- $files --region IN --start "$START" $limit
+
       - name: Upload sample callers
-        if: steps.creds.outputs.ok == 'true' && github.event.inputs.task == 'seed-sample'
+        if: steps.creds.outputs.ok == 'true' && env.TASK == 'seed-sample'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: npm run seed -- data/sample-callers.csv --region IN
 
       - name: Aggregate reports
-        if: steps.creds.outputs.ok == 'true' && (github.event_name == 'schedule' || github.event.inputs.task == 'aggregate')
+        if: steps.creds.outputs.ok == 'true' && env.TASK == 'aggregate'
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: npm run aggregate

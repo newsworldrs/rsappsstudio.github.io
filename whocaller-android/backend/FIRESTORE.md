@@ -84,6 +84,36 @@ npm run seed -- data/my-callers.csv --region IN --key ~/whocaller-key.json   # u
 
 Running it again updates the same numbers (report counts are kept).
 
+## Ready-made public datasets (one click)
+
+The **WhoCaller Firestore** workflow (GitHub → Actions → *WhoCaller Firestore* → *Run workflow*) builds
+caller data from legal, public sources:
+
+| Task | Source | What it adds | License |
+|---|---|---|---|
+| `import-ifsc` | RBI bank-branch list (via razorpay/ifsc) | ~30,000 bank branch landlines and toll-free numbers, marked verified | Public domain |
+| `import-wikidata` | Wikidata | Organisations in India with an official number | CC0 |
+| `import-osm` | OpenStreetMap India | Shops, hospitals, offices… with a phone number | ODbL (credit shown in the app's Privacy screen) |
+| `import-all` | All three | | |
+
+Quality filters: mobile numbers in the bank list (often a staff member's own phone), placeholders like
+`1234567890`, numbers listed for several different banks, and landlines whose area code is in a
+different state than the branch are dropped.
+
+- **mode = preview** builds the CSVs only. Download them from the run page (*Artifacts → whocaller-datasets*) and check them.
+- **mode = upload** also writes them to Firestore (needs the `FIREBASE_SERVICE_ACCOUNT` secret).
+- **Free Spark plan:** Firestore allows 20,000 writes a day, so `max_writes` defaults to 18,000. When a
+  run stops at the limit, its log says `Continue another day with: --start N` — run it again the next
+  day with `start = N`. On the Blaze plan set `max_writes = 0` (100,000 writes cost about ₹15).
+
+Big brands' **customer-care numbers** are the most useful entries for spotting fake "bank" calls.
+`tools/data/customer-care-template.csv` lists 30 companies with their official websites: copy each
+number from the company's own website into the `phoneNumber` column, then
+`npm run seed -- data/customer-care-template.csv --region IN`. Rows without a number are skipped.
+
+The app also recognises TRAI's reserved series without any data: **140xxxxxxx** is labelled
+Telemarketing, **1600xxxxxx** is labelled as a bank/financial service call.
+
 ## Turning reports into spam scores
 
 Pick one:
