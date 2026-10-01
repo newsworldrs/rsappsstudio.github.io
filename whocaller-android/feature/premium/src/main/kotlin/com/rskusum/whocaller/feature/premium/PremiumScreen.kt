@@ -3,6 +3,14 @@ package com.rskusum.whocaller.feature.premium
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -59,6 +67,7 @@ class PremiumViewModel @Inject constructor(
     val isPremium: StateFlow<Boolean> = billing.isPremium
     val pending: StateFlow<Boolean> = billing.pending
     val error: StateFlow<Int?> = billing.lastError
+    val activePlan: StateFlow<PlanKind?> = billing.activePlan
 
     init {
         analytics.track(AnalyticsEvent.PremiumViewed)
@@ -83,7 +92,8 @@ private val FEATURES = listOf(
     Feature(R.string.premium_feature_more_searches, false),
     Feature(R.string.premium_feature_advanced_block, false),
     Feature(R.string.premium_feature_business, false),
-    Feature(R.string.premium_feature_no_ads, false),
+    // ADS OFF (first two years): there are no ads to remove.
+    // Feature(R.string.premium_feature_no_ads, false),
     Feature(R.string.premium_feature_stats, false),
 )
 
@@ -94,6 +104,7 @@ fun PremiumScreen(onBack: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
     val premium by viewModel.isPremium.collectAsStateWithLifecycle()
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val activePlan by viewModel.activePlan.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     Scaffold(
@@ -135,7 +146,9 @@ fun PremiumScreen(onBack: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
             Spacer(Modifier.height(16.dp))
             if (premium) {
                 Text(stringResource(R.string.premium_active), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                TextButton(onClick = {
+                if (activePlan == PlanKind.LIFETIME) {
+                    Text(stringResource(R.string.premium_lifetime_owned), style = MaterialTheme.typography.bodyMedium)
+                } else TextButton(onClick = {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/account/subscriptions?package=${context.packageName}")),
                     )
@@ -147,17 +160,7 @@ fun PremiumScreen(onBack: () -> Unit, viewModel: PremiumViewModel = hiltViewMode
                         Text(stringResource(R.string.premium_loading_prices))
                     }
                     BillingState.Unavailable -> Text(stringResource(R.string.premium_unavailable))
-                    is BillingState.Ready -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        s.products.forEach { p ->
-                            val period = stringResource(
-                                if (p.billingPeriod.endsWith("Y")) R.string.premium_period_year else R.string.premium_period_month,
-                            )
-                            Button(
-                                onClick = { context.findActivity()?.let { viewModel.buy(it, p) } },
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text(stringResource(R.string.premium_subscribe, stringResource(R.string.premium_per_period, p.formattedPrice, period))) }
-                        }
-                    }
+                    is BillingState.Ready -> PlanPicker(s.products) { p -> context.findActivity()?.let { viewModel.buy(it, p) } }
                 }
                 if (pending) Text(stringResource(R.string.premium_pending), color = MaterialTheme.colorScheme.tertiary)
                 error?.let { Text(stringResource(it), color = MaterialTheme.colorScheme.error) }
@@ -178,4 +181,99 @@ private fun Box72(included: Boolean) {
         tint = if (included) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
         modifier = Modifier.width(72.dp).semantics { contentDescription = description },
     )
+}
+
+/** Monthly / Yearly (best value) / Lifetime cards with Google Play's prices, then one buy button. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlanPicker(products: List<PremiumProduct>, onBuy: (PremiumProduct) -> Unit) {
+    var selected by rememberSaveable { mutableStateOf(products.firstOrNull { it.kind == PlanKind.YEARLY }?.kind ?: products.first().kind) }
+    val monthly = products.firstOrNull { it.kind == PlanKind.MONTHLY }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        products.forEach { p ->
+            val isSelected = p.kind == selected
+            val saving = if (p.kind == PlanKind.YEARLY && monthly != null && monthly.priceMicros > 0) {
+                (100 - p.priceMicros * 100 / (monthly.priceMicros * 12)).toInt().takeIf { it in 5..90 }
+            } else {
+                null
+            }
+            OutlinedCard(
+                onClick = { selected = p.kind },
+                border = BorderStroke(if (isSelected) 2.dp else 1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = isSelected, onClick = { selected = p.kind })
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                stringResource(
+                                    when (p.kind) {
+                                        PlanKind.MONTHLY -> R.string.premium_plan_monthly
+                                        PlanKind.YEARLY -> R.string.premium_plan_yearly
+                                        PlanKind.LIFETIME -> R.string.premium_plan_lifetime
+                                    },
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            if (p.kind == PlanKind.YEARLY) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    stringResource(R.string.premium_best_value),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)).padding(horizontal = 8.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                        val sub = when {
+                            p.kind == PlanKind.LIFETIME -> stringResource(R.string.premium_lifetime_desc)
+                            p.freeTrialPeriod != null -> stringResource(R.string.premium_trial, trialDays(p.freeTrialPeriod))
+                            saving != null -> stringResource(R.string.premium_save, saving)
+                            else -> stringResource(R.string.premium_cancel_anytime)
+                        }
+                        Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(p.formattedPrice, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            stringResource(
+                                when (p.kind) {
+                                    PlanKind.MONTHLY -> R.string.premium_per_month
+                                    PlanKind.YEARLY -> R.string.premium_per_year
+                                    PlanKind.LIFETIME -> R.string.premium_one_time
+                                },
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+        val chosen = products.firstOrNull { it.kind == selected } ?: products.first()
+        Button(onClick = { onBuy(chosen) }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Text(
+                stringResource(
+                    when {
+                        chosen.kind == PlanKind.LIFETIME -> R.string.premium_buy_lifetime
+                        chosen.freeTrialPeriod != null -> R.string.premium_start_trial
+                        else -> R.string.premium_continue
+                    },
+                ),
+            )
+        }
+    }
+}
+
+/** "P7D" → 7, "P1W" → 7, "P1M" → 30. */
+private fun trialDays(period: String): Int {
+    val m = Regex("""P(\d+)([DWM])""").find(period) ?: return 7
+    val n = m.groupValues[1].toInt()
+    return when (m.groupValues[2]) {
+        "W" -> n * 7
+        "M" -> n * 30
+        else -> n
+    }
 }

@@ -69,7 +69,16 @@ class WhoCallerInCallService : InCallService() {
             val result = withTimeoutOrNull(IDENTIFY_BUDGET_MS) {
                 identification.identify(number, networkBudgetMs = NETWORK_BUDGET_MS, record = false)
             }
-            if (result != null) CallManager.setDisplay(call, CallerDisplayFormatter.from(this@WhoCallerInCallService, number, result))
+            if (result != null) {
+                var display = CallerDisplayFormatter.from(this@WhoCallerInCallService, number, result)
+                // STIR/SHAKEN (mainly US carriers): the network says this caller ID failed verification.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && display.callerLabel != CallerLabel.CONTACT &&
+                    call.details.callerNumberVerificationStatus == android.telecom.Connection.VERIFICATION_STATUS_FAILED
+                ) {
+                    display = display.copy(label = getString(R.string.call_label_spoofed), warning = true)
+                }
+                CallManager.setDisplay(call, display)
+            }
         }
     }
 

@@ -317,7 +317,7 @@ object CallerDisplayFormatter {
             CallerLabel.POSSIBLE_SCAM -> listOfNotNull(context.getString(R.string.call_label_scam), reportText).joinToString(" · ") to true
             CallerLabel.SUSPECTED_SPAM -> if (result.info?.flaggedOnlyByList == true) {
                 context.getString(com.rskusum.whocaller.core.ui.R.string.label_possible_spam_list) + " · " +
-                    context.getString(com.rskusum.whocaller.core.ui.R.string.label_flagged_by_list) to true
+                    context.getString(com.rskusum.whocaller.core.ui.R.string.label_flagged_by_list, result.info?.listedBy.orEmpty()) to true
             } else {
                 listOfNotNull(context.getString(R.string.call_label_spam), reportText).joinToString(" · ") to true
             }

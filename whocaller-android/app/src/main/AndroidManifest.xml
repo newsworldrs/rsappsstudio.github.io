@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Network: backend lookups and sync. -->
+    <!-- No ads: drop the advertising ID permission that Firebase Analytics would add. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
+        tools:node="remove" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -145,7 +149,11 @@
             android:name="google_analytics_adid_collection_enabled"
             android:value="false" />
 
-        <!-- Both AdMob and Firebase Analytics declare this; keep the Ads SDK's config. -->
+        <!--
+            ADS OFF (first two years, until about October 2028). To turn AdMob back on, restore these
+            two blocks, the play-services-ads / ump dependencies in feature/premium/build.gradle.kts,
+            AdMobAdsManager in feature/premium/Ads.kt and the banner calls (search "ADS OFF").
+
         <property
             android:name="android.adservices.AD_SERVICES_CONFIG"
             android:resource="@xml/gma_ad_services_config"
@@ -154,5 +162,6 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="${admobAppId}" />
+        -->
     </application>
 </manifest>

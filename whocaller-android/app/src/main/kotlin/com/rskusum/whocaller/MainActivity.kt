@@ -29,6 +29,18 @@ import com.rskusum.whocaller.feature.profile.CompleteProfileScreen
 import com.rskusum.whocaller.feature.profile.SignInConfig
 import com.rskusum.whocaller.feature.profile.SignInScreen
 import com.rskusum.whocaller.navigation.defaultWebClientId
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.lifecycleScope
+import com.rskusum.whocaller.play.InAppReview
+import com.rskusum.whocaller.play.InAppUpdates
+import com.rskusum.whocaller.play.InstallReferrer
+import com.rskusum.whocaller.play.PlayIntegrity
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -37,6 +49,12 @@ class MainActivity : AppCompatActivity() {
 
     @Inject lateinit var permissionManager: PermissionManager
     @Inject lateinit var adsManager: AdsManager
+    @Inject lateinit var inAppReview: InAppReview
+    @Inject lateinit var playIntegrity: PlayIntegrity
+    @Inject lateinit var installReferrer: InstallReferrer
+
+    private val updates by lazy { InAppUpdates(this) }
+    private val updateLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {}
 
     private val viewModel: MainViewModel by viewModels()
 
@@ -50,6 +68,12 @@ class MainActivity : AppCompatActivity() {
         splash.setKeepOnScreenCondition { viewModel.settings.value == null }
         if (savedInstanceState == null) pendingRoute = routeFor(intent)
 
+        // Google Play: updates, install source (first launch only), integrity warm-up.
+        updates.register()
+        if (savedInstanceState == null) updates.check(updateLauncher)
+        installReferrer.captureOnce()
+        lifecycleScope.launch { playIntegrity.prepare() }
+
         setContent {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val start by viewModel.startState.collectAsStateWithLifecycle()
@@ -59,6 +83,15 @@ class MainActivity : AppCompatActivity() {
                 dynamicColor = s?.dynamicColor ?: true,
             ) {
                 Surface {
+                    val updateReady by updates.readyToInstall.collectAsStateWithLifecycle()
+                    if (updateReady) {
+                        AlertDialog(
+                            onDismissRequest = {},
+                            title = { Text(stringResource(R.string.update_ready_title)) },
+                            text = { Text(stringResource(R.string.update_ready_text)) },
+                            confirmButton = { TextButton(onClick = updates::install) { Text(stringResource(R.string.update_restart)) } },
+                        )
+                    }
                     when (start) {
                         StartState.Loading -> SplashContent()
                         StartState.Onboarding -> OnboardingScreen(onFinished = viewModel::completeOnboarding)
@@ -85,7 +118,14 @@ class MainActivity : AppCompatActivity() {
                                 pendingRoute = null
                                 if (route in TOP_LEVEL_BASES) navController.navigateTopLevel(route) else navController.navigate(route)
                             }
-                            LaunchedEffect(Unit) { adsManager.initialize(this@MainActivity) }
+                            // ADS OFF (first two years): no ads SDK, no consent form.
+                            // LaunchedEffect(Unit) { adsManager.initialize(this@MainActivity) }
+                            // Play rating card, only at a good moment (see InAppReview).
+                            LaunchedEffect(Unit) {
+                                inAppReview.recordOpen()
+                                delay(REVIEW_DELAY_MS)
+                                inAppReview.maybeAsk(this@MainActivity)
+                            }
                             WhoCallerApp(
                                 navController = navController,
                                 permissionManager = permissionManager,
@@ -97,6 +137,16 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updates.resume(updateLauncher)
+    }
+
+    override fun onDestroy() {
+        updates.unregister()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -158,5 +208,7 @@ class MainActivity : AppCompatActivity() {
 
     private companion object {
         val TOP_LEVEL_BASES = setOf("home", "search", "calls", "protection", "settings")
+        /** Let the main screen settle before Play's rating card may appear. */
+        const val REVIEW_DELAY_MS = 4_000L
     }
 }

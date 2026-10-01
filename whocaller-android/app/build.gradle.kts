@@ -51,6 +51,7 @@ android {
         buildConfigField("boolean", "FIREBASE_CONFIGURED", hasFirebaseConfig.toString())
 
         // AdMob: Google's public sample IDs are used unless real IDs are configured. They serve test ads only.
+        // ADS OFF: kept so AdMob can be switched back on later; not used while ads are off.
         manifestPlaceholders["admobAppId"] = config("WHOCALLER_ADMOB_APP_ID", "ca-app-pub-3940256099942544~3347511713")
         buildConfigField("String", "ADMOB_BANNER_ID", config("WHOCALLER_ADMOB_BANNER_ID", "ca-app-pub-3940256099942544/6300978111").quoted())
     }
@@ -162,6 +163,11 @@ dependencies {
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.config)
     implementation(libs.firebase.appcheck.playintegrity)
+    // Google Play: in-app review, in-app updates, Play Integrity, install referrer.
+    implementation(libs.play.review.ktx)
+    implementation(libs.play.app.update.ktx)
+    implementation(libs.play.integrity)
+    implementation(libs.install.referrer)
     debugImplementation(libs.firebase.appcheck.debug)
     implementation(libs.kotlinx.coroutines.play.services)
 

@@ -19,8 +19,9 @@ dependencies {
     implementation(projects.core.security)
     implementation(libs.androidx.core.ktx)
     implementation(libs.billing.ktx)
-    implementation(libs.play.services.ads)
-    implementation(libs.ump)
+    // ADS OFF (first two years): AdMob and its consent SDK are not included in the app.
+    // implementation(libs.play.services.ads)
+    // implementation(libs.ump)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.hilt.navigation.compose)

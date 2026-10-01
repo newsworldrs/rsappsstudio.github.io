@@ -1,6 +1,67 @@
 package com.rskusum.whocaller.feature.premium
 
 import android.app.Activity
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import dagger.Binds
+import dagger.Module
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/*
+ * ADS OFF for the first two years (until about October 2028): WhoCaller shows no ads at all and the
+ * AdMob SDK isn't in the app. Play Console → App content → Ads: "No, my app does not contain ads".
+ *
+ * To switch ads back on later:
+ *  1. feature/premium/build.gradle.kts: restore play-services-ads and ump.
+ *  2. Uncomment AdMobAdsManager below (and its imports, kept in the comment) and bind it in PremiumModule.
+ *  3. app: restore the AdMob <meta-data>/<property> in AndroidManifest.xml, the banner unit id
+ *     provider in di/AppModule.kt, adsManager.initialize in MainActivity and the banner calls in
+ *     WhoCallerNavHost (search the code for "ADS OFF").
+ *  4. Update Play Console (Ads: yes) and the Data safety form.
+ */
+import com.rskusum.whocaller.core.domain.repository.PremiumRepository
+
+/**
+ * Advertising abstraction. Ads are never shown to premium users, during calls, over caller ID,
+ * in permission dialogs or in misleading places: only the app places a [Banner] explicitly
+ * (home and search screens).
+ */
+interface AdsManager {
+    val adsEnabled: StateFlow<Boolean>
+
+    /** Collects GDPR/consent where required, then initialises the ads SDK. Call from an Activity. */
+    fun initialize(activity: Activity)
+
+    @Composable
+    fun Banner(modifier: Modifier)
+}
+
+/** Remote switch for ads (e.g. Firebase Remote Config), so ads can be turned off without a release. */
+interface AdsPolicy {
+    val remoteAdsEnabled: StateFlow<Boolean>
+}
+
+/** Used while ads are off: never shows anything and never loads an ads SDK. */
+@Singleton
+class NoAdsManager @Inject constructor() : AdsManager {
+    private val disabled = MutableStateFlow(false)
+    override val adsEnabled: StateFlow<Boolean> = disabled.asStateFlow()
+    override fun initialize(activity: Activity) = Unit
+
+    @Composable
+    override fun Banner(modifier: Modifier) = Unit
+}
+
+/* ADS OFF (first two years). Previous AdMob implementation, kept for later:
+
+
+import android.app.Activity
 import android.content.Context
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -38,25 +99,6 @@ import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
 
-/**
- * Advertising abstraction. Ads are never shown to premium users, during calls, over caller ID,
- * in permission dialogs or in misleading places: only the app places a [Banner] explicitly
- * (home and search screens).
- */
-interface AdsManager {
-    val adsEnabled: StateFlow<Boolean>
-
-    /** Collects GDPR/consent where required, then initialises the ads SDK. Call from an Activity. */
-    fun initialize(activity: Activity)
-
-    @Composable
-    fun Banner(modifier: Modifier)
-}
-
-/** Remote switch for ads (e.g. Firebase Remote Config), so ads can be turned off without a release. */
-interface AdsPolicy {
-    val remoteAdsEnabled: StateFlow<Boolean>
-}
 
 @Singleton
 class AdMobAdsManager @Inject constructor(
@@ -123,9 +165,12 @@ class AdMobAdsManager @Inject constructor(
     }
 }
 
+*/
+
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class PremiumModule {
     @Binds abstract fun premiumRepository(impl: BillingManager): PremiumRepository
-    @Binds abstract fun adsManager(impl: AdMobAdsManager): AdsManager
+    // ADS OFF: @Binds abstract fun adsManager(impl: AdMobAdsManager): AdsManager
+    @Binds abstract fun adsManager(impl: NoAdsManager): AdsManager
 }

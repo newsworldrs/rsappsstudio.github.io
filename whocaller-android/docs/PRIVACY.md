@@ -70,6 +70,11 @@ the Android call log and Contacts Provider and are never uploaded. Location and 
 number come from libphonenumber's offline data bundled in the app (no network). The WhatsApp video
 button only reads the "Video call" entry WhatsApp itself adds to your contacts, on-device.
 
+### Ads, install source and app updates
+WhoCaller shows no ads and contains no ads SDK; the advertising ID is not used. On first launch it
+reads Google Play's install referrer (the campaign that brought the install, e.g. utm_source) and
+sends it to analytics. In-app reviews and updates go through Google Play.
+
 ### Call recordings
 Recording starts only when the user taps Record during a call (the first time, the app explains it
 and asks for microphone access). Recordings are AAC files in WhoCaller's private storage on the

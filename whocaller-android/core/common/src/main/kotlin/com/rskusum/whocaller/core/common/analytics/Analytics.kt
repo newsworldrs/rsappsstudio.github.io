@@ -6,6 +6,9 @@ package com.rskusum.whocaller.core.common.analytics
  */
 sealed class AnalyticsEvent(val name: String, val params: Map<String, String> = emptyMap()) {
     data object AppOpened : AnalyticsEvent("app_opened")
+    /** Where the install came from (Play install referrer: utm_source / utm_medium / utm_campaign). */
+    data class InstallSource(val source: String, val medium: String, val campaign: String) :
+        AnalyticsEvent("install_source", mapOf("source" to source, "medium" to medium, "campaign" to campaign))
     data class NumberSearched(val found: Boolean) :
         AnalyticsEvent("number_searched", mapOf("found" to found.toString()))
     data class CallerIdentified(val label: String) :

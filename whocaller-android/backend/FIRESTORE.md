@@ -162,9 +162,25 @@ node external-list.mjs import data/list.json --list community-spamlist-2026-09 -
 node external-list.mjs remove --list community-spamlist-2026-09
 ```
 
+**USA**: `import-us-fcc.mjs` builds a list from the FCC's public consumer-complaint data (unwanted
+calls / robocalls, US government public data). Numbers need at least 3 complaints in the last year
+(caller IDs in complaints are sometimes spoofed, so single complaints are ignored); the score grows
+with the number of complaints (60 → 78, never above 80) and the category is ROBOCALL or SPAM. The
+**WhoCaller US spam data** workflow runs it on GitHub (edit `tools/us-request.txt` or use the Actions
+tab) and publishes `us-fcc-callers.csv` as the `whocaller-us-datasets` release; then:
+
+```bash
+node external-list.mjs import data/us-fcc-callers.csv --list us-fcc-2026-10 --region US --name "FCC complaint records"
+```
+
+On Android 11+ the app also reads the carrier's caller-ID check (STIR/SHAKEN, used by US carriers):
+when it fails, the call shows "Caller ID not verified · number may be spoofed".
+
 Imported so far: `community-spamlist-2026-09`, 1,034 numbers from
 github.com/RajeshLakkam/call-blocker-spam-list (source of the numbers not stated by that project), and
-`scam-calls-india`, 1 number from github.com/makash/scam-calls-india (public domain).
+`scam-calls-india`, 1 number from github.com/makash/scam-calls-india (public domain), and
+`us-fcc-ftc-2026-09`, 1,137 US numbers with 3+ FCC/FTC complaints since October 2025 (US government
+public data, via github.com/SysAdminDoc/CallShield, MIT).
 
 ## Turning reports into spam scores
 

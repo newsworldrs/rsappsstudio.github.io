@@ -40,6 +40,17 @@ class CallerAlertNotifier @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
+    /** The network couldn't verify the caller ID (STIR/SHAKEN): the shown number may be fake. */
+    fun spoofAlert(result: CallerResult): CallerAlert {
+        val who = result.number?.display ?: context.getString(R.string.callerid_private)
+        return CallerAlert(
+            NotificationCategory.SPAM_ALERTS,
+            context.getString(R.string.callerid_incoming_from, who),
+            context.getString(R.string.callerid_spoofed),
+            result.number?.key,
+        )
+    }
+
     /** Returns null when there's nothing worth interrupting the user for. */
     fun buildAlert(result: CallerResult): CallerAlert? {
         val key = result.number?.key
@@ -68,7 +79,7 @@ class CallerAlertNotifier @Inject constructor(
                 title,
                 listOfNotNull(
                     context.getString(com.rskusum.whocaller.core.ui.R.string.label_possible_spam_list),
-                    context.getString(com.rskusum.whocaller.core.ui.R.string.label_flagged_by_list),
+                    context.getString(com.rskusum.whocaller.core.ui.R.string.label_flagged_by_list, result.info?.listedBy.orEmpty()),
                     numberLine,
                 ).joinToString(" · "),
                 key,

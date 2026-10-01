@@ -159,7 +159,8 @@ fun WhoCallerApp(
                     onMessages = { navController.navigate(Routes.messages(null)) },
                     onProfile = { navController.navigate(Routes.PROFILE) },
                     onSetUpProtection = { navController.navigate(Routes.PERMISSIONS) },
-                    adBanner = { adsManager.Banner(Modifier.padding(vertical = 8.dp)) },
+                    // ADS OFF (first two years): adsManager.Banner(Modifier.padding(vertical = 8.dp))
+                    adBanner = {},
                 )
             }
             composable(
@@ -173,7 +174,8 @@ fun WhoCallerApp(
                     onReport = { navController.navigate(Routes.report(it)) },
                     onOpenBusiness = { navController.navigate(Routes.business(it)) },
                     onBusinessDirectory = { navController.navigate(Routes.BUSINESSES) },
-                    adBanner = { adsManager.Banner(Modifier) },
+                    // ADS OFF (first two years): adsManager.Banner(Modifier)
+                    adBanner = {},
                 )
             }
             composable(Routes.CALLS) {

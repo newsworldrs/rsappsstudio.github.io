@@ -37,15 +37,24 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
 
-/** A subscription plan with its price exactly as Google Play formats it. Nothing is hard-coded. */
+/** The three ways to buy Premium. */
+enum class PlanKind { MONTHLY, YEARLY, LIFETIME }
+
+/** A plan with its price exactly as Google Play formats it for the user's country. Nothing is hard-coded. */
 data class PremiumProduct(
+    val kind: PlanKind,
     val productId: String,
-    val title: String,
+    /** Base plan of the subscription ("monthly" / "yearly"); null for the lifetime product. */
+    val basePlanId: String?,
     val formattedPrice: String,
-    /** ISO 8601 period, e.g. P1M / P1Y. */
-    val billingPeriod: String,
+    val priceMicros: Long,
+    /** ISO 8601 period, e.g. P1M / P1Y; null for lifetime. */
+    val billingPeriod: String?,
+    /** ISO 8601 free-trial period (e.g. P7D) when Play Console has a trial offer on this base plan. */
+    val freeTrialPeriod: String?,
     internal val details: ProductDetails,
-    internal val offerToken: String,
+    /** Offer token for subscriptions; null for the one-time product. */
+    internal val offerToken: String?,
 )
 
 sealed interface BillingState {
@@ -55,7 +64,8 @@ sealed interface BillingState {
 }
 
 /**
- * Google Play Billing for WhoCaller Premium subscriptions.
+ * Google Play Billing for WhoCaller Premium: a subscription (monthly / yearly base plans) and a
+ * one-time lifetime purchase.
  *
  * Entitlement: purchases are verified by the backend (`POST /api/v1/billing/verify`) using the
  * Play Developer API with server-held credentials. If no backend is configured, the Play purchase
@@ -86,6 +96,12 @@ class BillingManager @Inject constructor(
     private val _pending = MutableStateFlow(false)
     val pending: StateFlow<Boolean> = _pending.asStateFlow()
 
+    /** Which plan is active (lifetime wins over a subscription); null when not premium. */
+    private val _activePlan = MutableStateFlow<PlanKind?>(null)
+    val activePlan: StateFlow<PlanKind?> = _activePlan.asStateFlow()
+
+    @Volatile private var activeSubscriptionToken: String? = null
+
     private val _lastError = MutableStateFlow<Int?>(null)
     val lastError: StateFlow<Int?> = _lastError.asStateFlow()
 
@@ -113,45 +129,67 @@ class BillingManager @Inject constructor(
             _state.value = BillingState.Unavailable
             return
         }
-        val params = QueryProductDetailsParams.newBuilder()
-            .setProductList(
-                PRODUCT_IDS.map {
-                    QueryProductDetailsParams.Product.newBuilder()
-                        .setProductId(it)
-                        .setProductType(BillingClient.ProductType.SUBS)
-                        .build()
-                },
-            )
-            .build()
-        val result = client.queryProductDetails(params)
-        val products = result.productDetailsList.orEmpty().mapNotNull { details ->
-            val offer = details.subscriptionOfferDetails?.firstOrNull() ?: return@mapNotNull null
-            val phase = offer.pricingPhases.pricingPhaseList.lastOrNull() ?: return@mapNotNull null
+        // One query per product type (Play doesn't mix subscriptions and one-time products).
+        val subs = client.queryProductDetails(query(SUBSCRIPTION_ID, BillingClient.ProductType.SUBS)).productDetailsList.orEmpty()
+        val inApp = client.queryProductDetails(query(LIFETIME_ID, BillingClient.ProductType.INAPP)).productDetailsList.orEmpty()
+
+        val plans = subs.flatMap { details ->
+            val offers = details.subscriptionOfferDetails.orEmpty()
+            listOf(BASE_PLAN_MONTHLY to PlanKind.MONTHLY, BASE_PLAN_YEARLY to PlanKind.YEARLY).mapNotNull { (basePlan, kind) ->
+                val forPlan = offers.filter { it.basePlanId == basePlan }
+                // A free-trial offer if Play Console has one for this base plan, else the base plan itself.
+                val trial = forPlan.firstOrNull { o -> o.offerId != null && o.pricingPhases.pricingPhaseList.any { it.priceAmountMicros == 0L } }
+                val offer = trial ?: forPlan.firstOrNull { it.offerId == null } ?: forPlan.firstOrNull() ?: return@mapNotNull null
+                val recurring = offer.pricingPhases.pricingPhaseList.lastOrNull() ?: return@mapNotNull null
+                PremiumProduct(
+                    kind = kind,
+                    productId = details.productId,
+                    basePlanId = basePlan,
+                    formattedPrice = recurring.formattedPrice,
+                    priceMicros = recurring.priceAmountMicros,
+                    billingPeriod = recurring.billingPeriod,
+                    freeTrialPeriod = offer.pricingPhases.pricingPhaseList.firstOrNull { it.priceAmountMicros == 0L }?.billingPeriod,
+                    details = details,
+                    offerToken = offer.offerToken,
+                )
+            }
+        } + inApp.mapNotNull { details ->
+            val price = details.oneTimePurchaseOfferDetails ?: return@mapNotNull null
             PremiumProduct(
+                kind = PlanKind.LIFETIME,
                 productId = details.productId,
-                title = details.name,
-                formattedPrice = phase.formattedPrice,
-                billingPeriod = phase.billingPeriod,
+                basePlanId = null,
+                formattedPrice = price.formattedPrice,
+                priceMicros = price.priceAmountMicros,
+                billingPeriod = null,
+                freeTrialPeriod = null,
                 details = details,
-                offerToken = offer.offerToken,
+                offerToken = null,
             )
         }
-        _state.value = if (products.isEmpty()) BillingState.Unavailable else BillingState.Ready(products)
+        _state.value = if (plans.isEmpty()) BillingState.Unavailable else BillingState.Ready(plans.sortedBy { it.kind.ordinal })
     }
 
+    private fun query(productId: String, type: String) = QueryProductDetailsParams.newBuilder()
+        .setProductList(listOf(QueryProductDetailsParams.Product.newBuilder().setProductId(productId).setProductType(type).build()))
+        .build()
+
     fun launchPurchase(activity: Activity, product: PremiumProduct) {
-        val params = BillingFlowParams.newBuilder()
-            .setProductDetailsParamsList(
-                listOf(
-                    BillingFlowParams.ProductDetailsParams.newBuilder()
-                        .setProductDetails(product.details)
-                        .setOfferToken(product.offerToken)
-                        .build(),
-                ),
+        val productParams = BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(product.details)
+        product.offerToken?.let(productParams::setOfferToken)
+        val builder = BillingFlowParams.newBuilder().setProductDetailsParamsList(listOf(productParams.build()))
+        // Monthly ↔ yearly: switch the existing subscription instead of starting a second one.
+        val current = activeSubscriptionToken
+        if (product.kind != PlanKind.LIFETIME && current != null) {
+            builder.setSubscriptionUpdateParams(
+                BillingFlowParams.SubscriptionUpdateParams.newBuilder()
+                    .setOldPurchaseToken(current)
+                    .setSubscriptionReplacementMode(BillingFlowParams.SubscriptionUpdateParams.ReplacementMode.WITH_TIME_PRORATION)
+                    .build(),
             )
-            .build()
+        }
         _lastError.value = null
-        val result = client.launchBillingFlow(activity, params)
+        val result = client.launchBillingFlow(activity, builder.build())
         if (result.responseCode != BillingClient.BillingResponseCode.OK) _lastError.value = R.string.premium_error
     }
 
@@ -164,16 +202,17 @@ class BillingManager @Inject constructor(
         }
     }
 
+    /** Re-reads what this Google account owns (subscription and lifetime). Also "Restore purchases". */
     suspend fun refreshPurchases() {
         if (!ensureConnected()) return
-        val result = client.queryPurchasesAsync(
-            QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.SUBS).build(),
-        )
-        val active = result.purchasesList.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }
-        if (active.isEmpty()) {
-            setPremium(false)
+        val owned = listOf(BillingClient.ProductType.SUBS, BillingClient.ProductType.INAPP).flatMap { type ->
+            client.queryPurchasesAsync(QueryPurchasesParams.newBuilder().setProductType(type).build()).purchasesList
+        }.filter { p -> p.purchaseState == Purchase.PurchaseState.PURCHASED && p.products.any { it in ALL_PRODUCT_IDS } }
+        activeSubscriptionToken = owned.firstOrNull { SUBSCRIPTION_ID in it.products }?.purchaseToken
+        if (owned.isEmpty()) {
+            setPremium(false, null)
         } else {
-            active.forEach { handlePurchase(it) }
+            owned.forEach { handlePurchase(it) }
         }
     }
 
@@ -195,20 +234,36 @@ class BillingManager @Inject constructor(
                     )
                     analytics.track(AnalyticsEvent.SubscriptionStarted(productId))
                 }
-                setPremium(true)
+                val kind = when {
+                    LIFETIME_ID in purchase.products -> PlanKind.LIFETIME
+                    else -> null // monthly/yearly isn't in the purchase; the Play Console base plan decides
+                }
+                if (SUBSCRIPTION_ID in purchase.products) activeSubscriptionToken = purchase.purchaseToken
+                setPremium(true, kind)
             }
             else -> Unit
         }
     }
 
-    private fun setPremium(value: Boolean) {
+    private fun setPremium(value: Boolean, kind: PlanKind?) {
         _isPremium.value = value
+        _activePlan.value = when {
+            !value -> null
+            kind == PlanKind.LIFETIME || _activePlan.value == PlanKind.LIFETIME -> PlanKind.LIFETIME
+            else -> kind ?: _activePlan.value
+        }
         secureStorage.putString(KEY_PREMIUM, if (value) "1" else null)
     }
 
     companion object {
-        /** Subscription product ids configured in Play Console (see docs/RELEASE.md). */
-        val PRODUCT_IDS = listOf("whocaller_premium_monthly", "whocaller_premium_yearly")
+        // Play Console ids (docs/PLAY_BILLING.md). Changing them breaks existing purchases.
+        /** Subscription with two auto-renewing base plans. */
+        const val SUBSCRIPTION_ID = "whocaller_premium"
+        const val BASE_PLAN_MONTHLY = "monthly"
+        const val BASE_PLAN_YEARLY = "yearly"
+        /** One-time, non-consumable in-app product. */
+        const val LIFETIME_ID = "whocaller_premium_lifetime"
+        val ALL_PRODUCT_IDS = setOf(SUBSCRIPTION_ID, LIFETIME_ID)
         private const val KEY_PREMIUM = "premium_entitlement"
     }
 }

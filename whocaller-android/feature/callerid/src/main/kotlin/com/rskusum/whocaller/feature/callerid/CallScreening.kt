@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.telecom.Call
+import android.telecom.Connection
 import android.telecom.CallScreeningService
 import android.telecom.TelecomManager
 import android.telephony.TelephonyManager
@@ -40,7 +41,13 @@ class CallScreeningManager @Inject constructor(
      * @param canBlock false on Android 8–9, where apps can't reject calls without being the dialer.
      * @return the result, or null if identification failed or ran out of time (the call is then allowed).
      */
-    suspend fun screen(rawNumber: String?, canBlock: Boolean, showAlert: Boolean = true): CallerResult? {
+    suspend fun screen(
+        rawNumber: String?,
+        canBlock: Boolean,
+        showAlert: Boolean = true,
+        /** The network's caller-ID check (STIR/SHAKEN, mainly US carriers) failed: the number may be spoofed. */
+        callerIdFailed: Boolean = false,
+    ): CallerResult? {
         val result = try {
             withTimeoutOrNull(TOTAL_BUDGET_MS) { identificationManager.identify(rawNumber) }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -50,15 +57,17 @@ class CallScreeningManager @Inject constructor(
             null
         } ?: return null
 
-        val effective = if (!canBlock && result.decision == CallDecision.BLOCK) {
+        val effective = when {
             // Can't reject on this OS version: warn instead.
-            result.copy(decision = CallDecision.WARN)
-        } else {
-            result
+            !canBlock && result.decision == CallDecision.BLOCK -> result.copy(decision = CallDecision.WARN)
+            // Spoofed caller ID: never trust the number's good name, at least warn.
+            callerIdFailed && result.label != CallerLabel.CONTACT && result.decision == CallDecision.ALLOW -> result.copy(decision = CallDecision.WARN)
+            else -> result
         }
         val settings = runCatching { settingsRepository.current() }.getOrNull()
         if (showAlert && settings != null && (settings.callerIdEnabled || effective.decision != CallDecision.ALLOW)) {
-            notifier.buildAlert(effective)?.let { notifier.post(it, settings.disabledNotificationCategories) }
+            val alert = if (callerIdFailed && result.label != CallerLabel.CONTACT) notifier.spoofAlert(effective) else notifier.buildAlert(effective)
+            alert?.let { notifier.post(it, settings.disabledNotificationCategories) }
         }
         return effective
     }
@@ -94,7 +103,9 @@ class WhoCallerScreeningService : CallScreeningService() {
         scope.launch {
             // As the default phone app, WhoCaller's call screen already shows who is calling.
             val isDefaultDialer = getSystemService(TelecomManager::class.java)?.defaultDialerPackage == packageName
-            val result = screeningManager.screen(if (hidden) null else number, canBlock = true, showAlert = !isDefaultDialer)
+            val callerIdFailed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                callDetails.callerNumberVerificationStatus == Connection.VERIFICATION_STATUS_FAILED
+            val result = screeningManager.screen(if (hidden) null else number, canBlock = true, showAlert = !isDefaultDialer, callerIdFailed = callerIdFailed)
             // Not the phone app: we can't see the call end, so check the call log afterwards
             // and offer "Know this caller?" if the user answered or declined.
             if (!isDefaultDialer && !hidden && number != null && result != null &&

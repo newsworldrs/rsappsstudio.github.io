@@ -40,4 +40,7 @@
     <string name="nav_calls">Calls</string>
     <string name="nav_protection">Protection</string>
     <string name="nav_settings">Settings</string>
+    <string name="update_ready_title">Update ready</string>
+    <string name="update_ready_text">A new version of WhoCaller has been downloaded. Restart to finish updating.</string>
+    <string name="update_restart">Restart</string>
 </resources>

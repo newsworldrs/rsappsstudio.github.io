@@ -215,4 +215,5 @@
     <string name="rec_pause">Pause</string>
     <string name="rec_private">Private number</string>
     <string name="rec_local_note">Stored only on this phone. Not uploaded or backed up.</string>
+    <string name="call_label_spoofed">⚠ Caller ID not verified · number may be spoofed</string>
 </resources>

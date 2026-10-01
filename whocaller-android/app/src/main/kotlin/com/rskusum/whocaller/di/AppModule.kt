@@ -20,7 +20,6 @@ import com.rskusum.whocaller.firebase.FirebaseCrashReporter
 import com.rskusum.whocaller.firebase.FirebasePhoneAuthGateway
 import com.rskusum.whocaller.firebase.FirebaseRemoteFlags
 import com.rskusum.whocaller.feature.premium.AdsPolicy
-import com.rskusum.whocaller.feature.premium.AdMobAdsManager
 import com.rskusum.whocaller.feature.profile.PhoneAuthGateway
 import dagger.Binds
 import dagger.Module
@@ -66,9 +65,10 @@ object AppProvidersModule {
         @BaseNetwork base: NetworkDataSource,
     ): NetworkDataSource = if (context.isFirebaseAvailable()) FirestoreNetworkDataSource(base) else base
 
-    @Provides
-    @Named(AdMobAdsManager.BANNER_UNIT_ID)
-    fun bannerUnitId(): String = BuildConfig.ADMOB_BANNER_ID
+    // ADS OFF (first two years):
+    // @Provides
+    // @Named(AdMobAdsManager.BANNER_UNIT_ID)
+    // fun bannerUnitId(): String = BuildConfig.ADMOB_BANNER_ID
 
     @Provides
     @Singleton

@@ -24,6 +24,10 @@ libphonenumber = "8.13.52"
 libphonenumberGeocoder = "2.246"
 libphonenumberCarrier = "1.236"
 billing = "7.1.1"
+playReview = "2.0.2"
+playAppUpdate = "2.1.0"
+playIntegrity = "1.4.0"
+installReferrer = "2.2"
 playServicesAds = "23.6.0"
 ump = "3.1.0"
 firebaseBom = "34.19.0"
@@ -105,6 +109,10 @@ libphonenumber-carrier = { module = "com.googlecode.libphonenumber:carrier", ver
 
 # Google Play / Firebase
 billing-ktx = { module = "com.android.billingclient:billing-ktx", version.ref = "billing" }
+play-review-ktx = { module = "com.google.android.play:review-ktx", version.ref = "playReview" }
+play-app-update-ktx = { module = "com.google.android.play:app-update-ktx", version.ref = "playAppUpdate" }
+play-integrity = { module = "com.google.android.play:integrity", version.ref = "playIntegrity" }
+install-referrer = { module = "com.android.installreferrer:installreferrer", version.ref = "installReferrer" }
 play-services-ads = { module = "com.google.android.gms:play-services-ads", version.ref = "playServicesAds" }
 ump = { module = "com.google.android.ump:user-messaging-platform", version.ref = "ump" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }

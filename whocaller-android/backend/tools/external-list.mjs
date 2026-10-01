@@ -10,11 +10,13 @@
 //  - Two WhoCaller users answering "Not spam" switch the label off for everyone (see lib.mjs combine).
 //  - Numbers WhoCaller already knows as a business, bank, helpline or named caller are skipped.
 //  - `remove` deletes numbers that only came from the list and strips the list from the others.
-// Input: JSON array of {number|phoneNumber, details?} or a CSV with a phoneNumber column.
+// Input: JSON array of {number|phoneNumber, details?} or a CSV with a phoneNumber column. Optional
+// per-row columns: spamScore (capped at 80) and category (SPAM, ROBOCALL, TELEMARKETING…).
+// --region decides the country for numbers without +country code (default IN).
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { FieldValue } from "firebase-admin/firestore";
-import { args, combine, connect, normalize, parseCsv, strictNumber } from "./lib.mjs";
+import { CATEGORIES, NEUTRAL, args, combine, connect, normalize, parseCsv, strictNumber } from "./lib.mjs";
 
 const opts = args(process.argv.slice(2));
 const [command, file] = opts._;
@@ -31,15 +33,22 @@ if (command === "import") {
   const name = String(opts.name ?? "Outside spam list").slice(0, 60);
   const text = readFileSync(file, "utf8");
   const rows = extname(file).toLowerCase() === ".json" ? JSON.parse(text) : parseCsv(text);
+  const region = String(opts.region ?? "IN").toUpperCase();
   const numbers = new Map();
   let invalid = 0;
   let examples = 0;
   for (const row of rows) {
     const details = String(row.details ?? "");
     if (/example entry/i.test(details)) { examples++; continue; }
-    const n = strictNumber(row.number ?? row.phoneNumber ?? row.phone_number, "IN");
+    const n = strictNumber(row.number ?? row.phoneNumber ?? row.phone_number, region);
     if (!n) { invalid++; continue; }
-    numbers.set(n.e164, n);
+    const rowScore = Number(row.spamScore);
+    const cat = String(row.category ?? "").trim().toUpperCase();
+    numbers.set(n.e164, {
+      ...n,
+      score: Number.isFinite(rowScore) && rowScore > 0 ? Math.min(80, rowScore) : score,
+      category: CATEGORIES.includes(cat) && !NEUTRAL.has(cat) ? cat : "SPAM",
+    });
   }
   console.log(`${rows.length} rows: ${numbers.size} valid numbers, ${invalid} invalid, ${examples} example rows skipped.`);
   if (opts["dry-run"]) process.exit(0);
@@ -61,12 +70,13 @@ if (command === "import") {
         skippedKnown++;
         return;
       }
-      const n = normalize(e164, "IN");
+      const n = normalize(e164, region);
+      const item = numbers.get(e164);
       const external = {
         externalList: list,
         externalListName: name,
-        externalSpamScore: Math.round(score),
-        externalCategories: ["SPAM"],
+        externalSpamScore: Math.round(item.score),
+        externalCategories: [item.category],
       };
       const { spamScore, categories, externalActive } = combine({ ...(before ?? {}), ...external });
       batch.set(refs[j], {
