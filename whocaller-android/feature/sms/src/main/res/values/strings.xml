@@ -36,7 +36,13 @@
     <string name="sms_sig_reported">You reported this sender</string>
 
     <string name="sms_tab_conversations">Conversations</string>
-    <string name="sms_tab_check">Check a message</string>
+    <string name="sms_tab_check">Check text</string>
+    <string name="sms_tab_spam">Spam</string>
+    <string name="sms_tab_spam_count">Spam (%1)</string>
+    <string name="sms_spam_explainer">WhoCaller checks every message automatically when it arrives (on your phone, nothing is uploaded) and moves likely spam and scams here. Tap "Not spam" to move a conversation back and trust that sender.</string>
+    <string name="sms_spam_empty">No spam. Suspicious messages will appear here automatically.</string>
+    <string name="sms_not_spam">Not spam</string>
+    <string name="sms_block">Block</string>
     <string name="sms_make_default">Make WhoCaller your SMS app</string>
     <string name="sms_make_default_desc">To read, receive and send texts here with scam warnings, set WhoCaller as your default SMS app. You can switch back any time.</string>
     <string name="sms_allow_read">Allow reading messages</string>

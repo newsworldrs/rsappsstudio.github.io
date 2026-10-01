@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -130,6 +131,14 @@ class MessagesViewModel @Inject constructor(
         }
     }
 
+    /** Moves a conversation back to Conversations and stops flagging this sender. */
+    fun markNotSpam(address: String) {
+        viewModelScope.launch {
+            smsRepository.markNotSpam(address)
+            refresh()
+        }
+    }
+
     fun defaultSmsIntent() = permissionManager.defaultSmsIntent()
 
     fun isDefaultSms() = permissionManager.isDefaultSms()
@@ -172,7 +181,10 @@ fun MessagesScreen(
     viewModel: MessagesViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var tab by rememberSaveable { mutableIntStateOf(if (viewModel.openedWithText) 1 else 0) }
+    // 0 = Conversations, 1 = Spam (filled automatically as messages arrive), 2 = Check a message.
+    var tab by rememberSaveable { mutableIntStateOf(if (viewModel.openedWithText) 2 else 0) }
+    val inbox = state.conversations.filterNot { it.isSuspicious() }
+    val spam = state.conversations.filter { it.isSuspicious() }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
     val context = androidx.compose.ui.platform.LocalContext.current
     val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -213,9 +225,16 @@ fun MessagesScreen(
         Column(Modifier.fillMaxSize().padding(padding)) {
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.sms_tab_conversations)) })
-                Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.sms_tab_check)) })
+                Tab(
+                    selected = tab == 1,
+                    onClick = { tab = 1 },
+                    text = { Text(if (spam.isEmpty()) stringResource(R.string.sms_tab_spam) else stringResource(R.string.sms_tab_spam_count, spam.size)) },
+                )
+                Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(stringResource(R.string.sms_tab_check)) })
             }
-            if (tab == 0) {
+            if (tab == 1) {
+                SpamList(spam, onOpen = { onOpenConversation(it.threadId, it.address) }, onNotSpam = { viewModel.markNotSpam(it.address) })
+            } else if (tab == 0) {
                 LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 96.dp)) {
                     if (!state.isDefault) {
                         item {
@@ -247,10 +266,39 @@ fun MessagesScreen(
                     } else if (state.loaded && state.conversations.isEmpty()) {
                         item { EmptyState(Icons.Filled.Edit, stringResource(R.string.sms_no_conversations)) }
                     }
-                    items(state.conversations, key = { it.threadId }) { c -> ConversationRow(c) { onOpenConversation(c.threadId, c.address) } }
+                    items(inbox, key = { it.threadId }) { c -> ConversationRow(c) { onOpenConversation(c.threadId, c.address) } }
                 }
             } else {
                 CheckMessageTab(state, viewModel)
+            }
+        }
+    }
+}
+
+private fun SmsConversation.isSuspicious() =
+    classification.category == SmsCategory.SCAM || classification.category == SmsCategory.SPAM
+
+/** Conversations WhoCaller moved to Spam automatically; nothing is deleted. */
+@Composable
+private fun SpamList(spam: List<SmsConversation>, onOpen: (SmsConversation) -> Unit, onNotSpam: (SmsConversation) -> Unit) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        item {
+            Text(
+                stringResource(R.string.sms_spam_explainer),
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (spam.isEmpty()) {
+            item { EmptyState(Icons.Filled.Warning, stringResource(R.string.sms_spam_empty)) }
+        }
+        items(spam, key = { it.threadId }) { c ->
+            Column {
+                ConversationRow(c) { onOpen(c) }
+                Row(Modifier.fillMaxWidth().padding(start = 72.dp, end = 16.dp, bottom = 8.dp)) {
+                    OutlinedButton(onClick = { onNotSpam(c) }) { Text(stringResource(R.string.sms_not_spam)) }
+                }
             }
         }
     }

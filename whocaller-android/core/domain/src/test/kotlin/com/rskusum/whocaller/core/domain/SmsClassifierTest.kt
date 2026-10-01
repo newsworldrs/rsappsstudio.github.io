@@ -77,3 +77,26 @@ class SmsClassifierTest {
         )
     }
 }
+
+class SmsSenderContextTest {
+    private val classifier = SmsClassifier()
+    private val lottery = "Congratulations! You have won Rs 25,00,000 in KBC lucky draw. Call 9876543210 to claim your prize now"
+
+    @Test
+    fun `contacts are not judged by wording alone`() {
+        val c = classifier.classify("+919876543210", lottery, senderIsContact = true)
+        assertTrue(SmsSignal.SPAM_WORDING !in c.signals)
+        assertTrue(c.category != SmsCategory.SPAM)
+    }
+
+    @Test
+    fun `not spam wins over everything except a block`() {
+        assertEquals(SmsCategory.PERSONAL, classifier.classify("+919876543210", lottery, senderTrusted = true).category)
+        assertEquals(SmsCategory.SPAM, classifier.classify("+919876543210", "hi", senderTrusted = true, senderBlocked = true).category)
+    }
+
+    @Test
+    fun `community spam data flags the sender`() {
+        assertEquals(SmsCategory.SPAM, classifier.classify("+919876543210", "Hello sir", senderReported = true).category)
+    }
+}

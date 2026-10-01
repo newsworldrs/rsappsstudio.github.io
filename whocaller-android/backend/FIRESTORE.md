@@ -125,6 +125,17 @@ Pick one:
   (Settings → Secrets and variables → Actions). The **WhoCaller Firestore** workflow then runs every
   night, and you can run it any time from the Actions tab. Or run `npm run aggregate -- --key ~/whocaller-key.json` yourself.
 
+## SMS spam model
+
+`appConfig/smsSpamModel` holds the on-device SMS spam model (`version`, `model`). Phones download it
+once in the background (weekly check) and use it for every incoming message; the APK also contains a
+copy, so it works offline from the first launch. To ship an improved model without an app update:
+
+```bash
+python ../tools/sms-model/train.py spam.csv new_model.txt      # retrain (add your own Indian examples)
+node publish-sms-model.mjs new_model.txt --version 2 --key ~/whocaller-key.json
+```
+
 ## Data the app shows
 
 When a call comes in (or you search a number) the app reads `callerNumbers/{number}` and shows the

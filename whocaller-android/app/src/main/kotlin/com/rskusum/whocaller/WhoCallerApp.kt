@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import com.rskusum.whocaller.core.common.ApplicationScope
 import com.rskusum.whocaller.core.common.analytics.AnalyticsTracker
 import com.rskusum.whocaller.core.common.analytics.CrashReporter
+import com.rskusum.whocaller.core.data.sync.SmsModelStore
 import com.rskusum.whocaller.core.domain.repository.NetworkMonitor
 import com.rskusum.whocaller.core.domain.repository.SettingsRepository
 import com.rskusum.whocaller.core.domain.repository.SyncController
@@ -29,6 +30,7 @@ class WhoCallerApp : Application(), Configuration.Provider {
     @Inject lateinit var crashReporter: CrashReporter
     @Inject lateinit var syncController: SyncController
     @Inject lateinit var networkMonitor: NetworkMonitor
+    @Inject lateinit var smsModelStore: SmsModelStore
 
     @Inject @ApplicationScope
     lateinit var appScope: CoroutineScope
@@ -40,6 +42,8 @@ class WhoCallerApp : Application(), Configuration.Provider {
         super.onCreate()
         NotificationChannels.createAll(this)
         AppCheckInstaller.install(this)
+        // Newest downloaded SMS spam model, before any incoming message is checked.
+        smsModelStore.loadInstalled()
 
         appScope.launch {
             // Apply the user's consent choices; both default to off.

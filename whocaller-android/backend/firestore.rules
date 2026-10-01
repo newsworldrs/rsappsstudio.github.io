@@ -23,6 +23,12 @@ service cloud.firestore {
       allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
+    // ---- WHOCALLER: app configuration (e.g. the SMS spam model phones download). Read-only. ----
+    match /appConfig/{doc} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     function validReport(d) {
       return d.keys().hasOnly(['phoneNumber', 'userId', 'categories', 'callType', 'callAnswered', 'reportedAt', 'appVersion'])
         && d.keys().hasAll(['phoneNumber', 'userId', 'categories', 'callType', 'callAnswered', 'reportedAt', 'appVersion'])

@@ -20,6 +20,9 @@ object NotificationChannels {
     /** New SMS when WhoCaller is the default SMS app. */
     const val MESSAGES = "messages"
 
+    /** Messages WhoCaller thinks are spam: shown quietly, without sound. */
+    const val SPAM_MESSAGES = "spam_messages"
+
     /** "Know this caller?" after an unknown call. */
     const val POST_CALL = "post_call"
 
@@ -41,6 +44,7 @@ object NotificationChannels {
                 .apply { setSound(null, null) },
             channel(context, ONGOING_CALLS, R.string.channel_ongoing_calls, R.string.channel_ongoing_calls_desc, NotificationManager.IMPORTANCE_LOW),
             channel(context, MESSAGES, R.string.channel_messages, R.string.channel_messages_desc, NotificationManager.IMPORTANCE_HIGH),
+            channel(context, SPAM_MESSAGES, R.string.channel_spam_messages, R.string.channel_spam_messages_desc, NotificationManager.IMPORTANCE_LOW),
             channel(context, POST_CALL, R.string.channel_post_call, R.string.channel_post_call_desc, NotificationManager.IMPORTANCE_DEFAULT),
         )
         nm.createNotificationChannels(channels)

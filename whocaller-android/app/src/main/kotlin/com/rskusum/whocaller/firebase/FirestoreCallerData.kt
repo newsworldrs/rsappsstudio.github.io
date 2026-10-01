@@ -13,6 +13,7 @@ import com.rskusum.whocaller.core.model.ReportCallType
 import com.rskusum.whocaller.core.model.ReportCategory
 import com.rskusum.whocaller.core.model.SpamCategory
 import com.rskusum.whocaller.core.network.NetworkDataSource
+import com.rskusum.whocaller.core.network.SmsModelDto
 import com.rskusum.whocaller.core.network.model.NumberInfoDto
 import com.rskusum.whocaller.core.network.model.ReportRequestDto
 import com.rskusum.whocaller.core.network.model.ReportResponseDto
@@ -91,6 +92,19 @@ class FirestoreNetworkDataSource(
             }
         }
         if (base.isConfigured) base.deleteAccount() else AppResult.Success(Unit)
+    }
+
+    /** Published SMS spam model (appConfig/smsSpamModel: version + model text). */
+    override suspend fun getSmsSpamModel(): AppResult<SmsModelDto> = firestore {
+        uid()
+        val snap = db.collection("appConfig").document("smsSpamModel").get().await()
+        val version = snap.getLong("version")?.toInt()
+        val model = snap.getString("model")
+        if (!snap.exists() || version == null || model.isNullOrBlank()) {
+            AppResult.Failure(AppError.NOT_FOUND)
+        } else {
+            AppResult.Success(SmsModelDto(version, model))
+        }
     }
 
     /** Most-reported numbers of a region, cached on the phone for offline protection. */

@@ -53,6 +53,15 @@ class SpamTextModel internal constructor(private val bias: Double, private val w
             return bias?.let { SpamTextModel(it, weights) }
         }
 
+        @Volatile private var installed: SpamTextModel? = null
+
+        /** Newer model downloaded by the app (see SmsModelStore); falls back to the bundled one. */
+        val active: SpamTextModel? get() = installed ?: bundled
+
+        fun install(model: SpamTextModel) {
+            installed = model
+        }
+
         /** Bundled model, loaded once. */
         val bundled: SpamTextModel? by lazy {
             SpamTextModel::class.java.getResourceAsStream("/whocaller/sms_spam_model.txt")

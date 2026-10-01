@@ -45,11 +45,13 @@ class SyncWorker @AssistedInject constructor(
     private val countryRepository: CountryRepository,
     private val settingsRepository: SettingsRepository,
     private val crashReporter: CrashReporter,
+    private val smsModelStore: SmsModelStore,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         return try {
             val reports = spamRepository.syncPendingReports()
+            runCatching { smsModelStore.refresh() }
             val list = if (settingsRepository.current().spamProtectionEnabled) {
                 callerRepository.refreshSpamDatabase(countryRepository.defaultRegion())
             } else {

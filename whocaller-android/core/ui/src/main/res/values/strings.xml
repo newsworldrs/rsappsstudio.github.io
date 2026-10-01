@@ -97,4 +97,6 @@
     <string name="action_whatsapp">WhatsApp</string>
     <string name="channel_post_call">After unknown calls</string>
     <string name="channel_post_call_desc">Asks whether you know a caller who isn\'t in your contacts, so you can save or report the number.</string>
+    <string name="channel_spam_messages">Suspected spam messages</string>
+    <string name="channel_spam_messages_desc">Texts WhoCaller moved to Spam. Shown quietly so they don\'t disturb you.</string>
 </resources>

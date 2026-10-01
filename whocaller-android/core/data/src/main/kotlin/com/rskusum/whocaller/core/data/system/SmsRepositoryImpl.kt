@@ -54,6 +54,24 @@ class SmsRepositoryImpl @Inject constructor(
     @IoDispatcher private val io: CoroutineDispatcher,
 ) : SmsRepository {
 
+    /** Senders the user marked "Not spam" (normalized keys). Stays on the device. */
+    private val notSpam = context.getSharedPreferences("sms_not_spam", Context.MODE_PRIVATE)
+
+    override suspend fun markNotSpam(address: String) {
+        val key = normalizer.keyOf(address, countryRepository.defaultRegion()) ?: return
+        notSpam.edit().putBoolean(key, true).apply()
+    }
+
+    override suspend fun unmarkNotSpam(address: String) {
+        val key = normalizer.keyOf(address, countryRepository.defaultRegion()) ?: return
+        notSpam.edit().remove(key).apply()
+    }
+
+    override suspend fun isMarkedNotSpam(address: String): Boolean {
+        val key = normalizer.keyOf(address, countryRepository.defaultRegion()) ?: return false
+        return notSpam.getBoolean(key, false)
+    }
+
     private fun granted(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
 
@@ -188,6 +206,7 @@ class SmsRepositoryImpl @Inject constructor(
         )
         val out = ArrayList<SmsMessage>()
         val blockedCache = HashMap<String, Boolean>()
+        val senderCache = HashMap<String, Triple<Boolean, Boolean, Boolean>>() // contact, trusted, community spam
         try {
             context.contentResolver.query(Telephony.Sms.CONTENT_URI, projection, selection, args, "${Telephony.Sms.DATE} DESC")?.use { c ->
                 while (c.moveToNext() && out.size < limit) {
@@ -206,7 +225,19 @@ class SmsRepositoryImpl @Inject constructor(
                         address = address,
                         body = body,
                         timestamp = c.getLong(3),
-                        classification = classifier.classify(address, if (outgoing) "" else body, senderBlocked = flagged, senderReported = false),
+                        classification = if (outgoing) {
+                            classifier.classify(address, "")
+                        } else {
+                            val (contact, trusted, community) = senderCache.getOrPut(address) { senderContext(address, key) }
+                            classifier.classify(
+                                address,
+                                body,
+                                senderBlocked = flagged,
+                                senderReported = community,
+                                senderIsContact = contact,
+                                senderTrusted = trusted,
+                            )
+                        },
                         threadId = c.getLong(4),
                         outgoing = outgoing,
                         read = c.getInt(6) == 1,
@@ -217,6 +248,15 @@ class SmsRepositoryImpl @Inject constructor(
             return emptyList()
         }
         return out
+    }
+
+    /** Saved contact? Marked "Not spam"? Known spammer in WhoCaller's data (cached, no network)? */
+    private suspend fun senderContext(address: String, key: String?): Triple<Boolean, Boolean, Boolean> {
+        val contact = address.any { it.isDigit() } && runCatching { contactsRepository.lookupContactName(address) }.getOrNull() != null
+        val trusted = key != null && notSpam.getBoolean(key, false)
+        val info = key?.let { runCatching { callerRepository.getCached(it) }.getOrNull() }
+        val community = info != null && (info.serverScore ?: 0) >= COMMUNITY_SPAM_SCORE && info.category.isUnwanted
+        return Triple(contact, trusted, community)
     }
 
     /** Contact name first, then a name WhoCaller already knows (cache only, no network). */
@@ -230,6 +270,7 @@ class SmsRepositoryImpl @Inject constructor(
     private companion object {
         const val SCAN_LIMIT = 1_500
         const val SNIPPET = 140
+        const val COMMUNITY_SPAM_SCORE = 50
     }
 }
 

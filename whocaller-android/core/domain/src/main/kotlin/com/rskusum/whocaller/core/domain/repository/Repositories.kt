@@ -170,6 +170,11 @@ interface SmsRepository {
     suspend fun markThreadRead(threadId: Long)
     /** Emits whenever the SMS provider changes. */
     fun changes(): Flow<Unit>
+    /** User said "Not spam": messages from this sender are never flagged again. */
+    suspend fun markNotSpam(address: String)
+    /** Undo [markNotSpam] (e.g. the user moves a conversation back to Spam). */
+    suspend fun unmarkNotSpam(address: String)
+    suspend fun isMarkedNotSpam(address: String): Boolean
 }
 
 interface LocalProfileRepository {

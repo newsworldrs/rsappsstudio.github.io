@@ -17,11 +17,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.rskusum.whocaller.core.common.phone.PhoneNumberNormalizer
+import com.rskusum.whocaller.core.domain.caller.CallerIdentificationManager
 import com.rskusum.whocaller.core.domain.repository.BlockRepository
 import com.rskusum.whocaller.core.domain.repository.ContactsRepository
 import com.rskusum.whocaller.core.domain.repository.CountryRepository
 import com.rskusum.whocaller.core.domain.repository.SmsRepository
 import com.rskusum.whocaller.core.domain.sms.SmsClassifier
+import com.rskusum.whocaller.core.domain.usecase.BlockNumberUseCase
 import com.rskusum.whocaller.core.model.SmsCategory
 import com.rskusum.whocaller.core.ui.notification.NotificationChannels
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import com.rskusum.whocaller.core.ui.R as UiR
 
@@ -44,6 +47,8 @@ class SmsDeliverReceiver : BroadcastReceiver() {
     @Inject lateinit var blockRepository: BlockRepository
     @Inject lateinit var normalizer: PhoneNumberNormalizer
     @Inject lateinit var countryRepository: CountryRepository
+    @Inject lateinit var smsRepository: SmsRepository
+    @Inject lateinit var identification: CallerIdentificationManager
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_DELIVER_ACTION) return
@@ -71,8 +76,26 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                     val key = normalizer.keyOf(address, countryRepository.defaultRegion())
                     val blocked = key != null && blockRepository.isBlocked(key)
                     if (blocked) return@forEach // Stored, but no alert for numbers the user blocked.
-                    val classification = classifier.classify(address, body)
-                    val name = runCatching { contactsRepository.lookupContactName(address) }.getOrNull() ?: address
+                    // Automatic check, in the background, the moment the message arrives:
+                    // sender (contact / "Not spam" / WhoCaller community data) + wording.
+                    val contactName = runCatching { contactsRepository.lookupContactName(address) }.getOrNull()
+                    val trusted = runCatching { smsRepository.isMarkedNotSpam(address) }.getOrDefault(false)
+                    val community = if (contactName == null && !trusted && address.count { it.isDigit() } >= 7) {
+                        val result = withTimeoutOrNull(LOOKUP_BUDGET_MS) {
+                            runCatching { identification.identify(address, networkBudgetMs = LOOKUP_BUDGET_MS, record = false) }.getOrNull()
+                        }
+                        result != null && result.spamScore.score >= COMMUNITY_SPAM_SCORE && result.spamScore.category.isUnwanted
+                    } else {
+                        false
+                    }
+                    val classification = classifier.classify(
+                        address,
+                        body,
+                        senderReported = community,
+                        senderIsContact = contactName != null,
+                        senderTrusted = trusted,
+                    )
+                    val name = contactName ?: address
                     val threadId = runCatching { Telephony.Threads.getOrCreateThreadId(context, address) }.getOrDefault(0L)
                     val suspicious = classification.category == SmsCategory.SCAM || classification.category == SmsCategory.SPAM
                     SmsNotifications.show(
@@ -93,6 +116,52 @@ class SmsDeliverReceiver : BroadcastReceiver() {
 
     private companion object {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        const val LOOKUP_BUDGET_MS = 3_000L
+        const val COMMUNITY_SPAM_SCORE = 50
+    }
+}
+
+/** "Not spam" / "Block" buttons on a suspected-spam notification. */
+@AndroidEntryPoint
+class SmsSpamActionReceiver : BroadcastReceiver() {
+
+    @Inject lateinit var smsRepository: SmsRepository
+    @Inject lateinit var blockNumber: BlockNumberUseCase
+
+    override fun onReceive(context: Context, intent: Intent) {
+        val address = intent.getStringExtra(EXTRA_ADDRESS) ?: return
+        val id = intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0)
+        NotificationManagerCompat.from(context).cancel(id)
+        val pending = goAsync()
+        scope.launch {
+            try {
+                when (intent.action) {
+                    ACTION_NOT_SPAM -> smsRepository.markNotSpam(address)
+                    ACTION_BLOCK -> blockNumber.block(address)
+                }
+            } finally {
+                pending.finish()
+            }
+        }
+    }
+
+    companion object {
+        const val ACTION_NOT_SPAM = "com.rskusum.whocaller.sms.NOT_SPAM"
+        const val ACTION_BLOCK = "com.rskusum.whocaller.sms.BLOCK"
+        const val EXTRA_ADDRESS = "address"
+        const val EXTRA_NOTIFICATION_ID = "notification_id"
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+        fun intent(context: Context, action: String, address: String, notificationId: Int): PendingIntent =
+            PendingIntent.getBroadcast(
+                context,
+                notificationId * 2 + if (action == ACTION_BLOCK) 1 else 0,
+                Intent(context, SmsSpamActionReceiver::class.java)
+                    .setAction(action)
+                    .putExtra(EXTRA_ADDRESS, address)
+                    .putExtra(EXTRA_NOTIFICATION_ID, notificationId),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
     }
 }
 
@@ -162,17 +231,21 @@ internal object SmsNotifications {
             Intent(Intent.ACTION_VIEW, uri).setPackage(context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val notification = NotificationCompat.Builder(context, NotificationChannels.MESSAGES)
+        val builder = NotificationCompat.Builder(context, if (warning) NotificationChannels.SPAM_MESSAGES else NotificationChannels.MESSAGES)
             .setSmallIcon(UiR.drawable.ic_stat_whocaller)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (warning) NotificationCompat.PRIORITY_LOW else NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setColor(if (warning) 0xFFB3261E.toInt() else 0xFF006A62.toInt())
             .setContentIntent(open)
-            .build()
+        if (warning && address != null) {
+            builder.addAction(0, context.getString(R.string.sms_not_spam), SmsSpamActionReceiver.intent(context, SmsSpamActionReceiver.ACTION_NOT_SPAM, address, id))
+            builder.addAction(0, context.getString(R.string.sms_block), SmsSpamActionReceiver.intent(context, SmsSpamActionReceiver.ACTION_BLOCK, address, id))
+        }
+        val notification = builder.build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {

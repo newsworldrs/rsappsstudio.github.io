@@ -38,7 +38,13 @@ interface NetworkDataSource {
     suspend fun getSpamList(region: String, since: Long?): AppResult<SpamListResponseDto>
     suspend fun verifyPurchase(productId: String, purchaseToken: String): AppResult<PurchaseVerificationResponseDto>
     suspend fun deleteAccount(): AppResult<Unit>
+
+    /** Latest on-device SMS spam model (text format of SpamTextModel), if the backend publishes one. */
+    suspend fun getSmsSpamModel(): AppResult<SmsModelDto> = AppResult.Failure(AppError.BACKEND_NOT_CONFIGURED)
 }
+
+/** A published SMS spam model: [version] increases with every update. */
+data class SmsModelDto(val version: Int, val model: String)
 
 /** Used in release builds when no backend URL was configured: fails cleanly, never fakes data. */
 class UnconfiguredNetworkDataSource : NetworkDataSource {

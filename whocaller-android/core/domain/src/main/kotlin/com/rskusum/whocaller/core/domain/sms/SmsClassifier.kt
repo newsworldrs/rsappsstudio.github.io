@@ -14,14 +14,16 @@ import javax.inject.Inject
  */
 class SmsClassifier @Inject constructor() {
 
-    /** Learned wording model; null only if the bundled file couldn't be read. */
-    private val model: SpamTextModel? = SpamTextModel.bundled
 
     fun classify(
         sender: String,
         body: String,
         senderBlocked: Boolean = false,
         senderReported: Boolean = false,
+        /** Sender is a saved contact: never judged by wording alone. */
+        senderIsContact: Boolean = false,
+        /** User said "Not spam" for this sender: never flagged (unless they also blocked it). */
+        senderTrusted: Boolean = false,
     ): SmsClassification {
         val text = body.lowercase(Locale.ROOT)
         val signals = mutableSetOf<SmsSignal>()
@@ -47,7 +49,8 @@ class SmsClassifier @Inject constructor() {
         // messages) would otherwise mistake genuine OTPs and bank alerts for spam.
         val fromPhoneNumber = sender.none { it.isLetter() } && sender.count { it.isDigit() } >= 7
         val transactional = SmsSignal.OTP in signals || SmsSignal.TRANSACTION in signals
-        val spamProbability = if (fromPhoneNumber && !transactional) model?.spamProbability(body) ?: 0.0 else 0.0
+        val judgeWording = fromPhoneNumber && !transactional && !senderIsContact && !senderTrusted
+        val spamProbability = if (judgeWording) SpamTextModel.active?.spamProbability(body) ?: 0.0 else 0.0
         if (spamProbability >= SpamTextModel.THRESHOLD) signals += SmsSignal.SPAM_WORDING
 
         val phishingIndicators = listOf(
@@ -65,9 +68,20 @@ class SmsClassifier @Inject constructor() {
         risk = risk.coerceIn(0, 100)
 
         val isAlphaSender = sender.any { it.isLetter() }
+        if (senderTrusted && !senderBlocked) {
+            // The user's own "Not spam" always wins.
+            val category = when {
+                SmsSignal.OTP in signals || SmsSignal.TRANSACTION in signals -> SmsCategory.TRANSACTIONS
+                SmsSignal.PROMOTION in signals -> SmsCategory.PROMOTIONS
+                else -> SmsCategory.PERSONAL
+            }
+            return SmsClassification(category = category, signals = signals - SmsSignal.SPAM_WORDING, riskScore = 0)
+        }
         val category = when {
             phishingIndicators >= 2 && (hasLink || SmsSignal.CREDENTIAL_REQUEST in signals) -> SmsCategory.SCAM
-            senderBlocked || senderReported || risk >= 50 -> SmsCategory.SPAM
+            senderBlocked || senderReported -> SmsCategory.SPAM
+            // A saved contact needs clear phishing (handled above) before it's treated as spam.
+            !senderIsContact && risk >= 50 -> SmsCategory.SPAM
             SmsSignal.OTP in signals || SmsSignal.TRANSACTION in signals -> SmsCategory.TRANSACTIONS
             SmsSignal.PROMOTION in signals -> SmsCategory.PROMOTIONS
             !isAlphaSender && sender.any { it.isDigit() } -> SmsCategory.PERSONAL
