@@ -221,4 +221,7 @@
     <string name="call_video_request_tap">Tap to turn on video or stay on voice</string>
     <string name="call_video_remote_cant">The other person\'s phone or network can\'t do video on this call. Video calling (ViLTE) has to be on for both phones, usually on the same 4G/VoLTE network. You can continue on WhatsApp video instead.</string>
     <string name="call_video_diagnostics">Video session %1$s · this phone %2$s · other side %3$s · SIM video calling %4$s</string>
+    <string name="call_video_switch">Video calling switch %1$s</string>
+    <string name="call_video_switch_off">Video calling is turned off on this phone. Turn on VoLTE and Video calling for your SIM, then try again.</string>
+    <string name="call_video_open_settings">Open mobile network settings</string>
 </resources>

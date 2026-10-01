@@ -26,6 +26,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -228,7 +230,7 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
     Box(Modifier.fillMaxSize()) {
         // Self-view starts while a video call is still dialing, like the system phone app.
         val showVideo = (call.isVideo || call.videoUpgradePending || startingVideo) && !call.isRinging && !call.isHeld
-        if (showVideo) VideoSurfaces(call.call)
+        if (showVideo) VideoSurfaces(call, previewOnly = !call.isVideo)
 
         Column(
             Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(horizontal = 24.dp, vertical = 16.dp),
@@ -392,7 +394,8 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                     Spacer(Modifier.height(10.dp))
                     // What the network reports for this call (helps when testing between two phones).
                     val d = call.call.details
-                    fun yn(b: Boolean) = if (b) "✓" else "✗"
+                    fun yn(b: Boolean?) = when (b) { true -> "✓"; false -> "✗"; null -> "?" }
+                    val switchOn = TelecomActions.isVideoCallingSwitchOn(context)
                     Text(
                         stringResource(
                             R.string.call_video_diagnostics,
@@ -400,9 +403,16 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                             yn(d.can(Call.Details.CAPABILITY_SUPPORTS_VT_LOCAL_BIDIRECTIONAL)),
                             yn(d.can(Call.Details.CAPABILITY_SUPPORTS_VT_REMOTE_BIDIRECTIONAL)),
                             yn(TelecomActions.supportsVideoCalling(context)),
-                        ),
+                        ) + " · " + stringResource(R.string.call_video_switch, yn(switchOn)),
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (switchOn == false) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(stringResource(R.string.call_video_switch_off), style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = { TelecomActions.openMobileNetworkSettings(context) }) {
+                            Text(stringResource(R.string.call_video_open_settings))
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -621,27 +631,47 @@ internal fun DtmfPad(onDigit: (Char) -> Unit) {
 }
 
 /**
- * Remote video full-screen with a small self-view. Telecom/IMS handles the media; we only provide
- * surfaces and choose the camera.
+ * Remote video full-screen with a small self-view. The carrier's IMS stack (ViLTE) handles the media;
+ * like the system phone app we only provide the surfaces (sized to the camera and to the other
+ * person's video), pick the camera and report the device rotation.
  */
 @Composable
-private fun VideoSurfaces(call: Call) {
+private fun VideoSurfaces(call: CallUi, previewOnly: Boolean) {
     val context = LocalContext.current
-    val videoCall = call.videoCall ?: return
+    val videoCall = call.call.videoCall ?: return
     var useFront by rememberSaveable { mutableStateOf(true) }
     val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    val sizes = CallManager.videoSizes.collectAsStateWithLifecycle().value[call.call] ?: CallManager.VideoSizes()
+    val showPreview = hasCamera && (previewOnly || call.sendingVideo)
+    val showRemote = !previewOnly && call.receivingVideo
 
-    LaunchedEffect(useFront, hasCamera) {
-        if (hasCamera) {
-            runCatching {
+    LaunchedEffect(useFront, showPreview) {
+        runCatching {
+            if (showPreview) {
                 videoCall.setCamera(cameraId(context, useFront))
-                videoCall.setDeviceOrientation(0)
                 videoCall.requestCameraCapabilities()
+            } else {
+                videoCall.setCamera(null)
             }
         }
     }
+    // Tell the network which way up the phone is, so the other person's picture isn't sideways.
     DisposableEffect(videoCall) {
+        var last = -1
+        val listener = object : android.view.OrientationEventListener(context) {
+            override fun onOrientationChanged(degrees: Int) {
+                if (degrees == ORIENTATION_UNKNOWN) return
+                val rotation = ((degrees + 45) / 90 % 4) * 90
+                if (rotation != last) {
+                    last = rotation
+                    runCatching { videoCall.setDeviceOrientation(rotation) }
+                }
+            }
+        }
+        runCatching { videoCall.setDeviceOrientation(0) }
+        if (listener.canDetectOrientation()) listener.enable()
         onDispose {
+            listener.disable()
             runCatching {
                 videoCall.setCamera(null)
                 videoCall.setPreviewSurface(null)
@@ -649,21 +679,40 @@ private fun VideoSurfaces(call: Call) {
             }
         }
     }
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { ctx -> surfaceView(ctx) { runCatching { videoCall.setDisplaySurface(it) } } },
-            modifier = Modifier.fillMaxSize(),
-        )
-        if (hasCamera) {
-            AndroidView(
-                factory = { ctx -> surfaceView(ctx) { runCatching { videoCall.setPreviewSurface(it) } } },
-                modifier = Modifier
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = if (showRemote) 1f else 0f)), contentAlignment = Alignment.Center) {
+        if (showRemote) {
+            val ratio = if (sizes.peerWidth > 0 && sizes.peerHeight > 0) sizes.peerWidth.toFloat() / sizes.peerHeight else null
+            VideoTexture(
+                bufferWidth = sizes.peerWidth,
+                bufferHeight = sizes.peerHeight,
+                onSurface = { runCatching { videoCall.setDisplaySurface(it) } },
+                modifier = if (ratio != null) Modifier.fillMaxWidth().aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f) else Modifier.fillMaxSize(),
+            )
+        }
+        if (showPreview) {
+            val previewModifier = if (showRemote) {
+                Modifier
                     .align(Alignment.TopEnd)
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .padding(16.dp)
                     .width(110.dp)
                     .height(160.dp)
-                    .clip(RoundedCornerShape(12.dp)),
+                    .clip(RoundedCornerShape(12.dp))
+            } else {
+                // Before the other side answers (or one-way video): our own picture, larger.
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(top = 56.dp)
+                    .width(180.dp)
+                    .height(260.dp)
+                    .clip(RoundedCornerShape(20.dp))
+            }
+            VideoTexture(
+                bufferWidth = sizes.cameraWidth,
+                bufferHeight = sizes.cameraHeight,
+                onSurface = { runCatching { videoCall.setPreviewSurface(it) } },
+                modifier = previewModifier,
             )
             FilledTonalIconToggleButton(
                 checked = !useFront,
@@ -674,16 +723,42 @@ private fun VideoSurfaces(call: Call) {
     }
 }
 
-private fun surfaceView(context: Context, onSurface: (Surface?) -> Unit): TextureView = TextureView(context).apply {
-    surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-        override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) = onSurface(Surface(texture))
-        override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
-        override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
-            onSurface(null)
-            return true
+/**
+ * TextureView whose buffer matches the video size the IMS stack reports (camera or the other
+ * person), as the system phone app does; the surface is handed over again when the size changes.
+ */
+@Composable
+private fun VideoTexture(bufferWidth: Int, bufferHeight: Int, onSurface: (Surface?) -> Unit, modifier: Modifier) {
+    val holder = remember { arrayOfNulls<SurfaceTexture>(1) }
+    val latest by rememberUpdatedState(onSurface)
+    LaunchedEffect(bufferWidth, bufferHeight) {
+        val texture = holder[0] ?: return@LaunchedEffect
+        if (bufferWidth > 0 && bufferHeight > 0) {
+            texture.setDefaultBufferSize(bufferWidth, bufferHeight)
+            latest(Surface(texture))
         }
-        override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
     }
+    AndroidView(
+        factory = { ctx ->
+            TextureView(ctx).apply {
+                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                    override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+                        holder[0] = texture
+                        if (bufferWidth > 0 && bufferHeight > 0) texture.setDefaultBufferSize(bufferWidth, bufferHeight)
+                        latest(Surface(texture))
+                    }
+                    override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
+                    override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+                        holder[0] = null
+                        latest(null)
+                        return true
+                    }
+                    override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+                }
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 private fun cameraId(context: Context, front: Boolean): String? = try {

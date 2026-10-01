@@ -58,6 +58,9 @@ data class CallUi(
     val remoteCantVideo: Boolean = false,
     /** We asked to switch to video and are waiting for the other person. */
     val videoUpgradePending: Boolean = false,
+    /** One-way video: we see them / they see us. */
+    val receivingVideo: Boolean = false,
+    val sendingVideo: Boolean = false,
     /** The other person asked to switch this call to video. */
     val videoRequested: Boolean = false,
 ) {
@@ -88,6 +91,17 @@ object CallManager {
     private val videoCallbacks = ConcurrentHashMap<Call, Pair<InCallService.VideoCall, InCallService.VideoCall.Callback>>()
     private val videoRequests: MutableSet<Call> = ConcurrentHashMap.newKeySet()
     private val pendingUpgrades: MutableSet<Call> = ConcurrentHashMap.newKeySet()
+    /** Video state the other person asked for (two-way, or one-way). */
+    private val requestedStates = ConcurrentHashMap<Call, Int>()
+
+    /** Camera size reported by the IMS video provider, and the other person's video size. */
+    data class VideoSizes(val cameraWidth: Int = 0, val cameraHeight: Int = 0, val peerWidth: Int = 0, val peerHeight: Int = 0)
+    private val _videoSizes = MutableStateFlow<Map<Call, VideoSizes>>(emptyMap())
+    val videoSizes: StateFlow<Map<Call, VideoSizes>> = _videoSizes.asStateFlow()
+
+    private fun updateSizes(call: Call, change: (VideoSizes) -> VideoSizes) {
+        _videoSizes.value = _videoSizes.value + (call to change(_videoSizes.value[call] ?: VideoSizes()))
+    }
 
     /** Called when the other person asks to switch to video (the call screen must come to the front). */
     @Volatile internal var onVideoRequest: ((Call) -> Unit)? = null
@@ -134,6 +148,8 @@ object CallManager {
         videoCallbacks.remove(call)?.let { (vc, cb) -> runCatching { vc.unregisterCallback(cb) } }
         videoRequests.remove(call)
         pendingUpgrades.remove(call)
+        requestedStates.remove(call)
+        _videoSizes.value = _videoSizes.value - call
         downgradeNoticed.remove(call)
         call.unregisterCallback(callback)
         list.remove(call)
@@ -222,10 +238,10 @@ object CallManager {
     /** Answers the other person's request to switch to video. */
     fun respondToVideoRequest(call: Call, accept: Boolean) {
         videoRequests.remove(call)
+        // Accept exactly what was asked (two-way, or one-way video), like the system phone app.
+        val asked = requestedStates.remove(call) ?: VideoProfile.STATE_BIDIRECTIONAL
         runCatching {
-            call.videoCall?.sendSessionModifyResponse(
-                VideoProfile(if (accept) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY),
-            )
+            call.videoCall?.sendSessionModifyResponse(VideoProfile(if (accept) asked else VideoProfile.STATE_AUDIO_ONLY))
         }
         refresh()
     }
@@ -239,6 +255,7 @@ object CallManager {
         val cb = object : InCallService.VideoCall.Callback() {
             override fun onSessionModifyRequestReceived(videoProfile: VideoProfile) {
                 if (VideoProfile.isVideo(videoProfile.videoState) && !VideoProfile.isVideo(call.details.videoState)) {
+                    requestedStates[call] = videoProfile.videoState
                     videoRequests += call
                     refresh()
                     // Show the request even if the call screen is in the background.
@@ -264,10 +281,14 @@ object CallManager {
             }
 
             override fun onCallSessionEvent(event: Int) = Unit
-            override fun onPeerDimensionsChanged(width: Int, height: Int) = Unit
+            override fun onPeerDimensionsChanged(width: Int, height: Int) =
+                updateSizes(call) { it.copy(peerWidth = width, peerHeight = height) }
             override fun onVideoQualityChanged(videoQuality: Int) = Unit
             override fun onCallDataUsageChanged(dataUsage: Long) = Unit
-            override fun onCameraCapabilitiesChanged(cameraCapabilities: VideoProfile.CameraCapabilities?) = Unit
+            override fun onCameraCapabilitiesChanged(cameraCapabilities: VideoProfile.CameraCapabilities?) {
+                cameraCapabilities ?: return
+                updateSizes(call) { it.copy(cameraWidth = cameraCapabilities.width, cameraHeight = cameraCapabilities.height) }
+            }
         }
         runCatching { vc.registerCallback(cb, mainHandler) }
         videoCallbacks[call] = vc to cb
@@ -337,6 +358,8 @@ object CallManager {
                 canVideo = call.videoCall != null && localVideo(details) && remoteVideo(details),
                 remoteCantVideo = call.videoCall != null && localVideo(details) && !remoteVideo(details),
                 videoUpgradePending = call in pendingUpgrades && !video,
+                receivingVideo = VideoProfile.isReceptionEnabled(details.videoState),
+                sendingVideo = VideoProfile.isTransmissionEnabled(details.videoState),
                 videoRequested = call in videoRequests && !video,
             )
         }

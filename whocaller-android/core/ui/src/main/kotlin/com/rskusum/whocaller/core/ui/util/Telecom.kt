@@ -47,6 +47,38 @@ object TelecomActions {
         }
     }
 
+    /**
+     * The phone's own "Video calling" switch (Settings → SIM / mobile network). Null when unknown
+     * (no phone-state permission). Carrier video calls (ViLTE) need it on, on both phones.
+     */
+    fun isVideoCallingSwitchOn(context: Context): Boolean? {
+        if (!granted(context, Manifest.permission.READ_PHONE_STATE)) return null
+        val tm = context.getSystemService(android.telephony.TelephonyManager::class.java) ?: return null
+        return try {
+            @Suppress("DEPRECATION")
+            tm.isVideoCallingEnabled
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    /** Opens the mobile-network settings, where VoLTE and Video calling are switched on. */
+    fun openMobileNetworkSettings(context: Context) {
+        val intents = listOf(
+            Intent(android.provider.Settings.ACTION_NETWORK_OPERATOR_SETTINGS),
+            Intent(android.provider.Settings.ACTION_WIRELESS_SETTINGS),
+        )
+        for (intent in intents) {
+            if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+                return
+            } catch (_: ActivityNotFoundException) {
+                // try the next one
+            }
+        }
+    }
+
     fun canPlaceCalls(context: Context): Boolean = granted(context, Manifest.permission.CALL_PHONE)
 
     /**
