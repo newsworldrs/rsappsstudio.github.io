@@ -56,6 +56,14 @@ android {
     }
 
     signingConfigs {
+        // Shared, non-secret test key so every test APK updates the previous one and its SHA-1 can be
+        // registered in Firebase (Google/phone sign-in). Never used for Play releases.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (keystoreProps.getProperty("storeFile") != null) {
             create("release") {
                 storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
@@ -68,7 +76,7 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
+            // Same package as release so it matches the Firebase app (google-services.json).
             versionNameSuffix = "-debug"
             // Debug builds may use the in-memory development backend (fictional demo numbers only).
             buildConfigField("boolean", "ALLOW_DEV_BACKEND", "true")

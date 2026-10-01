@@ -15,3 +15,6 @@ keystore.properties
 app/google-services.json
 *.p12
 *.pem
+
+# Shared test signing key (not secret, see app/build.gradle.kts)
+!app/debug.keystore

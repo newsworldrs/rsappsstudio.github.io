@@ -52,7 +52,8 @@ import kotlinx.coroutines.launch
 fun SplashContent() {
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Image(painterResource(R.drawable.ic_splash_logo), contentDescription = null, modifier = Modifier.size(120.dp))
+            Image(painterResource(R.drawable.whocaller_logo), contentDescription = null, modifier = Modifier.size(140.dp))
+            Spacer(Modifier.height(16.dp))
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.height(8.dp))
             Text(stringResource(R.string.splash_tagline), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)

@@ -148,7 +148,30 @@ fun SettingsScreen(
     val context = LocalContext.current
     var dialog by rememberSaveable { mutableStateOf<String?>(null) }
     val roleTick by viewModel.roleRefresh.collectAsStateWithLifecycle()
-    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { viewModel.roleRefresh.value++ }
+    var pendingRole by rememberSaveable { mutableStateOf<String?>(null) }
+    fun openDefaultApps() {
+        android.widget.Toast.makeText(
+            context,
+            com.rskusum.whocaller.core.permissions.R.string.role_pick_in_settings,
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+        try {
+            context.startActivity(viewModel.permissionManager.defaultAppsSettingsIntent())
+        } catch (_: android.content.ActivityNotFoundException) {
+            context.startActivity(viewModel.permissionManager.appSettingsIntent())
+        }
+    }
+    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        viewModel.roleRefresh.value++
+        val granted = when (pendingRole) {
+            "dialer" -> viewModel.permissionManager.isDefaultDialer()
+            "sms" -> viewModel.permissionManager.isDefaultSms()
+            else -> true
+        }
+        pendingRole = null
+        // Some phones dismiss the role dialog; fall back to the system "Default apps" screen.
+        if (!granted) openDefaultApps()
+    }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.roleRefresh.value++ }
 
     Scaffold(topBar = { TopAppBar(title = { Text(stringResource(R.string.settings_title)) }) }) { padding ->
@@ -170,7 +193,15 @@ fun SettingsScreen(
                     description = stringResource(com.rskusum.whocaller.core.permissions.R.string.role_dialer_desc),
                     icon = Icons.Outlined.Call,
                     isDefault = roleTick.let { viewModel.permissionManager.isDefaultDialer() },
-                    onMakeDefault = { viewModel.permissionManager.defaultDialerIntent()?.let { roleLauncher.launch(it) } },
+                    onMakeDefault = {
+                        val intent = viewModel.permissionManager.defaultDialerIntent()
+                        if (intent != null) {
+                            pendingRole = "dialer"
+                            roleLauncher.launch(intent)
+                        } else {
+                            openDefaultApps()
+                        }
+                    },
                     onChange = { context.startActivity(viewModel.permissionManager.defaultAppsSettingsIntent()) },
                 )
             }
@@ -180,7 +211,15 @@ fun SettingsScreen(
                     description = stringResource(com.rskusum.whocaller.core.permissions.R.string.role_sms_desc),
                     icon = Icons.AutoMirrored.Outlined.Message,
                     isDefault = roleTick.let { viewModel.permissionManager.isDefaultSms() },
-                    onMakeDefault = { viewModel.permissionManager.defaultSmsIntent()?.let { roleLauncher.launch(it) } },
+                    onMakeDefault = {
+                        val intent = viewModel.permissionManager.defaultSmsIntent()
+                        if (intent != null) {
+                            pendingRole = "sms"
+                            roleLauncher.launch(intent)
+                        } else {
+                            openDefaultApps()
+                        }
+                    },
                     onChange = { context.startActivity(viewModel.permissionManager.defaultAppsSettingsIntent()) },
                 )
             }

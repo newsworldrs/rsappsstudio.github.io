@@ -37,8 +37,24 @@ jobs:
       - name: Check that no secrets are committed
         run: |
           set -e
-          ! git ls-files | grep -E '(^|/)(google-services\.json|keystore\.properties|local\.properties|\.env)$|\.(jks|keystore|p12|pem)$'
+          ! git ls-files | grep -v '^app/debug\.keystore$' | grep -E '(^|/)(google-services\.json|keystore\.properties|local\.properties|\.env)$|\.(jks|keystore|p12|pem)$'
           ! git grep -nE 'AIza[0-9A-Za-z_-]{35}|-----BEGIN (RSA |EC )?PRIVATE KEY-----|"private_key_id"' -- . ':!*.md'
+
+      - name: Add Firebase config from repository secret (if set)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            # Accept the raw JSON or a base64-encoded copy.
+            if printf '%s' "$GOOGLE_SERVICES_JSON" | head -c1 | grep -q '{'; then
+              printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            else
+              printf '%s' "$GOOGLE_SERVICES_JSON" | base64 -d > app/google-services.json
+            fi
+            echo "Firebase config added."
+          else
+            echo "No GOOGLE_SERVICES_JSON secret: building without Firebase."
+          fi
 
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
@@ -83,4 +99,4 @@ jobs:
           gh release create whocaller-latest WhoCaller-debug.apk \
             --prerelease --target "$GITHUB_SHA" \
             --title "WhoCaller (latest test build)" \
-            --notes "Debug build from ${GITHUB_SHA::7} for testing on a physical device (package com.rskusum.whocaller.debug). Uses the built-in development backend: only fictional demo numbers such as +1 202-555-0142 return data."
+            --notes "Test build from ${GITHUB_SHA::7} (package com.rskusum.whocaller, signed with the shared test key). Uses the built-in development backend: only fictional demo numbers such as +1 202-555-0142 return data."

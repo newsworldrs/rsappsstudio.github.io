@@ -38,7 +38,7 @@
     <string name="sms_tab_conversations">Conversations</string>
     <string name="sms_tab_check">Check a message</string>
     <string name="sms_make_default">Make WhoCaller your SMS app</string>
-    <string name="sms_make_default_desc">To read, receive and send texts here with scam warnings, set WhoCaller as your default SMS app. Picture messages (MMS) aren\'t supported yet — you can switch back any time.</string>
+    <string name="sms_make_default_desc">To read, receive and send texts here with scam warnings, set WhoCaller as your default SMS app. You can switch back any time.</string>
     <string name="sms_allow_read">Allow reading messages</string>
     <string name="sms_inbox_unavailable">Allow WhoCaller to read your messages, or make it your SMS app, to see conversations with scam warnings.</string>
     <string name="sms_no_conversations">No messages yet.</string>

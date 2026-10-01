@@ -246,8 +246,9 @@ fun WhoCallerApp(
                 )
             }
             composable(Routes.SIGN_IN) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 SignInScreen(
-                    config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID),
+                    config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID.ifBlank { defaultWebClientId(context) }),
                     onBack = { navController.popBackStack() },
                     onDone = { navController.popBackStack() },
                 )
@@ -278,4 +279,11 @@ fun WhoCallerApp(
             }
         }
     }
+}
+
+/** OAuth web client id generated from google-services.json by the Google Services plugin, if present. */
+@android.annotation.SuppressLint("DiscouragedApi")
+private fun defaultWebClientId(context: android.content.Context): String {
+    val id = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+    return if (id != 0) context.getString(id) else ""
 }

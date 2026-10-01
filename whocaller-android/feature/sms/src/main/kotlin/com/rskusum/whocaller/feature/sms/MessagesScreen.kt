@@ -131,6 +131,21 @@ class MessagesViewModel @Inject constructor(
 
     fun defaultSmsIntent() = permissionManager.defaultSmsIntent()
 
+    fun isDefaultSms() = permissionManager.isDefaultSms()
+
+    fun openDefaultAppsSettings(context: android.content.Context) {
+        android.widget.Toast.makeText(
+            context,
+            com.rskusum.whocaller.core.permissions.R.string.role_pick_in_settings,
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
+        try {
+            context.startActivity(permissionManager.defaultAppsSettingsIntent())
+        } catch (_: android.content.ActivityNotFoundException) {
+            context.startActivity(permissionManager.appSettingsIntent())
+        }
+    }
+
     fun onSender(v: String) = _state.update { it.copy(sender = v.take(40), result = null) }
     fun onText(v: String) = _state.update { it.copy(text = v.take(MAX_TEXT), result = null) }
 
@@ -158,7 +173,12 @@ fun MessagesScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(if (viewModel.openedWithText) 1 else 0) }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
-    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { viewModel.refresh() }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val roleLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        viewModel.refresh()
+        // Some phones dismiss the role dialog; let the user pick WhoCaller in system settings instead.
+        if (!viewModel.isDefaultSms()) viewModel.openDefaultAppsSettings(context)
+    }
     val readLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { viewModel.refresh() }
 
     Scaffold(
@@ -199,7 +219,10 @@ fun MessagesScreen(
                                     Text(stringResource(R.string.sms_make_default), style = MaterialTheme.typography.titleMedium)
                                     Text(stringResource(R.string.sms_make_default_desc), style = MaterialTheme.typography.bodyMedium)
                                     Spacer(Modifier.height(8.dp))
-                                    Button(onClick = { viewModel.defaultSmsIntent()?.let { roleLauncher.launch(it) } }) {
+                                    Button(onClick = {
+                                        val intent = viewModel.defaultSmsIntent()
+                                        if (intent != null) roleLauncher.launch(intent) else viewModel.openDefaultAppsSettings(context)
+                                    }) {
                                         Text(stringResource(R.string.sms_make_default))
                                     }
                                     if (!state.canRead) {
