@@ -19,7 +19,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -549,10 +548,8 @@ private fun ThanksContent() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        AnimatedContent(true, transitionSpec = { scaleIn() togetherWith fadeOut() }, label = "check") {
-            Box(Modifier.size(96.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Mint, Blue))), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
-            }
+        Box(Modifier.size(96.dp).clip(CircleShape).background(Brush.linearGradient(listOf(Mint, Blue))), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(56.dp))
         }
         Spacer(Modifier.height(20.dp))
         Text(stringResource(R.string.postcall_thanks), color = TextMain, fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
