@@ -6,6 +6,11 @@ name: WhoCaller Firestore
 #     preview them (downloadable CSV) or upload them to Firestore.
 # Uploading and aggregating need the repository secret FIREBASE_SERVICE_ACCOUNT (service-account JSON).
 on:
+  # Editing backend/tools/import-request.txt builds the public datasets and publishes them as the
+  # "whocaller-datasets" pre-release (preview only, nothing is written to Firestore).
+  push:
+    paths:
+      - "whocaller-android/backend/tools/import-request.txt"
   schedule:
     - cron: "17 21 * * *" # every night, 02:47 IST
   workflow_dispatch:
@@ -34,7 +39,7 @@ on:
         default: "0"
 
 permissions:
-  contents: read
+  contents: write # only used to publish the dataset CSVs as a release
 
 jobs:
   firestore:
@@ -44,8 +49,8 @@ jobs:
       run:
         working-directory: whocaller-android/backend/tools
     env:
-      TASK: ${{ github.event.inputs.task || 'aggregate' }}
-      MODE: ${{ github.event.inputs.mode || 'upload' }}
+      TASK: ${{ github.event.inputs.task || (github.event_name == 'push' && 'import-all') || 'aggregate' }}
+      MODE: ${{ github.event.inputs.mode || (github.event_name == 'push' && 'preview') || 'upload' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,6 +114,16 @@ jobs:
           name: whocaller-datasets
           path: whocaller-android/backend/tools/data/*-callers.csv
           retention-days: 14
+
+      - name: Publish the CSVs as a release (push trigger)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete whocaller-datasets --yes --cleanup-tag || true
+          gh release create whocaller-datasets data/*-callers.csv --prerelease --target "$GITHUB_SHA" \
+            --title "WhoCaller public caller datasets" \
+            --notes "Built from the RBI IFSC list (public domain), Wikidata (CC0) and OpenStreetMap (© OpenStreetMap contributors, ODbL)."
 
       # ---------- Upload ----------
 
