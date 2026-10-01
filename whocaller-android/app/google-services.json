@@ -191,6 +191,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "213511131487-a22aapdna890tjam02iv7pmtbkl3opou.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rskusum.whocaller",
+            "certificate_hash": "bbc4fdb7ec7ee712d75eb79fd586f7b3df4ea773"
+          }
+        },
+        {
           "client_id": "213511131487-9lus74m5voake2v13pl4jgnobg98kd90.apps.googleusercontent.com",
           "client_type": 3
         }
