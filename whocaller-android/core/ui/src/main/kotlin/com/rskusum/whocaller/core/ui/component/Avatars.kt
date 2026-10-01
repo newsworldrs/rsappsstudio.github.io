@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -137,23 +140,20 @@ fun AvatarImage(style: AvatarStyle, modifier: Modifier = Modifier, size: Dp = 48
 /** Loads a downscaled photo from app storage off the main thread. */
 @Composable
 fun rememberPhoto(path: String?, maxPx: Int = 512): ImageBitmap? {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, path) {
-        value = if (path == null) {
-            null
-        } else {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeFile(path, bounds)
-                    var sample = 1
-                    while (bounds.outWidth / (sample * 2) >= maxPx) sample *= 2
-                    BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
-                }.getOrNull()
-            }
-        }
+    var bitmap by remember(path) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(path) {
+        bitmap = if (path == null) null else withContext(Dispatchers.IO) { decodeScaled(path, maxPx) }
     }
     return bitmap
 }
+
+private fun decodeScaled(path: String, maxPx: Int): ImageBitmap? = runCatching {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(path, bounds)
+    var sample = 1
+    while (bounds.outWidth / (sample * 2) >= maxPx) sample *= 2
+    BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.asImageBitmap()
+}.getOrNull()
 
 /** The user's own picture: photo, else chosen avatar, else initial. */
 @Composable

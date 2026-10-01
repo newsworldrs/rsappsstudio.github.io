@@ -99,6 +99,10 @@ android {
         checkDependencies = true
         abortOnError = true
         checkReleaseBuilds = true
+        // Print every issue in the CI log (the HTML report isn't always reachable).
+        textReport = true
+        textOutput = file("stdout")
+        explainIssues = false
     }
     packaging {
         resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/INDEX.LIST", "/META-INF/DEPENDENCIES")

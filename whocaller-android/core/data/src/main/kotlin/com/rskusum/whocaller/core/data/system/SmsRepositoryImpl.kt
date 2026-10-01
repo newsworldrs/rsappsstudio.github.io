@@ -106,7 +106,9 @@ class SmsRepositoryImpl @Inject constructor(
     override suspend fun send(address: String, body: String): AppResult<Unit> = withContext(io) {
         val text = body.trim()
         if (address.isBlank() || text.isEmpty()) return@withContext AppResult.Failure(AppError.INVALID_NUMBER)
-        if (!granted(Manifest.permission.SEND_SMS)) return@withContext AppResult.Failure(AppError.PERMISSION_DENIED)
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+            return@withContext AppResult.Failure(AppError.PERMISSION_DENIED)
+        }
         try {
             val manager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 context.getSystemService(SmsManager::class.java)
