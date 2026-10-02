@@ -56,6 +56,43 @@ service cloud.firestore {
       allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
     }
 
+    // ---- WHOCALLER VIDEO (experimental): app-to-app video call signalling. ----
+    // Only the two people in a call can read or change it; nobody can delete it.
+    match /videoCalls/{callId} {
+      allow create: if request.auth != null
+        && request.resource.data.callerUid == request.auth.uid
+        && request.resource.data.calleeUid is string
+        && request.resource.data.status == 'ringing';
+      allow read: if request.auth != null
+        && (resource.data.callerUid == request.auth.uid || resource.data.calleeUid == request.auth.uid);
+      allow update: if request.auth != null
+        && (resource.data.callerUid == request.auth.uid || resource.data.calleeUid == request.auth.uid)
+        && request.resource.data.callerUid == resource.data.callerUid
+        && request.resource.data.calleeUid == resource.data.calleeUid;
+      allow delete: if false;
+
+      match /candidates/{candidateId} {
+        allow read: if inVideoCall(callId);
+        allow create: if inVideoCall(callId) && request.resource.data.from == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    function inVideoCall(callId) {
+      let call = get(/databases/$(database)/documents/videoCalls/$(callId)).data;
+      return request.auth != null && (call.callerUid == request.auth.uid || call.calleeUid == request.auth.uid);
+    }
+
+    // Device push token per user (for ringing video calls). Only the owner writes it; only the
+    // Cloud Function (Admin SDK) reads it.
+    match /pushTokens/{uid} {
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'updatedAt'])
+        && request.resource.data.token is string && request.resource.data.token.size() < 400;
+      allow read, delete: if false;
+    }
+    // ---- end WHOCALLER VIDEO ----
+
     function ownsVerifiedNumber(uid) {
       return request.auth != null && request.auth.uid == uid
         && request.auth.token.phone_number != null

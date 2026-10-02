@@ -163,6 +163,9 @@ dependencies {
     implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.config)
     implementation(libs.firebase.appcheck.playintegrity)
+    // WHOCALLER VIDEO (experimental): app-to-app video calls (WebRTC) rung through Firebase Cloud Messaging.
+    implementation(libs.firebase.messaging)
+    implementation(libs.stream.webrtc)
     // Google Play: in-app review, in-app updates, Play Integrity, install referrer.
     implementation(libs.play.review.ktx)
     implementation(libs.play.app.update.ktx)

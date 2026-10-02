@@ -16,6 +16,12 @@
          WhoCaller ID and show your correct network after porting. Never uploaded except your own
          verified number and network name. -->
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <!-- WHOCALLER VIDEO (experimental): camera and microphone for app-to-app video calls (asked when a call starts). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
     <!-- Recent calls screen, and incoming numbers on Android 9. Never uploaded. -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <!-- Deleting calls from Recents (WhoCaller as phone app). -->
@@ -63,6 +69,31 @@
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.WhoCaller"
         tools:targetApi="34">
+
+        <!-- WHOCALLER VIDEO (experimental): app-to-app video calls. Remove these two entries to remove it. -->
+        <activity
+            android:name=".videocall.VideoCallActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:taskAffinity="com.rskusum.whocaller.videocall"
+            android:theme="@style/Theme.WhoCaller"
+            android:turnScreenOn="true">
+            <intent-filter>
+                <action android:name="com.rskusum.whocaller.action.WHOCALLER_VIDEO" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name=".videocall.VideoCallMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <activity
             android:name=".MainActivity"

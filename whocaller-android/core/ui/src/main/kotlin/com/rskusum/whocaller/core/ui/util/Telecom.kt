@@ -114,6 +114,21 @@ object TelecomActions {
         }
     }
 
+    // ---------- WhoCaller video (experimental) ----------
+
+    /** WHOCALLER VIDEO (experimental): free app-to-app video call with another WhoCaller user. */
+    fun whoCallerVideo(context: Context, number: String) {
+        val intent = Intent("com.rskusum.whocaller.action.WHOCALLER_VIDEO")
+            .setPackage(context.packageName)
+            .putExtra("number", number)
+        if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(context, R.string.no_app_to_handle, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // ---------- WhatsApp ----------
 
     private const val WA_VOICE = "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"

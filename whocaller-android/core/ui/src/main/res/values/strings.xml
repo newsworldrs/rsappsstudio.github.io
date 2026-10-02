@@ -109,4 +109,5 @@
     <string name="whatsapp_not_installed">WhatsApp isn\'t installed on this phone</string>
     <string name="whatsapp_tap_call">Tap the call button in WhatsApp to start the call</string>
     <string name="whatsapp_tap_video">Tap the video button in WhatsApp to start the video call</string>
+    <string name="action_whocaller_video">WhoCaller video</string>
 </resources>

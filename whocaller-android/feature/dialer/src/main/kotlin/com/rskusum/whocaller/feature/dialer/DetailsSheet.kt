@@ -178,6 +178,10 @@ private fun DetailsContent(
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 QuickAction(stringResource(R.string.dialer_call), CallGreen, onClick = { actions.call(number) }) { QuickActionIcon(Icons.Filled.Call, CallGreen) }
+                // WHOCALLER VIDEO (experimental)
+                QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet, onClick = { TelecomActions.whoCallerVideo(context, number) }) {
+                    QuickActionIcon(Icons.Filled.Videocam, Violet)
+                }
                 QuickAction(stringResource(R.string.dialer_sms), Indigo, onClick = { ActionIntents.message(context, number) }) { QuickActionIcon(Icons.AutoMirrored.Filled.Message, Indigo) }
                 if (whatsApp) {
                     QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_call), WhatsAppGreen, onClick = { actions.whatsApp(number, video = false) }) { WhatsAppLogo(26.dp) }

@@ -121,6 +121,8 @@ class MainActivity : AppCompatActivity() {
                             // ADS OFF (first two years): no ads SDK, no consent form.
                             // LaunchedEffect(Unit) { adsManager.initialize(this@MainActivity) }
                             // Play rating card, only at a good moment (see InAppReview).
+                            // WHOCALLER VIDEO (experimental): so other WhoCaller users can ring this phone.
+                            LaunchedEffect(Unit) { com.rskusum.whocaller.videocall.VideoSignaling.registerPushToken(this@MainActivity) }
                             LaunchedEffect(Unit) {
                                 inAppReview.recordOpen()
                                 delay(REVIEW_DELAY_MS)

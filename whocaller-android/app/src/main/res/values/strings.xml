@@ -43,4 +43,31 @@
     <string name="update_ready_title">Update ready</string>
     <string name="update_ready_text">A new version of WhoCaller has been downloaded. Restart to finish updating.</string>
     <string name="update_restart">Restart</string>
+    <!-- WHOCALLER VIDEO (experimental) -->
+    <string name="vc_starting">Starting…</string>
+    <string name="vc_calling">Calling on WhoCaller video…</string>
+    <string name="vc_incoming">WhoCaller video call</string>
+    <string name="vc_incoming_title">%1$s is video calling</string>
+    <string name="vc_connecting">Connecting…</string>
+    <string name="vc_ended">Call ended</string>
+    <string name="vc_declined">Call declined</string>
+    <string name="vc_missed">Missed video call</string>
+    <string name="vc_no_answer">No answer</string>
+    <string name="vc_failed">Couldn\'t start the video call</string>
+    <string name="vc_connection_lost">Connection lost</string>
+    <string name="vc_accept">Accept</string>
+    <string name="vc_decline">Decline</string>
+    <string name="vc_end">End</string>
+    <string name="vc_mic">Mic</string>
+    <string name="vc_camera">Camera</string>
+    <string name="vc_switch">Flip</string>
+    <string name="vc_speaker">Speaker</string>
+    <string name="vc_someone">Someone</string>
+    <string name="vc_whatsapp">WhatsApp</string>
+    <string name="vc_invite">Invite</string>
+    <string name="vc_not_on_whocaller_short">Not on WhoCaller yet</string>
+    <string name="vc_not_on_whocaller">WhoCaller video works between WhoCaller users with a verified WhoCaller ID. Invite them, or use WhatsApp video.</string>
+    <string name="vc_invite_text">Let\'s video call on WhoCaller, free over the internet, and see who\'s calling: %1$s</string>
+    <string name="vc_permissions_needed">Camera and microphone access are needed for video calls</string>
+    <string name="vc_sign_in_needed">Sign in to WhoCaller to make video calls</string>
 </resources>

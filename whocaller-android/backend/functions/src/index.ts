@@ -399,3 +399,5 @@ export const api = onRequest({ region: "asia-south1", cors: false, maxInstances:
 
 // Direct-Firestore mode: keeps callerNumbers in sync with reports written by the app.
 export { onReportWritten } from "./callerNumbers";
+// WHOCALLER VIDEO (experimental): remove this line to remove app-to-app video calls.
+export { onVideoCallCreated } from "./videoCalls";

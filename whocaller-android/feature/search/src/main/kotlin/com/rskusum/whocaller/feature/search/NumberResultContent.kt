@@ -218,6 +218,8 @@ fun NumberResultContent(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Action(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, dialable) }
             Action(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, dialable) }
+            // WHOCALLER VIDEO (experimental)
+            Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) { TelecomActions.whoCallerVideo(context, dialable) }
             if (hasWhatsApp) {
                 Action(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) { TelecomActions.whatsAppCall(context, dialable, video = false) }
                 Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_whatsapp_video)) { TelecomActions.whatsAppCall(context, dialable, video = true) }

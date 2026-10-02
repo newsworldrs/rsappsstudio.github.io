@@ -243,6 +243,10 @@ fun ContactDetailScreen(
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, phone.number) }
                             DetailAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, phone.number) }
+                            // WHOCALLER VIDEO (experimental)
+                            DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) {
+                                TelecomActions.whoCallerVideo(context, phone.number)
+                            }
                             // Carrier video calling isn't offered (operators rarely allow it); WhatsApp instead.
                             if (hasWhatsApp) {
                                 DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) {

@@ -334,6 +334,10 @@ fun KeypadTab(
                             WhatsAppLogo(26.dp)
                         }
                     }
+                    // WHOCALLER VIDEO (experimental)
+                    QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet, onClick = { TelecomActions.whoCallerVideo(context, number) }) {
+                        QuickActionIcon(Icons.Filled.Videocam, Violet)
+                    }
                     if (whatsApp) {
                         QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen, onClick = { actions.whatsApp(number, video = true) }) {
                             QuickActionIcon(Icons.Filled.Videocam, WhatsAppGreen)
