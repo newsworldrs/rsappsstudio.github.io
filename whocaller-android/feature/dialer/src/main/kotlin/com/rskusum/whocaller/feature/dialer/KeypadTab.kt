@@ -334,8 +334,10 @@ fun KeypadTab(
                             WhatsAppLogo(26.dp)
                         }
                     }
-                    QuickAction(stringResource(R.string.dialer_video_call), Violet, onClick = { actions.video(number) }) {
-                        QuickActionIcon(Icons.Filled.Videocam, Violet)
+                    if (whatsApp) {
+                        QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen, onClick = { actions.whatsApp(number, video = true) }) {
+                            QuickActionIcon(Icons.Filled.Videocam, WhatsAppGreen)
+                        }
                     }
                     if (caller?.warning == true) {
                         QuickAction(stringResource(if (blocked) R.string.dialer_unblock else R.string.dialer_block), WarnRed, onClick = { viewModel.toggleBlock(number, caller.name) }) {
@@ -375,15 +377,15 @@ fun KeypadTab(
 
             Spacer(Modifier.height(8.dp))
 
-            // Video · Call (long-press: choose SIM) · Delete.
+            // WhatsApp call · Call (long-press: choose SIM) · Delete.
             Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                 GradientCallButton(
-                    icon = Icons.Filled.Videocam,
-                    description = stringResource(R.string.dialer_video_call),
-                    colors = listOf(Color(0xFF6366F1), Color(0xFF4338CA)),
+                    icon = Icons.Filled.Call,
+                    description = stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_call),
+                    colors = listOf(Color(0xFF4AE07A), WhatsAppGreen),
                     size = 60.dp,
-                    enabled = number.isNotBlank() && !emergency,
-                    onClick = { actions.video(number) },
+                    enabled = number.isNotBlank() && !emergency && whatsApp,
+                    onClick = { actions.whatsApp(number, video = false) },
                 )
                 // Two SIMs and no default calling SIM ("ask every time"): one call button per SIM,
                 // with its network underneath, so the right number is used in one tap.

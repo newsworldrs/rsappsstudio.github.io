@@ -538,7 +538,7 @@ fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails
                         Text(contact.displayName, color = palette.text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Row {
                             SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen) { number?.let { actions.call(it) } }
-                            SmallRoundButton(Icons.Filled.Videocam, stringResource(R.string.dialer_video_call), Violet) { number?.let { actions.video(it) } }
+                            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen) { number?.let { actions.whatsApp(it, video = true) } }
                         }
                     }
                 }

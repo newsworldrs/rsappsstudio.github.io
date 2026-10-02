@@ -77,7 +77,6 @@ fun NumberResultContent(
     val dialable = number.e164 ?: number.raw
     val name = lookup.contactName ?: info?.displayName
     val isDemo = name?.startsWith("[Demo]") == true
-    val videoSupported = androidx.compose.runtime.remember { TelecomActions.supportsVideoCalling(context) }
     val hasWhatsApp = androidx.compose.runtime.remember { TelecomActions.whatsAppPackage(context) != null }
 
     Column(modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -219,8 +218,9 @@ fun NumberResultContent(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Action(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, dialable) }
             Action(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, dialable) }
-            if (videoSupported) {
-                Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_video_call)) { TelecomActions.placeCall(context, dialable, video = true) }
+            if (hasWhatsApp) {
+                Action(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) { TelecomActions.whatsAppCall(context, dialable, video = false) }
+                Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_whatsapp_video)) { TelecomActions.whatsAppCall(context, dialable, video = true) }
             }
             if (hasWhatsApp && number.e164 != null) {
                 Action(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) { TelecomActions.openWhatsApp(context, dialable) }

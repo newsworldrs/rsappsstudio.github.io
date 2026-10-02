@@ -178,9 +178,13 @@ private fun DetailsContent(
             Spacer(Modifier.height(16.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 QuickAction(stringResource(R.string.dialer_call), CallGreen, onClick = { actions.call(number) }) { QuickActionIcon(Icons.Filled.Call, CallGreen) }
-                QuickAction(stringResource(R.string.dialer_video_call), Violet, onClick = { actions.video(number) }) { QuickActionIcon(Icons.Filled.Videocam, Violet) }
                 QuickAction(stringResource(R.string.dialer_sms), Indigo, onClick = { ActionIntents.message(context, number) }) { QuickActionIcon(Icons.AutoMirrored.Filled.Message, Indigo) }
-                if (whatsApp) QuickAction(stringResource(R.string.dialer_whatsapp), WhatsAppGreen, onClick = { actions.openWhatsAppChat(number) }) { WhatsAppLogo(26.dp) }
+                if (whatsApp) {
+                    QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_call), WhatsAppGreen, onClick = { actions.whatsApp(number, video = false) }) { WhatsAppLogo(26.dp) }
+                    QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen, onClick = { actions.whatsApp(number, video = true) }) {
+                        QuickActionIcon(Icons.Filled.Videocam, WhatsAppGreen)
+                    }
+                }
                 QuickAction(stringResource(R.string.dialer_share), Sky, onClick = { shareNumber(context, listOfNotNull(name, number).joinToString("\n")) }) {
                     QuickActionIcon(Icons.Filled.Share, Sky)
                 }

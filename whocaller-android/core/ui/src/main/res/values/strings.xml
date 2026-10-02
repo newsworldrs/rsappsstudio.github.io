@@ -104,4 +104,9 @@
     <string name="operator_original_short">%1$s (original)</string>
     <string name="operator_original_long">Originally %1$s. The number may have moved to another network.</string>
     <string name="label_verified_id">Verified WhoCaller ID</string>
+    <string name="action_whatsapp_call">WhatsApp call</string>
+    <string name="action_whatsapp_video">WhatsApp video</string>
+    <string name="whatsapp_not_installed">WhatsApp isn\'t installed on this phone</string>
+    <string name="whatsapp_tap_call">Tap the call button in WhatsApp to start the call</string>
+    <string name="whatsapp_tap_video">Tap the video button in WhatsApp to start the video call</string>
 </resources>

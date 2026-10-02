@@ -314,9 +314,7 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
 
             when {
                 call.needsAccount -> AccountChooser(call)
-                call.isRinging -> RingingActions(call, activeOther != null) {
-                    withCamera { CallManager.answer(call.call, video = true) }
-                }
+                call.isRinging -> RingingActions(call, activeOther != null)
                 else -> {
                     if (showKeypad) {
                         DtmfPad { CallManager.dtmf(call.call, it) }
@@ -328,18 +326,14 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             Toggle(Icons.Filled.MicOff, stringResource(R.string.call_mute), muted) { CallManager.setMuted(!muted) }
                             Toggle(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.call_speaker), speaker) { CallManager.setSpeaker(!speaker) }
+                            // Carrier video calling isn't offered; continue on WhatsApp video instead.
                             Toggle(
-                                if (call.isVideo) Icons.Filled.VideocamOff else Icons.Filled.Videocam,
-                                stringResource(if (call.isVideo) R.string.call_video_off else R.string.call_video),
-                                call.isVideo,
-                                enabled = call.isActive,
+                                Icons.Filled.Videocam,
+                                stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video),
+                                false,
+                                enabled = call.number != null && TelecomActions.whatsAppPackage(context) != null,
                             ) {
-                                when {
-                                    call.isVideo -> CallManager.requestVideo(call.call, on = false)
-                                    call.videoUpgradePending -> CallManager.cancelVideoRequest(call.call)
-                                    call.canVideo -> withCamera { startingVideo = true }
-                                    else -> videoUnavailable = true
-                                }
+                                call.number?.let { TelecomActions.whatsAppCall(context, it, video = true) }
                             }
                         }
                         Spacer(Modifier.height(14.dp))
@@ -539,11 +533,10 @@ private fun RecordingBadge(startedAt: Long) {
 }
 
 @Composable
-private fun RingingActions(call: CallUi, hasActiveCall: Boolean, onAnswerVideo: () -> Unit) {
+private fun RingingActions(call: CallUi, hasActiveCall: Boolean) {
     val green = listOf(CallGreenLight, CallGreen)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
         RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_decline), END_RED) { CallManager.decline(call.call) }
-        if (call.incomingVideo) RoundAction(Icons.Filled.Videocam, stringResource(R.string.call_answer_video), listOf(Color(0xFF6366F1), Color(0xFF4338CA)), onAnswerVideo)
         if (hasActiveCall) {
             RoundAction(Icons.Filled.CallEnd, stringResource(R.string.call_end_and_answer), listOf(Color(0xFFFBBF24), Color(0xFFF97316))) { CallManager.endAndAnswer(call.call) }
             RoundAction(Icons.Filled.Pause, stringResource(R.string.call_hold_and_answer), green) { CallManager.answer(call.call, video = false) }

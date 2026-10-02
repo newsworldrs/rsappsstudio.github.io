@@ -193,7 +193,6 @@ fun ContactDetailScreen(
     }
 
     val contact = state.contact
-    val videoSupported = androidx.compose.runtime.remember { TelecomActions.supportsVideoCalling(context) }
     val hasWhatsApp = androidx.compose.runtime.remember { TelecomActions.whatsAppPackage(context) != null }
     Scaffold(
         topBar = {
@@ -244,10 +243,13 @@ fun ContactDetailScreen(
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, phone.number) }
                             DetailAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, phone.number) }
-                            // Video calls over the carrier network only when the SIM's phone account supports them.
-                            if (videoSupported) {
-                                DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_video_call)) {
-                                    TelecomActions.placeCall(context, phone.number, video = true)
+                            // Carrier video calling isn't offered (operators rarely allow it); WhatsApp instead.
+                            if (hasWhatsApp) {
+                                DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) {
+                                    TelecomActions.whatsAppCall(context, phone.number, video = false)
+                                }
+                                DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whatsapp_video)) {
+                                    TelecomActions.whatsAppCall(context, phone.number, video = true)
                                 }
                             }
                             if (hasWhatsApp && phone.numberKey.startsWith("+")) {

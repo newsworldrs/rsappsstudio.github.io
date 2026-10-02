@@ -105,7 +105,6 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
             }
             MoreRow(Icons.Filled.Voicemail, stringResource(R.string.dialer_call_voicemail), null, Violet) { actions.voicemail() }
             MoreRow(Icons.Filled.FiberManualRecord, stringResource(R.string.rec_title), stringResource(R.string.rec_local_note), WarnRed) { showRecordings = true }
-            MoreRow(Icons.Filled.Videocam, stringResource(R.string.video_diag_title), stringResource(R.string.video_diag_desc), Violet) { showVideoDiag = true }
         }
 
         Section(stringResource(R.string.dialer_section_protection)) {

@@ -62,12 +62,10 @@ import kotlinx.coroutines.withContext
 class CallActions internal constructor(private val context: Context, private val scope: CoroutineScope) {
 
     internal var simChoice by mutableStateOf<SimRequest?>(null)
-    internal var videoChoice by mutableStateOf<VideoRequest?>(null)
     internal var pending: (() -> Unit)? = null
     internal var requestPermission: (Array<String>) -> Unit = {}
 
     internal data class SimRequest(val number: String, val video: Boolean, val sims: List<SimOption>)
-    internal data class VideoRequest(val number: String, val whatsAppEntry: Long)
 
     /** Calls [number]. [pickSim] forces the SIM chooser (long-press on the Call button). */
     fun call(number: String, video: Boolean = false, pickSim: Boolean = false, cameraAsked: Boolean = false) {
@@ -121,19 +119,10 @@ class CallActions internal constructor(private val context: Context, private val
         TelecomActions.placeCall(context, request.number, request.video, handle)
     }
 
-    /** Video call: SIM video calling when the carrier supports it, else WhatsApp video. */
-    fun video(number: String) {
+    /** WhatsApp voice or video call (carrier video calling is not offered: operators rarely allow it). */
+    fun whatsApp(number: String, video: Boolean) {
         if (number.isBlank()) return
-        scope.launch {
-            val entry = withContext(Dispatchers.IO) { ContactLookup.whatsAppVideoEntry(context, number) }
-            // Many phones don't report video support until the call starts, so always offer the SIM
-            // video call (4G/VoLTE): the network connects it as video, or as voice if it can't.
-            if (entry != null) videoChoice = VideoRequest(number, entry) else call(number, video = true)
-        }
-    }
-
-    internal fun whatsAppVideo(request: VideoRequest) {
-        if (!ContactLookup.startWhatsAppVideo(context, request.whatsAppEntry)) openWhatsAppChat(request.number, hint = true)
+        TelecomActions.whatsAppCall(context, number, video)
     }
 
     fun openWhatsAppChat(number: String, hint: Boolean = false) {
@@ -180,26 +169,7 @@ fun CallActionsHost(actions: CallActions) {
             SimPicker(request.sims, palette) { actions.callWith(request, it.handle) }
         }
     }
-    actions.videoChoice?.let { request ->
-        AlertDialog(
-            onDismissRequest = { actions.videoChoice = null },
-            title = { Text(stringResource(R.string.dialer_video_how)) },
-            text = { Text(stringResource(R.string.dialer_video_sim_hint)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    actions.videoChoice = null
-                    actions.call(request.number, video = true)
-                }) { Text(stringResource(R.string.dialer_video_sim)) }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    actions.videoChoice = null
-                    actions.whatsAppVideo(request)
-                }) { Text(stringResource(R.string.dialer_video_whatsapp)) }
-            },
-            icon = { Icon(Icons.Filled.Videocam, contentDescription = null) },
-        )
-    }
+
 }
 
 /** List of SIMs with their carrier colour. Also used by the in-call screen. */

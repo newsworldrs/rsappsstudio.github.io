@@ -273,7 +273,6 @@ private fun CallActionsSheet(
     val context = LocalContext.current
     val number = entry.rawNumber
     val title = entry.title ?: entry.displayNumber
-    val videoSupported = remember { TelecomActions.supportsVideoCalling(context) }
     val hasWhatsApp = remember { TelecomActions.whatsAppPackage(context) != null }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.navigationBarsPadding().semantics { contentDescription = context.getString(R.string.calls_actions_for, title) }) {
@@ -284,9 +283,13 @@ private fun CallActionsSheet(
             }
             SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, number); onDismiss() }
             SheetAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, number); onDismiss() }
-            if (videoSupported) {
-                SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_video_call)) {
-                    TelecomActions.placeCall(context, number, video = true)
+            if (hasWhatsApp) {
+                SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) {
+                    TelecomActions.whatsAppCall(context, number, video = false)
+                    onDismiss()
+                }
+                SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whatsapp_video)) {
+                    TelecomActions.whatsAppCall(context, number, video = true)
                     onDismiss()
                 }
             }

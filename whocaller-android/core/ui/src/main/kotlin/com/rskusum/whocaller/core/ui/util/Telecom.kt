@@ -116,6 +116,71 @@ object TelecomActions {
 
     // ---------- WhatsApp ----------
 
+    private const val WA_VOICE = "vnd.android.cursor.item/vnd.com.whatsapp.voip.call"
+    private const val WA_VIDEO = "vnd.android.cursor.item/vnd.com.whatsapp.video.call"
+
+    /**
+     * Starts a WhatsApp voice or video call with [number]. WhatsApp adds "Voice call" / "Video call"
+     * entries to contacts that use WhatsApp; with one we call directly, otherwise the chat opens and
+     * the user taps the call button there. Reads contacts on the calling thread (quick, indexed).
+     */
+    fun whatsAppCall(context: Context, number: String, video: Boolean) {
+        val pkg = whatsAppPackage(context)
+        if (pkg == null) {
+            Toast.makeText(context, R.string.whatsapp_not_installed, Toast.LENGTH_LONG).show()
+            return
+        }
+        val mime = if (video) WA_VIDEO else WA_VOICE
+        val dataId = whatsAppEntry(context, number, mime)
+        if (dataId != null) {
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(android.content.ContentUris.withAppendedId(android.provider.ContactsContract.Data.CONTENT_URI, dataId), mime)
+                .setPackage(pkg)
+            if (context !is android.app.Activity) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+                return
+            } catch (_: Exception) {
+                // Fall back to the chat.
+            }
+        }
+        openWhatsApp(context, internationalDigits(context, number))
+        Toast.makeText(context, if (video) R.string.whatsapp_tap_video else R.string.whatsapp_tap_call, Toast.LENGTH_LONG).show()
+    }
+
+    private fun whatsAppEntry(context: Context, number: String, mime: String): Long? {
+        if (!granted(context, Manifest.permission.READ_CONTACTS)) return null
+        val tail = number.filter(Char::isDigit).takeLast(10).takeIf { it.length >= 7 } ?: return null
+        return runCatching {
+            context.contentResolver.query(
+                android.provider.ContactsContract.Data.CONTENT_URI,
+                arrayOf(android.provider.ContactsContract.Data._ID, android.provider.ContactsContract.Data.DATA1),
+                "${android.provider.ContactsContract.Data.MIMETYPE} = ?",
+                arrayOf(mime),
+                null,
+            )?.use { c ->
+                var found: Long? = null
+                while (found == null && c.moveToNext()) {
+                    val jid = c.getString(1)?.substringBefore('@')?.filter(Char::isDigit).orEmpty()
+                    if (jid.endsWith(tail)) found = c.getLong(0)
+                }
+                found
+            }
+        }.getOrNull()
+    }
+
+    /** "+919876543210" for WhatsApp links; local numbers get the SIM country's code. */
+    private fun internationalDigits(context: Context, number: String): String {
+        if (number.trim().startsWith("+")) return number
+        val iso = runCatching {
+            context.getSystemService(android.telephony.TelephonyManager::class.java)?.simCountryIso?.uppercase()
+        }.getOrNull()?.takeIf { it.length == 2 } ?: java.util.Locale.getDefault().country.ifBlank { "IN" }
+        return runCatching {
+            val util = com.google.i18n.phonenumbers.PhoneNumberUtil.getInstance()
+            util.format(util.parse(number, iso), com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat.E164)
+        }.getOrDefault(number)
+    }
+
     private val WHATSAPP_PACKAGES = listOf("com.whatsapp", "com.whatsapp.w4b")
 
     /** Package of the installed WhatsApp (personal or Business), or null. */
