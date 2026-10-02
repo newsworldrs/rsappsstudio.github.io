@@ -230,8 +230,8 @@ fun NumberResultContent(
                     ActionIntents.saveContact(context, dialable, info?.displayName?.takeUnless { isDemo })
                 }
             }
-            Action(Icons.Outlined.Block, stringResource(if (lookup.isBlocked) UiR.string.action_unblock else UiR.string.action_block), onToggleBlock)
-            Action(Icons.Outlined.Flag, stringResource(UiR.string.action_report), onReport)
+            Action(Icons.Outlined.Block, stringResource(if (lookup.isBlocked) UiR.string.action_unblock else UiR.string.action_block), onClick = onToggleBlock)
+            Action(Icons.Outlined.Flag, stringResource(UiR.string.action_report), onClick = onReport)
             Action(Icons.Outlined.Share, stringResource(UiR.string.action_share)) {
                 ActionIntents.shareText(context, context.getString(UiR.string.share_number_text, number.display))
             }
