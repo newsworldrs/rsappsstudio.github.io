@@ -328,7 +328,13 @@ private fun RecentRow(
                 Text(stringResource(R.string.call_label_spam), color = WarnRed, style = MaterialTheme.typography.labelSmall)
             }
         }
-        if (!entry.isHidden && !selecting) SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen, onCall)
+        if (!entry.isHidden && !selecting) {
+            // WHOCALLER VIDEO (experimental)
+            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet) {
+                TelecomActions.whoCallerVideo(context, entry.rawNumber)
+            }
+            SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen, onCall)
+        }
     }
 }
 
@@ -501,6 +507,7 @@ private fun ContactRow(contact: Contact, onOpen: () -> Unit, onCall: () -> Unit)
 @Composable
 fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails: (DetailsTarget) -> Unit) {
     val palette = LocalDialerPalette.current
+    val context = LocalContext.current
     val favorites by viewModel.favorites.collectAsState()
     val permitted by viewModel.contactsPermission.collectAsState()
 
@@ -538,6 +545,8 @@ fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails
                         Text(contact.displayName, color = palette.text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Row {
                             SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen) { number?.let { actions.call(it) } }
+                            // WHOCALLER VIDEO (experimental)
+                            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet) { number?.let { TelecomActions.whoCallerVideo(context, it) } }
                             SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen) { number?.let { actions.whatsApp(it, video = true) } }
                         }
                     }

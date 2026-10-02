@@ -283,6 +283,11 @@ private fun CallActionsSheet(
             }
             SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, number); onDismiss() }
             SheetAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, number); onDismiss() }
+            // WHOCALLER VIDEO (experimental)
+            SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) {
+                TelecomActions.whoCallerVideo(context, number)
+                onDismiss()
+            }
             if (hasWhatsApp) {
                 SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) {
                     TelecomActions.whatsAppCall(context, number, video = false)
