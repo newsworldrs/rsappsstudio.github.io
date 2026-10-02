@@ -1,5 +1,6 @@
 package com.rskusum.whocaller.videocall
 
+import com.rskusum.whocaller.core.ui.component.WhoCallerVideo
 import android.media.AudioManager
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.offset
@@ -516,9 +517,8 @@ class VideoCallActivity : ComponentActivity() {
                     }
                 }
                 RoundButton(Icons.Filled.Call, stringResource(R.string.vc_invite), Color(0xFF6366F1)) {
-                    val text = getString(R.string.vc_invite_text, "https://play.google.com/store/apps/details?id=$packageName")
-                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-                    runCatching { startActivity(Intent.createChooser(send, null)) }
+                    // Same invite as the greyed-out video buttons: WhatsApp card + SMS link.
+                    lifecycleScope.launch { WhoCallerVideo.invite(this@VideoCallActivity, peerNumber, peerName.takeIf { it.isNotBlank() && it != peerNumber }) }
                 }
             }
             Spacer(Modifier.height(12.dp))

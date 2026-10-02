@@ -1,5 +1,6 @@
 package com.rskusum.whocaller.feature.contacts
 
+import androidx.compose.ui.draw.alpha
 import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -244,9 +245,8 @@ fun ContactDetailScreen(
                             DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, phone.number) }
                             DetailAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, phone.number) }
                             // WHOCALLER VIDEO (experimental)
-                            DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) {
-                                TelecomActions.whoCallerVideo(context, phone.number)
-                            }
+                            val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(phone.number, contact.displayName)
+                            DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video), dimmed = !video.available, onClick = video.onClick)
                             if (hasWhatsApp) {
                                 DetailAction(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) {
                                     TelecomActions.openWhatsApp(context, phone.number)
@@ -289,8 +289,8 @@ fun ContactDetailScreen(
 }
 
 @Composable
-private fun DetailAction(icon: ImageVector, label: String, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick) {
+private fun DetailAction(icon: ImageVector, label: String, dimmed: Boolean = false, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.alpha(if (dimmed) 0.4f else 1f)) {
         Icon(icon, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label)

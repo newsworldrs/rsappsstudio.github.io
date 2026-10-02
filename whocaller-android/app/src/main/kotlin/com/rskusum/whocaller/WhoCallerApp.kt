@@ -9,6 +9,11 @@ import com.rskusum.whocaller.core.common.analytics.CrashReporter
 import com.rskusum.whocaller.core.data.sync.SmsModelStore
 import com.rskusum.whocaller.core.domain.repository.NetworkMonitor
 import com.rskusum.whocaller.core.domain.repository.SettingsRepository
+import com.rskusum.whocaller.core.domain.repository.SmsRepository
+import com.rskusum.whocaller.core.common.result.AppResult
+import com.rskusum.whocaller.core.ui.component.WhoCallerVideo
+import com.rskusum.whocaller.videocall.VideoCallActivity
+import com.rskusum.whocaller.videocall.VideoSignaling
 import com.rskusum.whocaller.core.domain.repository.SyncController
 import com.rskusum.whocaller.core.ui.notification.NotificationChannels
 import com.rskusum.whocaller.firebase.AppCheckInstaller
@@ -31,6 +36,7 @@ class WhoCallerApp : Application(), Configuration.Provider {
     @Inject lateinit var syncController: SyncController
     @Inject lateinit var networkMonitor: NetworkMonitor
     @Inject lateinit var smsModelStore: SmsModelStore
+    @Inject lateinit var smsRepository: SmsRepository
 
     @Inject @ApplicationScope
     lateinit var appScope: CoroutineScope
@@ -60,5 +66,14 @@ class WhoCallerApp : Application(), Configuration.Provider {
             networkMonitor.isOnline.drop(1).filter { it }.collect { syncController.requestSync() }
         }
         syncController.schedulePeriodicSync()
+
+        // WHOCALLER VIDEO (experimental): who is on WhoCaller (video button look) + invite SMS.
+        WhoCallerVideo.lookup = lookup@{ context, number ->
+            val signaling = VideoSignaling.create(context) ?: return@lookup null
+            val e164 = VideoCallActivity.toE164(context, number) ?: return@lookup null
+            val user = signaling.findUser(e164) ?: return@lookup false
+            if (user.first == signaling.myUid) null else true
+        }
+        WhoCallerVideo.smsSender = { address, body -> smsRepository.send(address, body) is AppResult.Success }
     }
 }

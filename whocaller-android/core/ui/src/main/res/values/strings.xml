@@ -110,4 +110,19 @@
     <string name="whatsapp_tap_call">Tap the call button in WhatsApp to start the call</string>
     <string name="whatsapp_tap_video">Tap the video button in WhatsApp to start the video call</string>
     <string name="action_whocaller_video">WhoCaller video</string>
+    <!-- WHOCALLER VIDEO invite -->
+    <string name="wc_invite_title">%1$s is not on WhoCaller</string>
+    <string name="wc_invite_body">Do you want to share WhoCaller with %1$s? WhatsApp opens with an invite card ready to send, and an SMS with the download link is sent to %1$s.</string>
+    <string name="wc_invite_yes">Yes, share</string>
+    <string name="wc_invite_no">Not now</string>
+    <string name="wc_invite_sms_sent">Invite SMS sent to %1$s</string>
+    <string name="wc_invite_message_named">Hi %1$s! I\'m using WhoCaller to see who\'s calling, block spam and make free HD video calls. Install it so we can video call on WhoCaller: %2$s</string>
+    <string name="wc_invite_message">Hi! I\'m using WhoCaller to see who\'s calling, block spam and make free HD video calls. Install it so we can video call on WhoCaller: %1$s</string>
+    <string name="wc_card_tagline">Know who\'s calling</string>
+    <string name="wc_card_feature_video">Free HD video calls</string>
+    <string name="wc_card_feature_callerid">Caller ID for unknown numbers</string>
+    <string name="wc_card_feature_spam">Spam &amp; scam call blocking</string>
+    <string name="wc_card_feature_sms">SMS spam filter</string>
+    <string name="wc_card_feature_dialer">Smart dialer with call recorder</string>
+    <string name="wc_card_cta">Get WhoCaller free on Google Play</string>
 </resources>

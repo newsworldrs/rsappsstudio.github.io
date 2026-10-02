@@ -1,5 +1,6 @@
 package com.rskusum.whocaller.feature.callhistory
 
+import androidx.compose.ui.draw.alpha
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -284,9 +285,11 @@ private fun CallActionsSheet(
             SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, number); onDismiss() }
             SheetAction(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, number); onDismiss() }
             // WHOCALLER VIDEO (experimental)
-            SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) {
-                TelecomActions.whoCallerVideo(context, number)
-                onDismiss()
+            val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(number, entry.title)
+            SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video), dimmed = !video.available) {
+                video.onClick()
+                // Keep the sheet open while the invite question is shown.
+                if (video.available) onDismiss()
             }
             if (hasWhatsApp) {
                 SheetAction(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) {
@@ -313,11 +316,11 @@ private fun CallActionsSheet(
 }
 
 @Composable
-private fun SheetAction(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun SheetAction(icon: ImageVector, label: String, dimmed: Boolean = false, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(label) },
         leadingContent = { Icon(icon, contentDescription = null) },
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier.alpha(if (dimmed) 0.4f else 1f).clickable(onClick = onClick),
     )
 }
 

@@ -1,5 +1,6 @@
 package com.rskusum.whocaller.feature.search
 
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -219,7 +220,8 @@ fun NumberResultContent(
             Action(Icons.Outlined.Call, stringResource(UiR.string.action_call)) { ActionIntents.dial(context, dialable) }
             Action(Icons.AutoMirrored.Outlined.Message, stringResource(UiR.string.action_message)) { ActionIntents.message(context, dialable) }
             // WHOCALLER VIDEO (experimental)
-            Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) { TelecomActions.whoCallerVideo(context, dialable) }
+            val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(dialable, lookup.contactName ?: info?.displayName?.takeUnless { isDemo })
+            Action(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video), dimmed = !video.available, onClick = video.onClick)
             if (hasWhatsApp) {
                 Action(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) { TelecomActions.openWhatsApp(context, dialable) }
             }
@@ -250,8 +252,8 @@ private fun Field(label: String, value: String) {
 }
 
 @Composable
-private fun Action(icon: ImageVector, label: String, onClick: () -> Unit) {
-    OutlinedButton(onClick = onClick) {
+private fun Action(icon: ImageVector, label: String, dimmed: Boolean = false, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.alpha(if (dimmed) 0.4f else 1f)) {
         Icon(icon, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text(label)

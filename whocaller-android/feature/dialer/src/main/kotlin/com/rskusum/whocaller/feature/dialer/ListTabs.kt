@@ -341,9 +341,8 @@ private fun RecentRow(
         }
         if (!entry.isHidden && !selecting) {
             // WHOCALLER VIDEO (experimental)
-            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet) {
-                TelecomActions.whoCallerVideo(context, entry.rawNumber)
-            }
+            val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(entry.rawNumber, name)
+            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), if (video.available) Violet else palette.subtle, video.onClick)
             SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen, onCall)
         }
     }
@@ -558,7 +557,8 @@ fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails
                         Row {
                             SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen) { number?.let { actions.call(it) } }
                             // WHOCALLER VIDEO (experimental)
-                            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet) { number?.let { TelecomActions.whoCallerVideo(context, it) } }
+                            val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(number, contact.displayName)
+                            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), if (video.available) Violet else palette.subtle, video.onClick)
                             if (whatsApp) {
                                 WhatsAppRoundButton(stringResource(R.string.dialer_whatsapp)) { number?.let { actions.openWhatsAppChat(it) } }
                             }

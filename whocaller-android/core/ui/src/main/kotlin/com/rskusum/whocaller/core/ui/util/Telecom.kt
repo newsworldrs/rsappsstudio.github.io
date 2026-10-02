@@ -132,7 +132,7 @@ object TelecomActions {
     // ---------- WhatsApp ----------
 
     /** "+919876543210" for WhatsApp links; local numbers get the SIM country's code. */
-    private fun internationalDigits(context: Context, number: String): String {
+    fun internationalDigits(context: Context, number: String): String {
         if (number.trim().startsWith("+")) return number
         val iso = runCatching {
             context.getSystemService(android.telephony.TelephonyManager::class.java)?.simCountryIso?.uppercase()

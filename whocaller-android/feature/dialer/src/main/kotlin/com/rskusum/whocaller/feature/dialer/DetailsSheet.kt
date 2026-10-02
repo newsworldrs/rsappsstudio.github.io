@@ -179,8 +179,10 @@ private fun DetailsContent(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 QuickAction(stringResource(R.string.dialer_call), CallGreen, onClick = { actions.call(number) }) { QuickActionIcon(Icons.Filled.Call, CallGreen) }
                 // WHOCALLER VIDEO (experimental)
-                QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet, onClick = { TelecomActions.whoCallerVideo(context, number) }) {
-                    QuickActionIcon(Icons.Filled.Videocam, Violet)
+                val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(number, name)
+                val videoTint = if (video.available) Violet else palette.subtle
+                QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), videoTint, onClick = video.onClick) {
+                    QuickActionIcon(Icons.Filled.Videocam, videoTint)
                 }
                 QuickAction(stringResource(R.string.dialer_sms), Indigo, onClick = { ActionIntents.message(context, number) }) { QuickActionIcon(Icons.AutoMirrored.Filled.Message, Indigo) }
                 if (whatsApp) {

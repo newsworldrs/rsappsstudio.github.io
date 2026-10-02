@@ -335,8 +335,10 @@ fun KeypadTab(
                         }
                     }
                     // WHOCALLER VIDEO (experimental)
-                    QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet, onClick = { TelecomActions.whoCallerVideo(context, number) }) {
-                        QuickActionIcon(Icons.Filled.Videocam, Violet)
+                    val video = com.rskusum.whocaller.core.ui.component.rememberWhoCallerVideo(number, caller?.name?.takeUnless { caller.warning })
+                    val videoTint = if (video.available) Violet else palette.subtle
+                    QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), videoTint, onClick = video.onClick) {
+                        QuickActionIcon(Icons.Filled.Videocam, videoTint)
                     }
                     if (caller?.warning == true) {
                         QuickAction(stringResource(if (blocked) R.string.dialer_unblock else R.string.dialer_block), WarnRed, onClick = { viewModel.toggleBlock(number, caller.name) }) {
