@@ -73,32 +73,15 @@ import com.rskusum.whocaller.core.ui.util.messageRes
 
 /** Circle avatar with an initial or an icon that reflects the caller label. */
 @Composable
-fun CallerAvatar(name: String?, label: CallerLabel, modifier: Modifier = Modifier, size: Dp = 44.dp) {
-    val risk = WhoCallerTheme.riskColors
-    val (bg, fg) = when (label) {
-        CallerLabel.POSSIBLE_SCAM, CallerLabel.SUSPECTED_SPAM -> risk.high to risk.onRisk
-        CallerLabel.TELEMARKETING -> risk.moderate to risk.onRisk
-        CallerLabel.VERIFIED_BUSINESS, CallerLabel.BUSINESS -> MaterialTheme.colorScheme.secondaryContainer to
-            MaterialTheme.colorScheme.onSecondaryContainer
-        else -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
-    }
-    Box(
-        modifier = modifier.size(size).clip(CircleShape).background(bg).clearAndSetSemantics { },
-        contentAlignment = Alignment.Center,
-    ) {
-        val initial = name?.firstOrNull { it.isLetter() }?.uppercaseChar()
-        val icon: ImageVector? = when (label) {
-            CallerLabel.POSSIBLE_SCAM, CallerLabel.SUSPECTED_SPAM, CallerLabel.TELEMARKETING -> Icons.Filled.Warning
-            CallerLabel.VERIFIED_BUSINESS, CallerLabel.BUSINESS -> Icons.Filled.Business
-            CallerLabel.HIDDEN -> Icons.Filled.PersonOff
-            else -> if (initial == null) Icons.Filled.Person else null
-        }
-        if (icon != null) {
-            Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(size * 0.5f))
-        } else {
-            Text(initial.toString(), color = fg, style = MaterialTheme.typography.titleMedium)
-        }
-    }
+fun CallerAvatar(name: String?, label: CallerLabel, modifier: Modifier = Modifier, size: Dp = 48.dp) {
+    val warning = label == CallerLabel.POSSIBLE_SCAM || label == CallerLabel.SUSPECTED_SPAM || label == CallerLabel.TELEMARKETING
+    GradientAvatar(
+        name = name,
+        size = size,
+        modifier = modifier.clearAndSetSemantics { },
+        warning = warning,
+        icon = iconFor(label),
+    )
 }
 
 /** Pill showing the risk band. Colour is never the only signal: the band is always written out. */

@@ -54,7 +54,7 @@
     <string name="profile_choose_avatar">Or pick an avatar</string>
     <string name="profile_avatar_n">Avatar %1$d</string>
     <string name="profile_saved">Profile saved</string>
-    <string name="profile_photo_failed">Couldn\'t use that photo</string>
+    <string name="profile_photo_failed">Couldn\'t read that picture. Try another one.</string>
     <string name="profile_local_note">Your photo, profession and institute stay on this device. Your name and verified mobile number form your WhoCaller ID.</string>
     <string name="profile_your_picture">Your profile picture</string>
     <string name="complete_title">Your WhoCaller ID</string>
@@ -73,7 +73,7 @@
     <string name="complete_number_taken">This number is already linked to another WhoCaller account.</string>
     <string name="complete_privacy">Your name and number are stored in your WhoCaller account. Your contacts, call log and messages are never uploaded.</string>
     <string name="complete_other_account">Use a different account</string>
-    <string name="complete_skip_test">Skip for now (test build only)</string>
+    <string name="complete_skip_test">Skip for now. I\'ll set it up later</string>
     <string name="signin_required_intro">Sign in with Google or email to create your WhoCaller ID.</string>
     <string name="profile_mobile">Mobile number</string>
     <string name="profile_mobile_missing">Add your mobile number</string>
@@ -88,4 +88,12 @@
     <string name="complete_number_india_start">Indian mobile numbers start with 6, 7, 8 or 9</string>
     <string name="complete_number_invalid">This isn\'t a valid mobile number. Check it and try again.</string>
     <string name="complete_number_ok">✓ Looks good</string>
+    <string name="profile_own_avatar">Use your own picture from the gallery</string>
+    <string name="profile_setup_id_title">Get your blue tick</string>
+    <string name="profile_setup_id_text">Verify your mobile number to set up your WhoCaller ID, so people you call see your name.</string>
+    <string name="signin_welcome">Welcome to WhoCaller</string>
+    <string name="signin_tagline">Know who\'s calling, stop spam and scam calls, and get your own verified caller ID.</string>
+    <string name="signin_benefit_identify">See names for unknown numbers</string>
+    <string name="signin_benefit_spam">Spam and scam calls flagged before you answer</string>
+    <string name="signin_benefit_tick">Your verified WhoCaller ID with a blue tick</string>
 </resources>

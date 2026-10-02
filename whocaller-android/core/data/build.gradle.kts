@@ -10,6 +10,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.androidx.exifinterface)
     api(projects.core.domain)
     api(projects.core.network)
     implementation(projects.core.database)

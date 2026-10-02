@@ -35,6 +35,8 @@ data class CallerDisplay(
     val callerLabel: CallerLabel,
     /** Current network confirmed by the number's owner (null: only the original network is known). */
     val carrier: String? = null,
+    /** The number's owner verified it by SMS code: show the blue tick. */
+    val verified: Boolean = false,
 )
 
 /** Snapshot of one call for the UI. */
@@ -105,6 +107,10 @@ object CallManager {
         _videoSizes.value = _videoSizes.value + (call to change(_videoSizes.value[call] ?: VideoSizes()))
     }
 
+    /** Network's answer to the last failed video request, in words (shown on the call screen). */
+    @Volatile var lastVideoFailure: String? = null
+        private set
+
     /** Called when the other person asks to switch to video (the call screen must come to the front). */
     @Volatile internal var onVideoRequest: ((Call) -> Unit)? = null
     /** Video calls that the network connected as voice (told once). */
@@ -170,8 +176,10 @@ object CallManager {
             ?: all.firstOrNull()
     }
 
-    fun answer(call: Call, video: Boolean) =
+    fun answer(call: Call, video: Boolean) {
+        if (video) VideoDiagnostics.record("answered as video", call)
         call.answer(if (video) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY)
+    }
 
     fun decline(call: Call) = call.reject(false, null)
 
@@ -216,7 +224,10 @@ object CallManager {
         val vc = call.videoCall ?: return false
         watchVideo(call)
         val state = if (on) VideoProfile.STATE_BIDIRECTIONAL else VideoProfile.STATE_AUDIO_ONLY
-        val sent = runCatching { vc.sendSessionModifyRequest(VideoProfile(state)) }.isSuccess
+        val sent = runCatching { vc.sendSessionModifyRequest(VideoProfile(state)) }
+            .onFailure { VideoDiagnostics.record("request ${if (on) "video" else "voice"}: could not send (${it.javaClass.simpleName}: ${it.message})", call) }
+            .isSuccess
+        if (sent) VideoDiagnostics.record("request ${if (on) "video" else "voice"} sent", call)
         if (sent && on) {
             pendingUpgrades += call
             // No answer at all: stop waiting (the network normally times out first).
@@ -256,6 +267,7 @@ object CallManager {
         known?.let { (old, oldCb) -> runCatching { old.unregisterCallback(oldCb) } }
         val cb = object : InCallService.VideoCall.Callback() {
             override fun onSessionModifyRequestReceived(videoProfile: VideoProfile) {
+                VideoDiagnostics.record("other side asks for " + VideoDiagnostics.videoState(videoProfile.videoState), call)
                 if (VideoProfile.isVideo(videoProfile.videoState) && !VideoProfile.isVideo(call.details.videoState)) {
                     requestedStates[call] = videoProfile.videoState
                     videoRequests += call
@@ -268,6 +280,17 @@ object CallManager {
             override fun onSessionModifyResponseReceived(status: Int, requestedProfile: VideoProfile?, responseProfile: VideoProfile?) {
                 val wasWaiting = pendingUpgrades.remove(call)
                 val nowVideo = responseProfile?.let { VideoProfile.isVideo(it.videoState) } == true
+                VideoDiagnostics.record(
+                    "answer: " + VideoDiagnostics.statusText(status) +
+                        ", asked " + (requestedProfile?.let { VideoDiagnostics.videoState(it.videoState) } ?: "?") +
+                        ", got " + (responseProfile?.let { VideoDiagnostics.videoState(it.videoState) } ?: "?"),
+                    call,
+                )
+                lastVideoFailure = if (status != Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS || (wasWaiting && !nowVideo)) {
+                    VideoDiagnostics.statusText(status)
+                } else {
+                    null
+                }
                 if (status != Connection.VideoProvider.SESSION_MODIFY_REQUEST_SUCCESS || (wasWaiting && !nowVideo)) {
                     _messages.tryEmit(
                         when (status) {
@@ -282,7 +305,7 @@ object CallManager {
                 refresh()
             }
 
-            override fun onCallSessionEvent(event: Int) = Unit
+            override fun onCallSessionEvent(event: Int) = VideoDiagnostics.record("session event $event", call)
             override fun onPeerDimensionsChanged(width: Int, height: Int) =
                 updateSizes(call) { it.copy(peerWidth = width, peerHeight = height) }
             override fun onVideoQualityChanged(videoQuality: Int) = Unit
@@ -340,6 +363,7 @@ object CallManager {
                     ?.let(VideoProfile::isVideo) == true
             ) {
                 downgradeNoticed += call
+                VideoDiagnostics.record("video call connected as voice by the network", call)
                 _messages.tryEmit(R.string.call_video_became_voice)
             }
             CallUi(
@@ -396,7 +420,8 @@ object CallerDisplayFormatter {
             }
             CallerLabel.TELEMARKETING -> listOfNotNull(context.getString(R.string.call_label_telemarketing), reportText).joinToString(" · ") to true
             CallerLabel.VERIFIED_BUSINESS -> context.getString(R.string.call_label_verified) to false
-            CallerLabel.BUSINESS, CallerLabel.PERSON -> context.getString(R.string.call_label_whocaller) to false
+            CallerLabel.BUSINESS, CallerLabel.PERSON ->
+                context.getString(if (result.info?.whoCallerVerified == true) com.rskusum.whocaller.core.ui.R.string.label_verified_id else R.string.call_label_whocaller) to false
             CallerLabel.HIDDEN -> context.getString(R.string.call_private) to false
             CallerLabel.UNKNOWN -> context.getString(R.string.call_label_unknown) to false
         }
@@ -407,6 +432,7 @@ object CallerDisplayFormatter {
             warning = warning,
             callerLabel = result.label,
             carrier = result.info?.carrier?.takeIf { it.isNotBlank() },
+            verified = result.info?.whoCallerVerified == true,
         )
     }
 }

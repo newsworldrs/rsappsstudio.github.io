@@ -32,6 +32,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -159,10 +160,12 @@ class PostCallWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val callLog: CallLogRepository,
+    private val idReminder: WhoCallerIdReminder,
     private val coordinator: PostCallCoordinator,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        runCatching { idReminder.onCallEnded() }
         val number = inputData.getString(KEY_NUMBER) ?: return Result.success()
         val since = inputData.getLong(KEY_SINCE, 0L)
         val attempt = inputData.getInt(KEY_ATTEMPT, 0)
@@ -206,5 +209,61 @@ class PostCallWorker @AssistedInject constructor(
             WorkManager.getInstance(context)
                 .enqueueUniqueWork("post_call_" + number.filter(Char::isDigit), ExistingWorkPolicy.REPLACE, request)
         }
+    }
+}
+
+/**
+ * Users who skipped the WhoCaller ID screen are reminded after a call ends (a good moment: they just
+ * used the phone), at most every [EVERY_DAYS] days, until they set it up.
+ */
+@Singleton
+class WhoCallerIdReminder @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val profiles: com.rskusum.whocaller.core.domain.repository.LocalProfileRepository,
+) {
+    private val prefs: SharedPreferences = context.getSharedPreferences("whocaller_id_reminder", Context.MODE_PRIVATE)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    fun onCallEndedAsync() {
+        scope.launch { runCatching { onCallEnded() } }
+    }
+
+    suspend fun onCallEnded() {
+        val profile = profiles.profile.first()
+        if (profile.isComplete || profile.idSetupSkippedAt == 0L) return
+        val now = System.currentTimeMillis()
+        if (now - prefs.getLong(KEY_LAST, 0L) < TimeUnit.DAYS.toMillis(EVERY_DAYS)) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        prefs.edit().putLong(KEY_LAST, now).apply()
+        val open = PendingIntent.getActivity(
+            context,
+            NOTIFICATION_ID,
+            Intent(Intent.ACTION_VIEW, android.net.Uri.parse("whocaller://profile/phone")).setPackage(context.packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, NotificationChannels.POST_CALL)
+            .setSmallIcon(UiR.drawable.ic_stat_whocaller)
+            .setContentTitle(context.getString(R.string.id_reminder_title))
+            .setContentText(context.getString(R.string.id_reminder_text))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.id_reminder_text)))
+            .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {
+            // Notifications not allowed.
+        }
+    }
+
+    private companion object {
+        const val KEY_LAST = "last_reminder"
+        const val EVERY_DAYS = 2L
+        const val NOTIFICATION_ID = 0x5D00_0001
     }
 }

@@ -150,6 +150,7 @@ private class CallerView(
     val place: String?,
     val international: String?,
     val contactId: Long?,
+    val verified: Boolean = false,
 )
 
 @Composable
@@ -458,6 +459,7 @@ private fun callerView(context: Context, number: String, lookup: DialLookup): Ca
         place = place,
         international = found.facts?.international,
         contactId = contact?.contactId,
+        verified = result.info?.whoCallerVerified == true,
     )
 }
 
@@ -494,13 +496,27 @@ private fun CallerCard(caller: CallerView?, searching: Boolean, onSwipeAvatar: (
             }
             Spacer(Modifier.height(6.dp))
             AnimatedContent(
-                targetState = Triple(caller?.name, caller?.label, searching),
+                targetState = Triple(caller?.name?.let { it to caller.verified }, caller?.label, searching),
                 transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(150)) },
                 label = "caller",
-            ) { (name, label, isSearching) ->
+            ) { (named, label, isSearching) ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    if (name != null) {
-                        Text(name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (named != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                named.first,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = palette.text,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            if (named.second) {
+                                Spacer(Modifier.width(4.dp))
+                                com.rskusum.whocaller.core.ui.component.VerifiedTick(20.dp)
+                            }
+                        }
                         Spacer(Modifier.height(4.dp))
                     }
                     when {

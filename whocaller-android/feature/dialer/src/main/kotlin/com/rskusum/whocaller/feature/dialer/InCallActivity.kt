@@ -213,7 +213,17 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
             micLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
-    LaunchedEffect(Unit) { CallManager.messages.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() } }
+    // Video not accepted: explain with the network's own answer, offer WhatsApp video.
+    var videoRefused by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) {
+        CallManager.messages.collect { res ->
+            if (res == R.string.call_video_declined || res == R.string.call_video_failed || res == R.string.call_video_no_answer) {
+                videoRefused = res
+            } else {
+                Toast.makeText(context, res, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     // Contact photo and offline location/operator for the other party.
     var photoUri by remember(call.number) { mutableStateOf<String?>(null) }
     var facts by remember(call.number) { mutableStateOf<NumberFacts?>(null) }
@@ -257,15 +267,22 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                 }
                 Spacer(Modifier.height(18.dp))
             }
-            Text(
-                if (call.isConference) stringResource(R.string.call_conference, call.childCount) else call.display.title,
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    if (call.isConference) stringResource(R.string.call_conference, call.childCount) else call.display.title,
+                    color = Color.White,
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (call.display.verified && !call.isConference) {
+                    Spacer(Modifier.width(6.dp))
+                    com.rskusum.whocaller.core.ui.component.VerifiedTick(24.dp, description = stringResource(com.rskusum.whocaller.core.ui.R.string.label_verified_id))
+                }
+            }
             call.display.number?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.8f)) }
             val operator = call.display.carrier ?: facts?.carrier?.let { stringResource(com.rskusum.whocaller.core.ui.R.string.operator_original_short, it) }
             listOfNotNull(facts?.location, operator).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
@@ -365,6 +382,43 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
             }
             Spacer(Modifier.height(12.dp))
         }
+    }
+
+    videoRefused?.let { res ->
+        val whatsApp = remember { TelecomActions.whatsAppPackage(context) != null }
+        AlertDialog(
+            onDismissRequest = { videoRefused = null },
+            icon = { Icon(Icons.Filled.VideocamOff, contentDescription = null) },
+            title = { Text(stringResource(R.string.call_video_refused_title)) },
+            text = {
+                Column {
+                    Text(stringResource(res))
+                    CallManager.lastVideoFailure?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(stringResource(R.string.call_video_network_said, it), style = MaterialTheme.typography.bodySmall)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(stringResource(R.string.call_video_refused_hint), style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = {
+                if (whatsApp && call.number != null) {
+                    TextButton(onClick = {
+                        videoRefused = null
+                        val e164 = NumberTools.international(call.number, NumberTools.countryIso(context)) ?: call.number
+                        TelecomActions.openWhatsApp(context, e164)
+                        Toast.makeText(context, R.string.dialer_video_in_whatsapp, Toast.LENGTH_LONG).show()
+                    }) { Text(stringResource(R.string.call_video_use_whatsapp)) }
+                } else {
+                    TextButton(onClick = { videoRefused = null }) { Text(stringResource(android.R.string.ok)) }
+                }
+            },
+            dismissButton = if (whatsApp && call.number != null) {
+                { TextButton(onClick = { videoRefused = null }) { Text(stringResource(android.R.string.cancel)) } }
+            } else {
+                null
+            },
+        )
     }
 
     // The other person wants to switch to video.

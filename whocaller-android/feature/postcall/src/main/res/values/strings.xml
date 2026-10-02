@@ -40,4 +40,6 @@
     <string name="postcall_cat_harassment">Harassment</string>
     <string name="postcall_cat_other">Other</string>
     <string name="postcall_cat_not_spam">Not spam</string>
+    <string name="id_reminder_title">Set up your WhoCaller ID</string>
+    <string name="id_reminder_text">Add your name and verify your number to get the blue tick, so people you call know it\'s really you, and to protect yourself from spam.</string>
 </resources>

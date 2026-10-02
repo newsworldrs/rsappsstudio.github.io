@@ -40,6 +40,7 @@ class WhoCallerInCallService : InCallService() {
 
     @Inject lateinit var identification: CallerIdentificationManager
     @Inject lateinit var postCall: PostCallCoordinator
+    @Inject lateinit var idReminder: com.rskusum.whocaller.feature.postcall.WhoCallerIdReminder
 
     /** Calls that rang on this phone (incoming), so the post-call screen only follows those. */
     private val incoming = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Call, Boolean>())
@@ -50,6 +51,7 @@ class WhoCallerInCallService : InCallService() {
     override fun onCreate() {
         super.onCreate()
         CallManager.attach(this)
+        VideoDiagnostics.init(this)
         CallManager.onVideoRequest = { call -> showVideoRequest(call) }
         observer = scope.launch {
             CallManager.calls.collect { CallNotifications.update(this@WhoCallerInCallService, it) }
@@ -62,6 +64,9 @@ class WhoCallerInCallService : InCallService() {
         CallManager.add(call, CallerDisplayFormatter.initial(this, number))
         if (CallManager.stateOf(call) == Call.STATE_RINGING) incoming += call
 
+        if (android.telecom.VideoProfile.isVideo(call.details.videoState)) {
+            VideoDiagnostics.record(if (CallManager.stateOf(call) == Call.STATE_RINGING) "incoming video call" else "outgoing video call started", call)
+        }
         if (CallManager.stateOf(call) != Call.STATE_RINGING) {
             // Outgoing call: show the call screen straight away.
             startActivity(InCallActivity.intent(this))
@@ -91,9 +96,19 @@ class WhoCallerInCallService : InCallService() {
         val answered = details.connectTimeMillis > 0
         val declined = details.disconnectCause?.code == DisconnectCause.REJECTED
         val display = CallManager.calls.value.firstOrNull { it.call == call }?.display
+        // A call started as video: keep the network's reason for ending it.
+        val askedVideo = details.intentExtras?.getInt(android.telecom.TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, android.telecom.VideoProfile.STATE_AUDIO_ONLY)
+            ?.let(android.telecom.VideoProfile::isVideo) == true
+        if (askedVideo || android.telecom.VideoProfile.isVideo(details.videoState)) {
+            VideoDiagnostics.record("video call ended: " + VideoDiagnostics.disconnectText(details.disconnectCause) + ", connected=" + (details.connectTimeMillis > 0), call)
+        }
         CallManager.remove(call)
         // Last call ended: save the recording, if one is running.
-        if (CallManager.calls.value.isEmpty()) CallRecorder.stop()
+        if (CallManager.calls.value.isEmpty()) {
+            CallRecorder.stop()
+            // Not set up a WhoCaller ID yet: a gentle reminder now and then.
+            idReminder.onCallEndedAsync()
+        }
         // "Know this caller?" for unknown numbers the user answered or declined (never for contacts).
         if (wasIncoming && number != null && display?.callerLabel != CallerLabel.CONTACT && (answered || declined)) {
             val showNow = CallManager.calls.value.isEmpty()

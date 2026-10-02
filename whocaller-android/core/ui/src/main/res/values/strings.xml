@@ -103,4 +103,5 @@
     <string name="channel_spam_messages_desc">Texts WhoCaller moved to Spam. Shown quietly so they don\'t disturb you.</string>
     <string name="operator_original_short">%1$s (original)</string>
     <string name="operator_original_long">Originally %1$s. The number may have moved to another network.</string>
+    <string name="label_verified_id">Verified WhoCaller ID</string>
 </resources>

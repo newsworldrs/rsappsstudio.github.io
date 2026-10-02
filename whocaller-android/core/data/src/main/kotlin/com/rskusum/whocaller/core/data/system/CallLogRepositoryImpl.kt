@@ -176,6 +176,7 @@ class CallLogRepositoryImpl @Inject constructor(
         val date: Long,
         val duration: Long,
         val presentation: Int,
+        val photoUri: String? = null,
     )
 
     private fun queryRaw(selection: Pair<String?, Array<String>?>, offset: Int, limit: Int): List<RawCall> {
@@ -191,6 +192,7 @@ class CallLogRepositoryImpl @Inject constructor(
             CallLog.Calls.DATE,
             CallLog.Calls.DURATION,
             CallLog.Calls.NUMBER_PRESENTATION,
+            CallLog.Calls.CACHED_PHOTO_URI,
         )
         return try {
             context.contentResolver.query(uri, projection, selection.first, selection.second, "${CallLog.Calls.DATE} DESC")
@@ -214,6 +216,7 @@ class CallLogRepositoryImpl @Inject constructor(
                 date = c.getLong(4),
                 duration = c.getLong(5),
                 presentation = c.getInt(6),
+                photoUri = c.getString(7)?.takeIf { it.isNotBlank() },
             )
         }
         return list
@@ -224,7 +227,7 @@ class CallLogRepositoryImpl @Inject constructor(
         val region = countryRepository.defaultRegion()
         val parsed = rows.map { row ->
             val hidden = row.presentation != CallLog.Calls.PRESENTATION_ALLOWED || row.number.isNullOrBlank()
-            val n = if (hidden) null else (normalizer.normalize(row.number, region) as? NormalizationResult.Parsed)?.number
+            val n = if (hidden) null else parsed(row.number!!, region)
             Triple(row, n, hidden || n == null && PhoneNumberNormalizer.isHiddenMarker(row.number.orEmpty()))
         }
         val keys = parsed.mapNotNull { it.second?.key }.distinct()
@@ -252,8 +255,25 @@ class CallLogRepositoryImpl @Inject constructor(
                 category = info?.category ?: SpamCategory.UNKNOWN,
                 spamScore = score,
                 isHidden = hidden,
+                photoUri = row.photoUri,
             )
         }
+    }
+
+    /** Parsed numbers by raw text: a call log repeats the same few numbers, parsing them once is enough. */
+    private val parseCache = object : LinkedHashMap<String, Any>(256, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Any>?) = size > PARSE_CACHE_SIZE
+    }
+    private val noNumber = Any()
+
+    private fun parsed(raw: String, region: String): com.rskusum.whocaller.core.model.PhoneNumber? {
+        val key = "$region|$raw"
+        synchronized(parseCache) {
+            parseCache[key]?.let { return it as? com.rskusum.whocaller.core.model.PhoneNumber }
+        }
+        val n = (normalizer.normalize(raw, region) as? NormalizationResult.Parsed)?.number
+        synchronized(parseCache) { parseCache[key] = n ?: noNumber }
+        return n
     }
 
     private fun mapType(type: Int): CallType = when (type) {
@@ -270,6 +290,7 @@ class CallLogRepositoryImpl @Inject constructor(
         const val HIDDEN_KEY = "hidden"
         const val SCAN_CHUNK = 200
         const val TAIL_DIGITS = 8
+        const val PARSE_CACHE_SIZE = 2_000
         const val MAX_SCAN_ROWS = 3_000
         const val DELETE_CHUNK = 200
         const val DELETE_SCAN_LIMIT = 5_000

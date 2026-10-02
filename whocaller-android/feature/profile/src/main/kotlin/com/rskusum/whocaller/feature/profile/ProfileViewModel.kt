@@ -41,7 +41,11 @@ interface PhoneAuthGateway {
 }
 
 /** Build-time configuration passed from the app module. */
-data class SignInConfig(val googleWebClientId: String)
+data class SignInConfig(
+    val googleWebClientId: String,
+    /** App logo shown on the welcome screen (0 = a generic icon). */
+    @androidx.annotation.DrawableRes val logoRes: Int = 0,
+)
 
 data class SignInUiState(
     val email: String = "",

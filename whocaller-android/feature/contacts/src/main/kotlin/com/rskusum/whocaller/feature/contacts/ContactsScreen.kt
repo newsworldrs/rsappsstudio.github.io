@@ -78,13 +78,37 @@ data class ContactsUiState(
     /** Contacts grouped by first letter, in display order. */
     val sections: List<Pair<Char, List<Contact>>> = emptyList(),
     val loaded: Boolean = false,
+    /** Recent-call numbers matching the search that aren't saved as contacts. */
+    val recentMatches: List<com.rskusum.whocaller.core.model.CallLogEntry> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class ContactsViewModel @Inject constructor(
     private val repository: ContactsRepository,
+    private val callLog: com.rskusum.whocaller.core.domain.repository.CallLogRepository,
 ) : ViewModel() {
+
+    @Volatile private var recentPool: List<com.rskusum.whocaller.core.model.CallLogEntry>? = null
+
+    private suspend fun recentMatches(query: String, contacts: List<Contact>): List<com.rskusum.whocaller.core.model.CallLogEntry> {
+        val q = query.trim()
+        val digits = q.filter(Char::isDigit)
+        if (q.isEmpty() || (digits.isEmpty() && q.length < 2) || !callLog.hasPermission()) return emptyList()
+        val pool = recentPool ?: runCatching { callLog.loadPage(com.rskusum.whocaller.core.model.CallFilter.ALL, 0, 1_000) }
+            .getOrDefault(emptyList()).also { recentPool = it }
+        val saved = contacts.flatMap { c -> c.phones.map { it.number.filter(Char::isDigit).takeLast(10) } }.toHashSet()
+        return pool.asSequence()
+            .filter { it.contactName == null && !it.isHidden }
+            .filter { e ->
+                (digits.length >= 2 && e.rawNumber.filter(Char::isDigit).contains(digits)) ||
+                    (digits.isEmpty() && e.cachedName?.contains(q, ignoreCase = true) == true)
+            }
+            .filter { e -> e.rawNumber.filter(Char::isDigit).takeLast(10) !in saved }
+            .distinctBy { it.numberKey }
+            .take(30)
+            .toList()
+    }
 
     private val query = MutableStateFlow("")
     private val permission = MutableStateFlow(repository.hasPermission())
@@ -95,7 +119,7 @@ class ContactsViewModel @Inject constructor(
             if (!p) {
                 kotlinx.coroutines.flow.flowOf(ContactsUiState(hasPermission = false, query = q, loaded = true))
             } else {
-                repository.observeContacts(q).map { contacts -> build(q, contacts) }
+                repository.observeContacts(q).map { contacts -> build(q, contacts).copy(recentMatches = recentMatches(q, contacts)) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ContactsUiState(hasPermission = repository.hasPermission()))
@@ -109,6 +133,7 @@ class ContactsViewModel @Inject constructor(
     }
 
     fun refreshPermission() {
+        recentPool = null
         permission.value = repository.hasPermission()
     }
 
@@ -125,6 +150,8 @@ class ContactsViewModel @Inject constructor(
 fun ContactsScreen(
     onBack: () -> Unit,
     onOpenContact: (Long) -> Unit,
+    /** Opens a number that isn't a contact (from the recent-call matches). */
+    onOpenNumber: (String) -> Unit = {},
     viewModel: ContactsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -206,6 +233,30 @@ fun ContactsScreen(
                         }
                         items(list, key = { "c_${it.id}" }) { ContactRow(it, false) { onOpenContact(it.id) } }
                     }
+                    if (state.recentMatches.isNotEmpty()) {
+                        item(key = "recent_header") { SectionHeader(stringResource(R.string.contacts_from_recents)) }
+                        items(state.recentMatches, key = { "r_${it.numberKey}" }) { entry ->
+                            ListItem(
+                                headlineContent = { Text(entry.cachedName ?: entry.displayNumber) },
+                                supportingContent = {
+                                    Text(
+                                        listOfNotNull(
+                                            entry.displayNumber.takeIf { entry.cachedName != null },
+                                            android.text.format.DateUtils.getRelativeTimeSpanString(entry.timestamp).toString(),
+                                        ).joinToString(" · "),
+                                    )
+                                },
+                                leadingContent = {
+                                    CallerAvatar(
+                                        entry.cachedName ?: entry.displayNumber,
+                                        if (entry.isSpam) CallerLabel.SUSPECTED_SPAM else CallerLabel.UNKNOWN,
+                                        size = 52.dp,
+                                    )
+                                },
+                                modifier = Modifier.clickable { onOpenNumber(entry.rawNumber) },
+                            )
+                        }
+                    }
                 }
                 // Alphabetical index. Each letter is a 28dp-wide, ≥24dp-tall touch target.
                 Column(
@@ -236,7 +287,7 @@ private fun ContactRow(contact: Contact, favorite: Boolean, onClick: () -> Unit)
     ListItem(
         headlineContent = { Text(contact.displayName) },
         supportingContent = contact.phones.firstOrNull()?.let { p -> { Text(listOfNotNull(p.label, p.number).joinToString(" · ")) } },
-        leadingContent = { CallerAvatar(contact.displayName, CallerLabel.CONTACT) },
+        leadingContent = { CallerAvatar(contact.displayName, CallerLabel.CONTACT, size = 52.dp) },
         trailingContent = if (favorite) {
             { Icon(Icons.Filled.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
         } else {

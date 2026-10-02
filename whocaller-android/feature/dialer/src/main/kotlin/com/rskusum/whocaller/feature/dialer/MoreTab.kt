@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Voicemail
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -76,6 +77,8 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
     }
     val sims = remember { Sims.list(context) }
     var showRecordings by remember { mutableStateOf(false) }
+    var showVideoDiag by remember { mutableStateOf(false) }
+    if (showVideoDiag) VideoDiagnosticsSheet { showVideoDiag = false }
     if (showRecordings) RecordingsSheet(number = null) { showRecordings = false }
     // Picked in system settings? Re-check when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { isDefault = isDefaultDialer(context) }
@@ -102,6 +105,7 @@ fun MoreTab(viewModel: DialerViewModel, actions: CallActions) {
             }
             MoreRow(Icons.Filled.Voicemail, stringResource(R.string.dialer_call_voicemail), null, Violet) { actions.voicemail() }
             MoreRow(Icons.Filled.FiberManualRecord, stringResource(R.string.rec_title), stringResource(R.string.rec_local_note), WarnRed) { showRecordings = true }
+            MoreRow(Icons.Filled.Videocam, stringResource(R.string.video_diag_title), stringResource(R.string.video_diag_desc), Violet) { showVideoDiag = true }
         }
 
         Section(stringResource(R.string.dialer_section_protection)) {
@@ -195,4 +199,38 @@ private fun defaultDialerIntent(context: Context): Intent? = if (Build.VERSION.S
         ?.createRequestRoleIntent(RoleManager.ROLE_DIALER)
 } else {
     Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER).putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, context.packageName)
+}
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun VideoDiagnosticsSheet(onDismiss: () -> Unit) {
+    val palette = LocalDialerPalette.current
+    val context = LocalContext.current
+    var events by remember { mutableStateOf(VideoDiagnostics.list(context)) }
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = palette.surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text(stringResource(R.string.video_diag_title), style = MaterialTheme.typography.titleLarge, color = palette.text)
+            Text(stringResource(R.string.video_diag_desc), style = MaterialTheme.typography.bodySmall, color = palette.subtle)
+            androidx.compose.foundation.layout.Spacer(Modifier.padding(top = 12.dp))
+            if (events.isEmpty()) {
+                Text(stringResource(R.string.video_diag_empty), color = palette.subtle, style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                    events.forEach { line ->
+                        Text(line, color = palette.text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp))
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    androidx.compose.material3.TextButton(onClick = {
+                        VideoDiagnostics.clear(context)
+                        events = emptyList()
+                    }) { Text(stringResource(R.string.video_diag_clear)) }
+                    androidx.compose.material3.TextButton(onClick = {
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, events.joinToString("\n"))
+                        runCatching { context.startActivity(Intent.createChooser(send, null)) }
+                    }) { Text(stringResource(R.string.video_diag_share)) }
+                }
+            }
+        }
+    }
 }

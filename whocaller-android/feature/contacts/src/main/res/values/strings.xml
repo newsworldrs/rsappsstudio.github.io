@@ -22,4 +22,5 @@
     <string name="contact_no_calls">No recent calls with this contact.</string>
     <string name="contact_not_found">This contact no longer exists.</string>
     <string name="contact_write_needed">WhoCaller needs permission to change contacts for this.</string>
+    <string name="contacts_from_recents">From recent calls</string>
 </resources>

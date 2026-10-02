@@ -302,7 +302,7 @@ private fun RecentRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            ContactAvatar(name ?: entry.displayNumber, null, 46.dp, warning = entry.isSpam)
+            ContactAvatar(name ?: entry.displayNumber, entry.photoUri, 54.dp, warning = entry.isSpam)
             if (isSelected) {
                 Box(Modifier.size(46.dp).clip(CircleShape).background(palette.accent), contentAlignment = Alignment.Center) {
                     Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White)
@@ -371,6 +371,7 @@ fun ContactsTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails:
     val context = LocalContext.current
     val query by viewModel.contactQuery.collectAsState()
     val contacts by viewModel.contactList.collectAsState()
+    val recentMatches by viewModel.recentMatches.collectAsState()
     val permitted by viewModel.contactsPermission.collectAsState()
 
     Column(Modifier.fillMaxSize()) {
@@ -388,7 +389,8 @@ fun ContactsTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails:
                 arrayOf(Manifest.permission.READ_CONTACTS),
                 viewModel::refreshPermissions,
             )
-            contacts.isEmpty() -> EmptyText(stringResource(if (query.isBlank()) R.string.dialer_contacts_empty else R.string.dialer_no_matches))
+            contacts.isEmpty() && recentMatches.isEmpty() ->
+                EmptyText(stringResource(if (query.isBlank()) R.string.dialer_contacts_empty else R.string.dialer_no_matches))
             else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
                 var lastLetter: Char? = null
                 contacts.forEach { contact ->
@@ -410,6 +412,28 @@ fun ContactsTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails:
                             contact = contact,
                             onOpen = { onShowDetails(DetailsTarget(contactId = contact.id, number = contact.phones.firstOrNull()?.number)) },
                             onCall = { contact.phones.firstOrNull()?.number?.let { actions.call(it) } },
+                        )
+                    }
+                }
+                // Numbers you've called or that called you, not saved as contacts.
+                if (recentMatches.isNotEmpty()) {
+                    item(key = "recent-header") {
+                        Text(
+                            stringResource(R.string.dialer_from_recents),
+                            color = palette.accent,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(start = 24.dp, top = 14.dp, bottom = 2.dp),
+                        )
+                    }
+                    items(recentMatches, key = { "r" + it.numberKey }) { entry ->
+                        RecentRow(
+                            entry = entry,
+                            selecting = false,
+                            isSelected = false,
+                            onOpen = { onShowDetails(DetailsTarget(number = entry.rawNumber)) },
+                            onSelect = {},
+                            onCall = { actions.call(entry.rawNumber) },
                         )
                     }
                 }
@@ -459,7 +483,7 @@ private fun ContactRow(contact: Contact, onOpen: () -> Unit, onCall: () -> Unit)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ContactAvatar(contact.displayName, contact.photoUri, 44.dp)
+        ContactAvatar(contact.displayName, contact.photoUri, 54.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(contact.displayName, color = palette.text, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -509,7 +533,7 @@ fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails
                             .padding(vertical = 12.dp, horizontal = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        ContactAvatar(contact.displayName, contact.photoUri, 64.dp)
+                        ContactAvatar(contact.displayName, contact.photoUri, 72.dp)
                         Spacer(Modifier.height(6.dp))
                         Text(contact.displayName, color = palette.text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Row {

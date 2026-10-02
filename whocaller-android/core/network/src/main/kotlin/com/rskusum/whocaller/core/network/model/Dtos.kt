@@ -38,6 +38,8 @@ data class NumberInfoDto(
     @SerialName("updatedAt") val updatedAt: Long? = null,
     /** Name of the outside spam list that flagged this number (not WhoCaller users' reports). */
     @SerialName("listedBy") val listedBy: String? = null,
+    /** The name was set by the number's owner, who verified the number by SMS code (blue tick). */
+    @SerialName("whoCallerVerified") val whoCallerVerified: Boolean = false,
 )
 
 @Serializable

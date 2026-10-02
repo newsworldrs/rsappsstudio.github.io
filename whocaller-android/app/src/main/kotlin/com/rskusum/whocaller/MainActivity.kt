@@ -101,14 +101,14 @@ class MainActivity : AppCompatActivity() {
                             onResult = viewModel::onPermissionResult,
                         )
                         StartState.Registration -> SignInScreen(
-                            config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID.ifBlank { defaultWebClientId(this@MainActivity) }),
+                            config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID.ifBlank { defaultWebClientId(this@MainActivity) }, logoRes = R.drawable.whocaller_logo),
                             onBack = {},
                             onDone = {},
                             mandatory = true,
                         )
                         StartState.CompleteProfile -> CompleteProfileScreen(
                             onDone = {},
-                            onSkip = if (BuildConfig.DEBUG) viewModel::skipRegistration else null,
+                            onSkip = { viewModel.skipIdSetup() },
                             onSignOut = { viewModel.signOut() },
                         )
                         is StartState.Ready -> {
@@ -186,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             "blocked" -> Routes.BLOCKED
             "settings" -> "settings"
             "privacy" -> Routes.PRIVACY
-            "profile" -> Routes.PROFILE
+            "profile" -> if (data.lastPathSegment == "phone") Routes.PROFILE_PHONE else Routes.PROFILE
             "contacts" -> Routes.CONTACTS
             "premium" -> Routes.PREMIUM
             "report" -> data.lastPathSegment

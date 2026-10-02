@@ -63,6 +63,7 @@ fun NumberInfoDto.toCallerInfo(numberKey: String, now: Long): CallerInfo = Calle
     source = InfoSource.SERVER,
     updatedAt = now,
     listedBy = listedBy?.take(60),
+    whoCallerVerified = whoCallerVerified,
 )
 
 fun CallerInfo.toEntity(fromSpamList: Boolean = false) = CallerEntity(
@@ -86,6 +87,7 @@ fun CallerInfo.toEntity(fromSpamList: Boolean = false) = CallerEntity(
     fromSpamList = fromSpamList,
     updatedAt = updatedAt,
     listedBy = listedBy,
+    whoCallerVerified = whoCallerVerified,
 )
 
 fun CallerEntity.toModel() = CallerInfo(
@@ -109,6 +111,7 @@ fun CallerEntity.toModel() = CallerInfo(
     source = InfoSource.LOCAL_CACHE,
     updatedAt = updatedAt,
     listedBy = listedBy,
+    whoCallerVerified = whoCallerVerified,
 )
 
 fun SpamReportEntity.toModel() = SpamReport(

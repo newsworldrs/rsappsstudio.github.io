@@ -249,7 +249,7 @@ private fun CallRow(context: Context, entry: CallLogEntry, onClick: () -> Unit) 
                 Text("${callTime(context, entry.timestamp)}, $typeText", style = MaterialTheme.typography.bodySmall)
             }
         },
-        leadingContent = { CallerAvatar(entry.title, label) },
+        leadingContent = { CallerAvatar(entry.title ?: entry.displayNumber, label, size = 52.dp) },
         trailingContent = {
             Icon(
                 entry.type.icon(),

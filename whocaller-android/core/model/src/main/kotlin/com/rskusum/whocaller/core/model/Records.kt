@@ -19,6 +19,8 @@ data class CallLogEntry(
     val category: SpamCategory = SpamCategory.UNKNOWN,
     val spamScore: Int = 0,
     val isHidden: Boolean = false,
+    /** Contact photo the call log cached for this call, if the number is a contact. */
+    val photoUri: String? = null,
 ) {
     val isSpam: Boolean get() = RiskLevel.fromScore(spamScore) >= RiskLevel.HIGH
     val isUnknown: Boolean get() = contactName == null && cachedName == null
@@ -171,8 +173,10 @@ data class LocalProfile(
     val phoneVerified: Boolean = false,
     /** Show this name to WhoCaller users when this person calls them (their public WhoCaller ID). */
     val showNameToCallers: Boolean = true,
+    /** When the user chose "Skip for now" on the WhoCaller ID screen (0 = never). They are reminded later. */
+    val idSetupSkippedAt: Long = 0,
 ) {
-    /** Name and a verified mobile number are required before the app can be used. */
+    /** Name and a verified mobile number make the WhoCaller ID (shown with a blue tick). */
     val isComplete: Boolean get() = name.isNotBlank() && phoneVerified && phoneNumber.isNotBlank()
 }
 

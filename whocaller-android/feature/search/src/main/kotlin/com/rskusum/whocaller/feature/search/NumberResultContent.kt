@@ -121,11 +121,17 @@ fun NumberResultContent(
                     CallerAvatar(name, lookup.label, size = 56.dp)
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(
-                            name ?: stringResource(R.string.result_no_identity),
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.semantics { heading() },
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                name ?: stringResource(R.string.result_no_identity),
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.weight(1f, fill = false).semantics { heading() },
+                            )
+                            if (info?.whoCallerVerified == true && name != null) {
+                                Spacer(Modifier.width(6.dp))
+                                com.rskusum.whocaller.core.ui.component.VerifiedTick(20.dp, description = stringResource(UiR.string.label_verified_id))
+                            }
+                        }
                         Text(number.display, style = MaterialTheme.typography.bodyLarge)
                         if (info?.verified == true) VerifiedBadge()
                     }

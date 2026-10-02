@@ -62,7 +62,11 @@ class FirestoreNetworkDataSource(
             snap.exists() -> {
                 val info = snap.toNumberInfo(e164)
                 // A business name from the dataset wins; otherwise the person's own registered name.
-                val named = if (registered != null && info.identityType != "BUSINESS") info.copy(name = registered, identityType = "PERSON") else info
+                val named = if (registered != null && info.identityType != "BUSINESS") {
+                    info.copy(name = registered, identityType = "PERSON", whoCallerVerified = true)
+                } else {
+                    info
+                }
                 AppResult.Success(named.copy(carrier = currentCarrier ?: named.carrier))
             }
             registered != null || currentCarrier != null -> AppResult.Success(
@@ -72,6 +76,7 @@ class FirestoreNetworkDataSource(
                     identityType = if (registered != null) "PERSON" else "UNKNOWN",
                     confidence = if (registered != null) 0.9f else null,
                     carrier = currentCarrier,
+                    whoCallerVerified = registered != null,
                 ),
             )
             base.isConfigured -> base.getNumber(e164)

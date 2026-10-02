@@ -118,7 +118,10 @@ class CallerAlertNotifier @Inject constructor(
             CallerLabel.BUSINESS, CallerLabel.PERSON -> CallerAlert(
                 NotificationCategory.CALLER_ALERTS,
                 title,
-                listOfNotNull(context.getString(R.string.callerid_identified_by), numberLine).joinToString(" · "),
+                listOfNotNull(
+                    if (result.info?.whoCallerVerified == true) "✔ " + context.getString(com.rskusum.whocaller.core.ui.R.string.label_verified_id) else context.getString(R.string.callerid_identified_by),
+                    numberLine,
+                ).joinToString(" · "),
                 key,
             )
             CallerLabel.CONTACT -> CallerAlert(NotificationCategory.CALLER_ALERTS, title, numberLine.orEmpty(), key)

@@ -35,6 +35,8 @@ data class CallerEntity(
     val updatedAt: Long,
     /** Outside spam list that flagged the number (v3). */
     val listedBy: String? = null,
+    /** Verified WhoCaller ID (v4). */
+    val whoCallerVerified: Boolean = false,
 )
 
 @Entity(

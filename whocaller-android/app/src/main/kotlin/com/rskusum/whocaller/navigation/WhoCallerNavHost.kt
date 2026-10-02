@@ -207,7 +207,11 @@ fun WhoCallerApp(
                 BlockedNumbersScreen(onBack = { navController.popBackStack() }, onOpenNumber = { navController.navigate(Routes.search(it)) })
             }
             composable(Routes.CONTACTS) {
-                ContactsScreen(onBack = { navController.popBackStack() }, onOpenContact = { navController.navigate(Routes.contact(it)) })
+                ContactsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenContact = { navController.navigate(Routes.contact(it)) },
+                    onOpenNumber = { navController.navigate(Routes.search(it, record = false)) },
+                )
             }
             composable(Routes.CONTACT, arguments = listOf(navArgument(ContactDetailViewModel.ARG_ID) { type = NavType.LongType })) {
                 ContactDetailScreen(onBack = { navController.popBackStack() }, onSearchNumber = { navController.navigate(Routes.search(it)) })
@@ -253,13 +257,14 @@ fun WhoCallerApp(
                     onBack = { navController.popBackStack() },
                     onSignIn = { navController.navigate(Routes.SIGN_IN) },
                     onEditProfile = { navController.navigate(Routes.PROFILE_EDIT) },
+                    onSetUpId = { navController.navigate(Routes.PROFILE_PHONE) },
                     onPrivacy = { navController.navigate(Routes.PRIVACY) },
                 )
             }
             composable(Routes.SIGN_IN) {
                 val context = androidx.compose.ui.platform.LocalContext.current
                 SignInScreen(
-                    config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID.ifBlank { defaultWebClientId(context) }),
+                    config = SignInConfig(BuildConfig.GOOGLE_WEB_CLIENT_ID.ifBlank { defaultWebClientId(context) }, logoRes = com.rskusum.whocaller.R.drawable.whocaller_logo),
                     onBack = { navController.popBackStack() },
                     onDone = { navController.popBackStack() },
                 )

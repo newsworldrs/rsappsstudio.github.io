@@ -141,11 +141,24 @@ private fun DetailsContent(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            Modifier.size(104.dp).border(3.dp, Brush.sweepGradient(if (warning) listOf(WarnRed, Color(0xFFFF9F43), WarnRed) else listOf(Indigo, Violet, Sky, Indigo)), CircleShape),
+            Modifier.size(124.dp).border(3.dp, Brush.sweepGradient(if (warning) listOf(WarnRed, Color(0xFFFF9F43), WarnRed) else listOf(Indigo, Violet, Sky, Indigo)), CircleShape),
             contentAlignment = Alignment.Center,
-        ) { ContactAvatar(name ?: number, card?.photoUri, 88.dp, warning = warning) }
+        ) { ContactAvatar(name ?: number, card?.photoUri, 108.dp, warning = warning) }
         Spacer(Modifier.height(10.dp))
-        Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = palette.text, textAlign = TextAlign.Center)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = palette.text,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (result?.info?.whoCallerVerified == true) {
+                Spacer(Modifier.width(6.dp))
+                com.rskusum.whocaller.core.ui.component.VerifiedTick(22.dp, description = stringResource(com.rskusum.whocaller.core.ui.R.string.label_verified_id))
+            }
+        }
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             when {

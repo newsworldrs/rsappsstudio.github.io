@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
@@ -313,6 +314,7 @@ class DialerViewModel @Inject constructor(
     private val permissionTick = MutableStateFlow(0)
 
     fun refreshPermissions() {
+        searchPool = null
         permissionTick.value++
     }
 
@@ -344,6 +346,36 @@ class DialerViewModel @Inject constructor(
             }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Recent calls searched along with contacts (loaded once per dialer visit, refreshed on changes). */
+    @Volatile private var searchPool: List<CallLogEntry>? = null
+
+    private suspend fun recentPool(): List<CallLogEntry> =
+        searchPool ?: runCatching { callLog.loadPage(CallFilter.ALL, 0, SEARCH_POOL) }.getOrDefault(emptyList()).also { searchPool = it }
+
+    /**
+     * Numbers from recent calls that match the contact search but aren't saved as contacts
+     * (by digits, or by the WhoCaller name), one row per number, newest first.
+     */
+    val recentMatches: StateFlow<List<CallLogEntry>> = combine(_contactQuery.debounce(150), allContacts) { q, contacts -> q.trim() to contacts }
+        .mapLatest { (query, contacts) ->
+            if (query.isEmpty() || !callLog.hasPermission()) return@mapLatest emptyList()
+            val digits = query.filter(Char::isDigit)
+            if (digits.isEmpty() && query.length < 2) return@mapLatest emptyList()
+            val saved = contacts.flatMap { c -> c.phones.map { it.number.filter(Char::isDigit).takeLast(10) } }.toHashSet()
+            recentPool()
+                .asSequence()
+                .filter { it.contactName == null && !it.isHidden }
+                .filter { e ->
+                    (digits.length >= 2 && e.rawNumber.filter(Char::isDigit).contains(digits)) ||
+                        (digits.isEmpty() && e.cachedName?.contains(query, ignoreCase = true) == true)
+                }
+                .filter { e -> e.rawNumber.filter(Char::isDigit).takeLast(10) !in saved }
+                .distinctBy { it.numberKey }
+                .take(SEARCH_MATCHES)
+                .toList()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val favorites: StateFlow<List<Contact>> = allContacts
         .map { list -> list.filter { it.starred } }
@@ -379,12 +411,20 @@ class DialerViewModel @Inject constructor(
             if (!ok) {
                 flowOf(emptyList())
             } else {
-                callLog.changes().onStart { emit(Unit) }.debounce(150).mapLatest {
-                    runCatching { callLog.loadPage(f.filter, 0, RECENTS_LIMIT) }.getOrDefault(emptyList())
+                // First screenful at once, the rest right after; later changes are batched.
+                kotlinx.coroutines.flow.flow {
+                    emit(runCatching { callLog.loadPage(f.filter, 0, RECENTS_FIRST) }.getOrDefault(emptyList()))
+                    emit(runCatching { callLog.loadPage(f.filter, 0, RECENTS_LIMIT) }.getOrDefault(emptyList()))
+                    emitAll(
+                        callLog.changes().debounce(250).mapLatest {
+                            runCatching { callLog.loadPage(f.filter, 0, RECENTS_LIMIT) }.getOrDefault(emptyList())
+                        },
+                    )
                 }
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        // Loaded as soon as the dialer opens, so the Recents tab is ready when it's tapped.
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     // ---------- Theme ----------
 
@@ -412,6 +452,9 @@ class DialerViewModel @Inject constructor(
         private const val NETWORK_BUDGET_MS = 2_500L
         private const val MAX_SUGGESTIONS = 3
         private const val RECENTS_LIMIT = 200
+        private const val RECENTS_FIRST = 30
+        private const val SEARCH_POOL = 1_000
+        private const val SEARCH_MATCHES = 30
         private const val HISTORY_LIMIT = 200
 
         private const val T9 = "22233344455566677778889999"

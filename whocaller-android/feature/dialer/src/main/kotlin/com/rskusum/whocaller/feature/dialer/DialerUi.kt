@@ -137,23 +137,11 @@ fun avatarColors(seed: String?): List<Color> =
 
 private fun initialOf(name: String?): String? = name?.firstOrNull { it.isLetter() }?.uppercaseChar()?.toString()
 
-/** Photo if there is one, else the initial on the contact's own gradient. Red "!" for spam. */
+/** Photo if there is one, else the initial on the contact's own light gradient (theme-aware). Red tones for spam. */
 @Composable
 fun ContactAvatar(name: String?, photoUri: String?, size: Dp, warning: Boolean = false, modifier: Modifier = Modifier) {
     val photo = rememberContactPhoto(photoUri, size)
-    val colors = if (warning) listOf(Color(0xFFFF6B6B), WarnRed) else avatarColors(name)
-    Box(modifier.size(size).clip(CircleShape).background(Brush.linearGradient(colors)), contentAlignment = Alignment.Center) {
-        if (photo != null && !warning) {
-            Image(photo, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.size(size))
-        } else {
-            Text(
-                if (warning) "!" else initialOf(name) ?: "#",
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                fontSize = (size.value * 0.42f).sp,
-            )
-        }
-    }
+    com.rskusum.whocaller.core.ui.component.GradientAvatar(name = name, size = size, modifier = modifier, photo = photo, warning = warning)
 }
 
 @Composable

@@ -225,4 +225,13 @@
     <string name="call_video_switch_off">Video calling is turned off on this phone. Turn on VoLTE and Video calling for your SIM, then try again.</string>
     <string name="call_video_open_settings">Open mobile network settings</string>
     <string name="dialer_call_with_sim">Call with SIM %1$d (%2$s)</string>
+    <string name="dialer_from_recents">From recent calls</string>
+    <string name="call_video_refused_title">Video didn\'t start</string>
+    <string name="call_video_network_said">Network answer: %1$s</string>
+    <string name="call_video_refused_hint">Carrier video calls need VoLTE and Video calling on for both phones, and a network that allows video between the two SIMs. More → Video call diagnostics keeps the details.</string>
+    <string name="video_diag_title">Video call diagnostics</string>
+    <string name="video_diag_desc">What the network answered to recent video calls (kept on this phone)</string>
+    <string name="video_diag_empty">No video attempts yet. Try a video call, then come back here.</string>
+    <string name="video_diag_share">Share</string>
+    <string name="video_diag_clear">Clear</string>
 </resources>

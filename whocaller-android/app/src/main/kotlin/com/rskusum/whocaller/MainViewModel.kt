@@ -35,7 +35,7 @@ class MainViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val analytics: AnalyticsTracker,
     private val authRepository: AuthRepository,
-    localProfileRepository: LocalProfileRepository,
+    private val localProfileRepository: LocalProfileRepository,
 ) : ViewModel() {
 
     /** Keeps the branded splash on screen briefly on cold start. */
@@ -61,7 +61,8 @@ class MainViewModel @Inject constructor(
             !s.permissionSetupCompleted -> StartState.Permissions
             accountsOn && user.isGuest -> StartState.Registration
             // The verified number must belong to the signed-in account (sign-out / account switch).
-            accountsOn && !(profile.isComplete && profile.phoneNumber == user.phone) -> StartState.CompleteProfile
+            // Asked once after sign-in; "Skip for now" lets the user in (reminded after calls).
+            accountsOn && profile.idSetupSkippedAt == 0L && !(profile.isComplete && profile.phoneNumber == user.phone) -> StartState.CompleteProfile
             else -> StartState.Ready(s)
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, StartState.Loading)
@@ -71,6 +72,11 @@ class MainViewModel @Inject constructor(
     }
 
     fun signOut() = viewModelScope.launch { authRepository.signOut() }
+
+    /** "Skip for now" on the WhoCaller ID screen. */
+    fun skipIdSetup() = viewModelScope.launch {
+        localProfileRepository.update { it.copy(idSetupSkippedAt = System.currentTimeMillis()) }
+    }
 
     init {
         viewModelScope.launch {

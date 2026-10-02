@@ -8,6 +8,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -90,7 +94,10 @@ fun EditProfileScreen(onBack: () -> Unit, onChangeNumber: () -> Unit = {}, viewM
 
     // System photo picker: no storage permission needed.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) viewModel.choosePhoto(uri.toString())
+        if (uri != null) {
+            avatarId = null
+            viewModel.choosePhoto(uri.toString())
+        }
     }
 
     Scaffold(
@@ -135,6 +142,22 @@ fun EditProfileScreen(onBack: () -> Unit, onChangeNumber: () -> Unit = {}, viewM
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                // "Your own avatar": any picture from the gallery.
+                Box(
+                    Modifier
+                        .size(60.dp)
+                        .clip(CircleShape)
+                        .border(if (profile.photoPath != null) 3.dp else 1.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .clickable(role = Role.Button) { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.AddPhotoAlternate,
+                        contentDescription = stringResource(R.string.profile_own_avatar),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
                 Avatars.ALL.forEachIndexed { index, style ->
                     val selected = avatarId == index && profile.photoPath == null
                     val label = stringResource(R.string.profile_avatar_n, index + 1)

@@ -33,6 +33,8 @@ data class CallerInfo(
     val updatedAt: Long = 0L,
     /** Outside spam list that flagged the number; null when the warning comes from WhoCaller users. */
     val listedBy: String? = null,
+    /** Name set by the number's verified owner: a verified WhoCaller ID (blue tick). */
+    val whoCallerVerified: Boolean = false,
 ) {
     /** Spam warning based only on an outside list, with no WhoCaller reports yet. */
     val flaggedOnlyByList: Boolean get() = listedBy != null && reportCount == 0
