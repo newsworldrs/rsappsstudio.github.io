@@ -3,7 +3,7 @@
   "private": true,
   "description": "WhoCaller REST API v1 on Firebase Cloud Functions (reference backend).",
   "main": "lib/index.js",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "scripts": {
     "build": "tsc",
     "lint": "tsc --noEmit",

@@ -1,6 +1,6 @@
 # WhoCaller reference backend
 
-Firebase Cloud Functions (Node 20, TypeScript) + Firestore implementing [REST API v1](../docs/API.md).
+Firebase Cloud Functions (Node 22, TypeScript) + Firestore implementing [REST API v1](../docs/API.md).
 
 ```bash
 cd backend/functions
