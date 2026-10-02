@@ -5,19 +5,11 @@
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- Only for the self-view during video calls. -->
-    <uses-permission android:name="android.permission.CAMERA" />
     <!-- Local call recorder (asked for the first time the user taps Record). Recordings stay on the phone. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
-    <uses-feature
-        android:name="android.hardware.camera"
-        android:required="false" />
-    <uses-feature
-        android:name="android.hardware.camera.front"
-        android:required="false" />
 
     <!-- Phone/SMS features are optional so the app still installs on tablets and Chromebooks. -->
     <uses-feature
