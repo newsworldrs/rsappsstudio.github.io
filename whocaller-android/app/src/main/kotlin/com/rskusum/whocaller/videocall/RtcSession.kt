@@ -1,7 +1,11 @@
 package com.rskusum.whocaller.videocall
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
+import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.os.Build
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.webrtc.AudioTrack
 import org.webrtc.Camera2Enumerator
@@ -52,13 +56,19 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
     private var remoteSet = false
     private val audio = app.getSystemService(AudioManager::class.java)
     private val previousAudioMode = audio?.mode ?: AudioManager.MODE_NORMAL
+    private var previousCallVolume = -1
+    private var focusRequest: AudioFocusRequest? = null
     var frontCamera = true
         private set
 
     private val observer = object : PeerConnection.Observer {
         override fun onIceCandidate(candidate: IceCandidate) = listener.onIceCandidate(candidate)
         override fun onTrack(transceiver: RtpTransceiver) {
-            (transceiver.receiver.track() as? VideoTrack)?.let(listener::onRemoteVideo)
+            when (val track = transceiver.receiver.track()) {
+                is VideoTrack -> listener.onRemoteVideo(track)
+                // Play the other person a little louder than WebRTC's default level.
+                is AudioTrack -> runCatching { track.setVolume(REMOTE_GAIN) }
+            }
         }
         override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) = listener.onState(newState)
         override fun onSignalingChange(state: PeerConnection.SignalingState?) = Unit
@@ -78,7 +88,12 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
         factory = PeerConnectionFactory.builder()
             .setVideoEncoderFactory(DefaultVideoEncoderFactory(egl.eglBaseContext, true, true))
             .setVideoDecoderFactory(DefaultVideoDecoderFactory(egl.eglBaseContext))
-            .setAudioDeviceModule(JavaAudioDeviceModule.builder(app).createAudioDeviceModule())
+            .setAudioDeviceModule(
+                JavaAudioDeviceModule.builder(app)
+                    .setUseHardwareAcousticEchoCanceler(true)
+                    .setUseHardwareNoiseSuppressor(true)
+                    .createAudioDeviceModule(),
+            )
             .createPeerConnectionFactory()
         val config = PeerConnection.RTCConfiguration(iceServers).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
@@ -89,9 +104,7 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
 
     /** Starts camera and microphone and adds them to the call. */
     fun startLocalMedia() {
-        audio?.mode = AudioManager.MODE_IN_COMMUNICATION
-        @Suppress("DEPRECATION")
-        audio?.isSpeakerphoneOn = true
+        startAudio()
 
         val enumerator = Camera2Enumerator(app)
         val name = enumerator.deviceNames.firstOrNull { enumerator.isFrontFacing(it) } ?: enumerator.deviceNames.firstOrNull()
@@ -120,18 +133,48 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
         runCatching { if (on) capturer?.startCapture(VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FPS) else capturer?.stopCapture() }
     }
 
-    fun switchCamera() {
+    fun switchCamera(onDone: (front: Boolean) -> Unit = {}) {
         capturer?.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
             override fun onCameraSwitchDone(isFront: Boolean) {
                 frontCamera = isFront
+                onDone(isFront)
             }
             override fun onCameraSwitchError(error: String?) = Unit
         })
     }
 
+    /** Loudspeaker on/off. Android 12+ ignores isSpeakerphoneOn, so pick the device directly. */
     fun setSpeaker(on: Boolean) {
-        @Suppress("DEPRECATION")
-        audio?.isSpeakerphoneOn = on
+        val am = audio ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (on) {
+                am.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    ?.let { am.setCommunicationDevice(it) }
+            } else {
+                am.clearCommunicationDevice()
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            am.isSpeakerphoneOn = on
+        }
+    }
+
+    private fun startAudio() {
+        val am = audio ?: return
+        val attributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+        focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes).build()
+            .also { runCatching { am.requestAudioFocus(it) } }
+        am.mode = AudioManager.MODE_IN_COMMUNICATION
+        // Call volume is often left low from earpiece calls; start a video call at full volume.
+        runCatching {
+            val max = am.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+            previousCallVolume = am.getStreamVolume(AudioManager.STREAM_VOICE_CALL)
+            if (previousCallVolume < max) am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, max, 0)
+        }
+        setSpeaker(true)
     }
 
     suspend fun createOffer(): SessionDescription {
@@ -173,9 +216,14 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
         runCatching { peer.dispose() }
         runCatching { factory.dispose() }
         runCatching { egl.release() }
-        audio?.mode = previousAudioMode
-        @Suppress("DEPRECATION")
-        audio?.isSpeakerphoneOn = false
+        audio?.let { am ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) runCatching { am.clearCommunicationDevice() }
+            @Suppress("DEPRECATION")
+            am.isSpeakerphoneOn = false
+            if (previousCallVolume >= 0) runCatching { am.setStreamVolume(AudioManager.STREAM_VOICE_CALL, previousCallVolume, 0) }
+            am.mode = previousAudioMode
+            focusRequest?.let { runCatching { am.abandonAudioFocusRequest(it) } }
+        }
     }
 
     private suspend fun setLocal(description: SessionDescription) = set { peer.setLocalDescription(it, description) }
@@ -209,6 +257,8 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
         private const val VIDEO_WIDTH = 1280
         private const val VIDEO_HEIGHT = 720
         private const val VIDEO_FPS = 30
+        /** WebRTC playout gain for the other person's voice (1.0 = default). */
+        private const val REMOTE_GAIN = 2.5
         @Volatile private var initialized = false
 
         private fun initialize(context: Context) {

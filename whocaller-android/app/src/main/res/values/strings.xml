@@ -61,6 +61,7 @@
     <string name="vc_mic">Mic</string>
     <string name="vc_camera">Camera</string>
     <string name="vc_switch">Flip</string>
+    <string name="vc_swap_views">Swap videos</string>
     <string name="vc_speaker">Speaker</string>
     <string name="vc_someone">Someone</string>
     <string name="vc_whatsapp">WhatsApp</string>

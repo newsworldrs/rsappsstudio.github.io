@@ -1,5 +1,15 @@
 package com.rskusum.whocaller.videocall
 
+import android.media.AudioManager
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -106,6 +116,10 @@ class VideoCallActivity : ComponentActivity() {
     private var connectedAt by mutableLongStateOf(0L)
     private var localTrack by mutableStateOf<VideoTrack?>(null)
     private var remoteTrack by mutableStateOf<VideoTrack?>(null)
+    /** Own camera mirrored like a mirror while the front camera is in use. */
+    private var frontCamera by mutableStateOf(true)
+    /** True when the own camera fills the screen and the other person is in the small window. */
+    private var swapped by mutableStateOf(false)
 
     private var signaling: VideoSignaling? = null
     private var session: RtcSession? = null
@@ -133,6 +147,8 @@ class VideoCallActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Volume keys change the call volume, not the media volume.
+        volumeControlStream = AudioManager.STREAM_VOICE_CALL
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
@@ -294,6 +310,7 @@ class VideoCallActivity : ComponentActivity() {
             }).also {
                 it.startLocalMedia()
                 localTrack = it.localVideo
+                frontCamera = it.frontCamera
                 session = it
             }
         } catch (e: Exception) {
@@ -397,25 +414,18 @@ class VideoCallActivity : ComponentActivity() {
         val background = Brush.verticalGradient(listOf(Color(0xFF0B1026), Color(0xFF1B1F4A), Color(0xFF0B1026)))
         Box(Modifier.fillMaxSize().background(background)) {
             val rtc = session
-            val remote = remoteTrack
-            if (rtc != null && remote != null && phase == Phase.Connected) {
-                VideoView(remote, rtc, mirror = false, Modifier.fillMaxSize())
+            val remote = remoteTrack.takeIf { phase == Phase.Connected }
+            val local = localTrack.takeIf { cameraOn && phase != Phase.Ended }
+            // Both cameras on screen: one fills it, the other sits in a small window the user can
+            // drag anywhere and tap to swap.
+            val both = remote != null && local != null
+            val big = if (both && swapped) local else remote ?: local
+            val small = if (!both) null else if (swapped) remote else local
+            if (rtc != null && big != null) {
+                VideoView(big, rtc, mirror = big === local && frontCamera, Modifier.fillMaxSize(), onTop = false)
             }
-            val local = localTrack
-            if (rtc != null && local != null && cameraOn && phase != Phase.Ended) {
-                val small = phase == Phase.Connected && remote != null
-                VideoView(
-                    local,
-                    rtc,
-                    mirror = rtc.frontCamera,
-                    modifier = if (small) {
-                        Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)
-                            .width(110.dp).height(160.dp).clip(RoundedCornerShape(14.dp))
-                    } else {
-                        Modifier.fillMaxSize()
-                    },
-                    onTop = small,
-                )
+            if (rtc != null && small != null) {
+                SelfWindow(small, rtc, mirror = small === local && frontCamera) { swapped = !swapped }
             }
             Column(
                 Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(24.dp),
@@ -450,7 +460,9 @@ class VideoCallActivity : ComponentActivity() {
                                 cameraOn = !cameraOn
                                 session?.setCameraOn(cameraOn)
                             }
-                            SmallButton(Icons.Filled.Cameraswitch, stringResource(R.string.vc_switch), false) { session?.switchCamera() }
+                            SmallButton(Icons.Filled.Cameraswitch, stringResource(R.string.vc_switch), false) {
+                                session?.switchCamera { front -> runOnUiThread { frontCamera = front } }
+                            }
                             SmallButton(if (speakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff, stringResource(R.string.vc_speaker), !speakerOn) {
                                 speakerOn = !speakerOn
                                 session?.setSpeaker(speakerOn)
@@ -513,9 +525,57 @@ class VideoCallActivity : ComponentActivity() {
         }
     }
 
+    /** Small floating video window: drag it anywhere, tap it to swap with the big picture. */
     @Composable
-    private fun VideoView(track: VideoTrack, rtc: RtcSession, mirror: Boolean, modifier: Modifier, onTop: Boolean = false) {
-        val renderer = remember(track) {
+    private fun SelfWindow(track: VideoTrack, rtc: RtcSession, mirror: Boolean, onTap: () -> Unit) {
+        val density = LocalDensity.current
+        val margin = with(density) { 16.dp.toPx() }
+        val width = with(density) { SELF_WIDTH.toPx() }
+        val height = with(density) { SELF_HEIGHT.toPx() }
+        var area by remember { mutableStateOf(IntSize.Zero) }
+        // Start in the top-right corner, below the status bar.
+        var offset by remember { mutableStateOf<Offset?>(null) }
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).onSizeChanged { area = it }) {
+            if (area != IntSize.Zero) {
+                val maxX = (area.width - width - margin).coerceAtLeast(margin)
+                val maxY = (area.height - height - margin).coerceAtLeast(margin)
+                val at = offset ?: Offset(maxX, margin)
+                Box(
+                    Modifier
+                        .offset { IntOffset(at.x.roundToInt(), at.y.roundToInt()) }
+                        .size(SELF_WIDTH, SELF_HEIGHT)
+                        .clip(RoundedCornerShape(16.dp)),
+                ) {
+                    VideoView(track, rtc, mirror, Modifier.fillMaxSize(), onTop = true)
+                    // Touch layer above the video (the video surface itself ignores touches).
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .pointerInput(maxX, maxY) {
+                                detectDragGestures(
+                                    onDragEnd = {
+                                        // Snap to the nearer side so it doesn't cover the middle.
+                                        val cur = offset ?: at
+                                        offset = Offset(if (cur.x + width / 2 < area.width / 2f) margin else maxX, cur.y)
+                                    },
+                                ) { change, drag ->
+                                    change.consume()
+                                    val cur = offset ?: at
+                                    offset = Offset((cur.x + drag.x).coerceIn(margin, maxX), (cur.y + drag.y).coerceIn(margin, maxY))
+                                }
+                            }
+                            .clickable(onClickLabel = stringResource(R.string.vc_swap_views), onClick = onTap),
+                    )
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun VideoView(track: VideoTrack, rtc: RtcSession, mirror: Boolean, modifier: Modifier, onTop: Boolean) {
+        // One surface per position, created with its stacking order fixed (it can't change once
+        // shown), so the small window always stays above the full-screen video.
+        val renderer = remember(rtc, onTop) {
             SurfaceViewRenderer(this).apply {
                 init(rtc.egl.eglBaseContext, null)
                 setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL)
@@ -524,11 +584,14 @@ class VideoCallActivity : ComponentActivity() {
             }
         }
         renderer.setMirror(mirror)
+        DisposableEffect(renderer) {
+            onDispose { runCatching { renderer.release() } }
+        }
         DisposableEffect(track, renderer) {
             runCatching { track.addSink(renderer) }
             onDispose {
                 runCatching { track.removeSink(renderer) }
-                runCatching { renderer.release() }
+                runCatching { renderer.clearImage() }
             }
         }
         AndroidView(factory = { renderer }, modifier = modifier)
@@ -559,6 +622,8 @@ class VideoCallActivity : ComponentActivity() {
     }
 
     companion object {
+        private val SELF_WIDTH = 112.dp
+        private val SELF_HEIGHT = 168.dp
         const val ACTION_VIDEO = "com.rskusum.whocaller.action.WHOCALLER_VIDEO"
         const val EXTRA_NUMBER = "number"
         const val EXTRA_CALL_ID = "call_id"
