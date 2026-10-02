@@ -338,11 +338,6 @@ fun KeypadTab(
                     QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet, onClick = { TelecomActions.whoCallerVideo(context, number) }) {
                         QuickActionIcon(Icons.Filled.Videocam, Violet)
                     }
-                    if (whatsApp) {
-                        QuickAction(stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen, onClick = { actions.whatsApp(number, video = true) }) {
-                            QuickActionIcon(Icons.Filled.Videocam, WhatsAppGreen)
-                        }
-                    }
                     if (caller?.warning == true) {
                         QuickAction(stringResource(if (blocked) R.string.dialer_unblock else R.string.dialer_block), WarnRed, onClick = { viewModel.toggleBlock(number, caller.name) }) {
                             QuickActionIcon(Icons.Filled.Block, WarnRed)
@@ -381,16 +376,9 @@ fun KeypadTab(
 
             Spacer(Modifier.height(8.dp))
 
-            // WhatsApp call · Call (long-press: choose SIM) · Delete.
+            // Call (long-press: choose SIM) · Delete; the empty slot keeps the call button centred.
             Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                GradientCallButton(
-                    icon = Icons.Filled.Call,
-                    description = stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_call),
-                    colors = listOf(Color(0xFF4AE07A), WhatsAppGreen),
-                    size = 60.dp,
-                    enabled = number.isNotBlank() && !emergency && whatsApp,
-                    onClick = { actions.whatsApp(number, video = false) },
-                )
+                Spacer(Modifier.size(60.dp))
                 // Two SIMs and no default calling SIM ("ask every time"): one call button per SIM,
                 // with its network underneath, so the right number is used in one tap.
                 if (dualSim != null && !emergency) {

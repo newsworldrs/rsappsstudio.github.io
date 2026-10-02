@@ -247,18 +247,9 @@ fun ContactDetailScreen(
                             DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whocaller_video)) {
                                 TelecomActions.whoCallerVideo(context, phone.number)
                             }
-                            // Carrier video calling isn't offered (operators rarely allow it); WhatsApp instead.
                             if (hasWhatsApp) {
-                                DetailAction(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) {
-                                    TelecomActions.whatsAppCall(context, phone.number, video = false)
-                                }
-                                DetailAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whatsapp_video)) {
-                                    TelecomActions.whatsAppCall(context, phone.number, video = true)
-                                }
-                            }
-                            if (hasWhatsApp && phone.numberKey.startsWith("+")) {
                                 DetailAction(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) {
-                                    TelecomActions.openWhatsApp(context, phone.numberKey)
+                                    TelecomActions.openWhatsApp(context, phone.number)
                                 }
                             }
                             DetailAction(Icons.Outlined.Search, stringResource(UiR.string.action_search)) { onSearchNumber(phone.number) }

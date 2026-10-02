@@ -326,15 +326,6 @@ private fun InCallScreen(call: CallUi, others: List<CallUi>, audio: CallAudioSta
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             Toggle(Icons.Filled.MicOff, stringResource(R.string.call_mute), muted) { CallManager.setMuted(!muted) }
                             Toggle(Icons.AutoMirrored.Filled.VolumeUp, stringResource(R.string.call_speaker), speaker) { CallManager.setSpeaker(!speaker) }
-                            // Carrier video calling isn't offered; continue on WhatsApp video instead.
-                            Toggle(
-                                Icons.Filled.Videocam,
-                                stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video),
-                                false,
-                                enabled = call.number != null && TelecomActions.whatsAppPackage(context) != null,
-                            ) {
-                                call.number?.let { TelecomActions.whatsAppCall(context, it, video = true) }
-                            }
                         }
                         Spacer(Modifier.height(14.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {

@@ -289,18 +289,8 @@ private fun CallActionsSheet(
                 onDismiss()
             }
             if (hasWhatsApp) {
-                SheetAction(Icons.Outlined.Call, stringResource(UiR.string.action_whatsapp_call)) {
-                    TelecomActions.whatsAppCall(context, number, video = false)
-                    onDismiss()
-                }
-                SheetAction(Icons.Outlined.Videocam, stringResource(UiR.string.action_whatsapp_video)) {
-                    TelecomActions.whatsAppCall(context, number, video = true)
-                    onDismiss()
-                }
-            }
-            if (hasWhatsApp && entry.numberKey.startsWith("+")) {
                 SheetAction(Icons.AutoMirrored.Outlined.Chat, stringResource(UiR.string.action_whatsapp)) {
-                    TelecomActions.openWhatsApp(context, entry.numberKey)
+                    TelecomActions.openWhatsApp(context, number)
                     onDismiss()
                 }
             }

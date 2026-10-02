@@ -82,6 +82,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -132,6 +133,16 @@ private fun SmallRoundButton(icon: ImageVector, description: String, tint: Color
     IconButton(onClick = onClick) {
         Box(Modifier.size(38.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
             Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** WhatsApp's own icon in a small round button; opens the chat with the number. */
+@Composable
+private fun WhatsAppRoundButton(description: String, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = Modifier.semantics { contentDescription = description }) {
+        Box(Modifier.size(38.dp).clip(CircleShape).background(WhatsAppGreen.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+            WhatsAppLogo(22.dp)
         }
     }
 }
@@ -508,6 +519,7 @@ private fun ContactRow(contact: Contact, onOpen: () -> Unit, onCall: () -> Unit)
 fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails: (DetailsTarget) -> Unit) {
     val palette = LocalDialerPalette.current
     val context = LocalContext.current
+    val whatsApp = remember { TelecomActions.whatsAppPackage(context) != null }
     val favorites by viewModel.favorites.collectAsState()
     val permitted by viewModel.contactsPermission.collectAsState()
 
@@ -547,7 +559,9 @@ fun FavoritesTab(viewModel: DialerViewModel, actions: CallActions, onShowDetails
                             SmallRoundButton(Icons.Filled.Call, stringResource(R.string.dialer_call), CallGreen) { number?.let { actions.call(it) } }
                             // WHOCALLER VIDEO (experimental)
                             SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whocaller_video), Violet) { number?.let { TelecomActions.whoCallerVideo(context, it) } }
-                            SmallRoundButton(Icons.Filled.Videocam, stringResource(com.rskusum.whocaller.core.ui.R.string.action_whatsapp_video), WhatsAppGreen) { number?.let { actions.whatsApp(it, video = true) } }
+                            if (whatsApp) {
+                                WhatsAppRoundButton(stringResource(R.string.dialer_whatsapp)) { number?.let { actions.openWhatsAppChat(it) } }
+                            }
                         }
                     }
                 }

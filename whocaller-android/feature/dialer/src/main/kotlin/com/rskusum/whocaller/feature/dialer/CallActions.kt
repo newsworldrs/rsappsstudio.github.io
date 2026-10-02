@@ -119,12 +119,6 @@ class CallActions internal constructor(private val context: Context, private val
         TelecomActions.placeCall(context, request.number, request.video, handle)
     }
 
-    /** WhatsApp voice or video call (carrier video calling is not offered: operators rarely allow it). */
-    fun whatsApp(number: String, video: Boolean) {
-        if (number.isBlank()) return
-        TelecomActions.whatsAppCall(context, number, video)
-    }
-
     fun openWhatsAppChat(number: String, hint: Boolean = false) {
         val e164 = NumberTools.international(number, NumberTools.countryIso(context)) ?: number
         TelecomActions.openWhatsApp(context, e164)

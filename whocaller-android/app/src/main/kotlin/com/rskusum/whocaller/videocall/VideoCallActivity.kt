@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material3.Icon
@@ -509,8 +510,8 @@ class VideoCallActivity : ComponentActivity() {
             Spacer(Modifier.height(20.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 if (TelecomActions.whatsAppPackage(this@VideoCallActivity) != null) {
-                    RoundButton(Icons.Filled.Videocam, stringResource(R.string.vc_whatsapp), Color(0xFF25D366)) {
-                        TelecomActions.whatsAppCall(this@VideoCallActivity, peerNumber, video = true)
+                    RoundButton(Icons.AutoMirrored.Filled.Chat, stringResource(R.string.vc_whatsapp), Color(0xFF25D366)) {
+                        TelecomActions.openWhatsApp(this@VideoCallActivity, peerNumber)
                         finish()
                     }
                 }
