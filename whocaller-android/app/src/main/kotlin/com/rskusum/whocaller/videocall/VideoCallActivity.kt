@@ -112,6 +112,9 @@ class VideoCallActivity : ComponentActivity() {
     private var callId: String? = null
     private var isCaller = false
     private var remoteSet = false
+    /** False while an outgoing call's offer is being made (its document doesn't exist yet). */
+    private var callSaved = true
+    private val heldCandidates = mutableListOf<IceCandidate>()
     private val listeners = mutableListOf<ListenerRegistration>()
     private var ringTimeout: Job? = null
     private var ringtone: Ringtone? = null
@@ -190,15 +193,19 @@ class VideoCallActivity : ComponentActivity() {
         phase = Phase.Calling
         val me = FirebaseAuth.getInstance().currentUser
         val myName = me?.displayName?.takeIf { it.isNotBlank() } ?: me?.phoneNumber ?: getString(R.string.vc_someone)
-        val id = runCatching { sig.create(calleeUid, e164, peerName, myName, me?.phoneNumber.orEmpty()) }.getOrElse {
+        val id = sig.newCallId()
+        callId = id
+        callSaved = false
+        val rtc = openSession(id) ?: return
+        val offer = runCatching { rtc.createOffer() }.getOrElse { end(R.string.vc_failed); return }
+        runCatching { sig.create(id, calleeUid, e164, peerName, myName, me?.phoneNumber.orEmpty(), offer) }.getOrElse {
             end(R.string.vc_failed)
             return
         }
-        callId = id
-        val rtc = openSession(id) ?: return
+        // The call exists now: send the network paths found meanwhile, then listen.
+        flushCandidates(id)
         listeners += sig.listen(id) { doc -> onCallChanged(doc) }
         listeners += sig.listenCandidates(id) { rtc.addRemoteCandidate(it) }
-        runCatching { sig.setOffer(id, rtc.createOffer()) }.onFailure { end(R.string.vc_failed); return }
         ringTimeout = lifecycleScope.launch {
             delay(RING_TIMEOUT_MS)
             if (phase == Phase.Calling) hangUp(VideoSignaling.STATUS_MISSED, R.string.vc_no_answer)
@@ -267,7 +274,10 @@ class VideoCallActivity : ComponentActivity() {
         val servers = sig.iceServers()
         return try {
             RtcSession(this, servers, object : RtcSession.Listener {
-                override fun onIceCandidate(candidate: IceCandidate) = sig.addCandidate(id, candidate)
+                override fun onIceCandidate(candidate: IceCandidate) = runOnUiThread {
+                    // Before the call is saved, the rules can't check membership: hold them.
+                    if (callSaved) sig.addCandidate(id, candidate) else heldCandidates += candidate
+                }
                 override fun onRemoteVideo(track: VideoTrack) {
                     runOnUiThread { remoteTrack = track }
                 }
@@ -305,6 +315,12 @@ class VideoCallActivity : ComponentActivity() {
             VideoSignaling.STATUS_MISSED -> end(R.string.vc_missed)
             VideoSignaling.STATUS_ENDED -> end(R.string.vc_ended)
         }
+    }
+
+    private fun flushCandidates(id: String) {
+        callSaved = true
+        heldCandidates.forEach { signaling?.addCandidate(id, it) }
+        heldCandidates.clear()
     }
 
     private fun withPermissions(action: () -> Unit) {

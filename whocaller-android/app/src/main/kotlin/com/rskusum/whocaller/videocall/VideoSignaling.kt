@@ -34,8 +34,12 @@ class VideoSignaling(private val db: FirebaseFirestore, val myUid: String) {
         return uid to doc.getString("name")
     }
 
-    suspend fun create(calleeUid: String, calleeNumber: String, calleeName: String?, myName: String, myNumber: String): String {
-        val ref = db.collection(CALLS).document()
+    /** A new call id (no write yet), so the offer can be made before the call is saved. */
+    fun newCallId(): String = db.collection(CALLS).document().id
+
+    /** Saves the call together with its offer in one write, as the Firebase + WebRTC codelab does. */
+    suspend fun create(id: String, calleeUid: String, calleeNumber: String, calleeName: String?, myName: String, myNumber: String, offer: SessionDescription): String {
+        val ref = call(id)
         ref.set(
             mapOf(
                 "callerUid" to myUid,
@@ -45,6 +49,7 @@ class VideoSignaling(private val db: FirebaseFirestore, val myUid: String) {
                 "calleeName" to calleeName?.take(60),
                 "calleeNumber" to calleeNumber.take(20),
                 "status" to STATUS_RINGING,
+                "offer" to offer.toMap(),
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp(),
             ),

@@ -55,6 +55,24 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
     var frontCamera = true
         private set
 
+    private val observer = object : PeerConnection.Observer {
+        override fun onIceCandidate(candidate: IceCandidate) = listener.onIceCandidate(candidate)
+        override fun onTrack(transceiver: RtpTransceiver) {
+            (transceiver.receiver.track() as? VideoTrack)?.let(listener::onRemoteVideo)
+        }
+        override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) = listener.onState(newState)
+        override fun onSignalingChange(state: PeerConnection.SignalingState?) = Unit
+        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) = Unit
+        override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
+        override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) = Unit
+        override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) = Unit
+        override fun onAddStream(stream: MediaStream?) = Unit
+        override fun onRemoveStream(stream: MediaStream?) = Unit
+        override fun onDataChannel(channel: DataChannel?) = Unit
+        override fun onRenegotiationNeeded() = Unit
+        override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) = Unit
+    }
+
     init {
         initialize(app)
         factory = PeerConnectionFactory.builder()
@@ -185,23 +203,6 @@ class RtcSession(context: Context, iceServers: List<PeerConnection.IceServer>, p
         })
     }
 
-    private val observer = object : PeerConnection.Observer {
-        override fun onIceCandidate(candidate: IceCandidate) = listener.onIceCandidate(candidate)
-        override fun onTrack(transceiver: RtpTransceiver) {
-            (transceiver.receiver.track() as? VideoTrack)?.let(listener::onRemoteVideo)
-        }
-        override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) = listener.onState(newState)
-        override fun onSignalingChange(state: PeerConnection.SignalingState?) = Unit
-        override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) = Unit
-        override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
-        override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) = Unit
-        override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) = Unit
-        override fun onAddStream(stream: MediaStream?) = Unit
-        override fun onRemoveStream(stream: MediaStream?) = Unit
-        override fun onDataChannel(channel: DataChannel?) = Unit
-        override fun onRenegotiationNeeded() = Unit
-        override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) = Unit
-    }
 
     companion object {
         private const val STREAM = "whocaller"
