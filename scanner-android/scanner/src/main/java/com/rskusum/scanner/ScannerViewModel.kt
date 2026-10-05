@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -132,6 +133,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     var processingCaptures by mutableStateOf(0)
         private set
     var importing by mutableStateOf(false)
+    /** Gallery pictures picked but not started yet. */
+    var importRemaining by mutableIntStateOf(0)
+        private set
+    /** Pages still on their way: picked / captured but not processed, or still rendering. */
+    val pendingPages: Int get() = importRemaining + processingCaptures + pages.count { it.rendering }
         private set
 
     var documents by mutableStateOf<List<SavedDocument>>(emptyList())
@@ -212,9 +218,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun importFromGallery(uris: List<Uri>) {
         importing = true
+        importRemaining += uris.size
         viewModelScope.launch {
             try {
                 for (uri in uris) {
+                    importRemaining = (importRemaining - 1).coerceAtLeast(0)
                     val bmp = withContext(Dispatchers.IO) {
                         runCatching { Images.decodeUri(getApplication(), uri, MAX_PHOTO_SIDE) }.getOrNull()
                     } ?: continue

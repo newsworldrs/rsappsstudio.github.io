@@ -113,7 +113,7 @@ Your app **does not** need to use Jetpack Compose. The scanner brings its own sc
        implementation("androidx.camera:camera-lifecycle:1.4.1")
        implementation("androidx.camera:camera-view:1.4.1")
        implementation("org.opencv:opencv:4.12.0")
-       implementation("org.tensorflow:tensorflow-lite:2.16.1")
+       implementation("org.tensorflow:tensorflow-lite:2.17.0")
        implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0") // needs maven("https://jitpack.io")
    }
    ```

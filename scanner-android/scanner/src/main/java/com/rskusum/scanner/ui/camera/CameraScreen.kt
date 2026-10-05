@@ -56,6 +56,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -577,6 +578,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             thumbnail = vm.pages.lastOrNull(),
             pageCount = vm.pages.size,
             processing = vm.processingCaptures > 0,
+            pending = vm.pendingPages,
             onGallery = if (vm.options.galleryImport) ({
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }) else null,
@@ -587,7 +589,13 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     else -> capture(manual = true)
                 }
             },
-            onThumbnail = { if (vm.pages.isNotEmpty() || vm.processingCaptures > 0) onOpenReview() },
+            onThumbnail = {
+                val pending = vm.pendingPages
+                if (pending > 0) {
+                    Toast.makeText(context, context.resources.getQuantityString(R.plurals.rs_scanner_processing_wait, pending, pending), Toast.LENGTH_SHORT).show()
+                }
+                if (vm.pages.isNotEmpty()) onOpenReview()
+            },
         )
     }
 
@@ -1196,10 +1204,27 @@ private fun BottomControls(
     thumbnail: com.rskusum.scanner.data.Page?,
     pageCount: Int,
     processing: Boolean,
+    pending: Int,
     onGallery: (() -> Unit)?,
     onShutter: () -> Unit,
     onThumbnail: () -> Unit,
 ) {
+    // "Processing 3 pages..." above the bar while captures / gallery pictures are being prepared.
+    if (pending > 0) {
+        Box(Modifier.fillMaxWidth().background(ScanColors.Bar).padding(top = 8.dp), contentAlignment = Alignment.Center) {
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(ScanColors.SurfaceHigh)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(14.dp), color = ScanColors.AccentBright, strokeWidth = 2.dp)
+                Spacer(Modifier.width(8.dp))
+                Text(pluralStringResource(R.plurals.rs_scanner_processing_pages, pending, pending), color = Color.White, fontSize = 13.sp)
+            }
+        }
+    }
     // Pages on the left, shutter in the middle, gallery on the right.
     Box(
         Modifier

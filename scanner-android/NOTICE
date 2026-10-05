@@ -23,7 +23,7 @@ Bundled model files (scanner/src/main/assets/models):
 Libraries used at runtime (downloaded from Maven, not copied into this repository):
 
   OpenCV 4.12.0              - Apache License 2.0      https://opencv.org
-  TensorFlow Lite 2.16.1     - Apache License 2.0      https://www.tensorflow.org/lite
+  TensorFlow Lite 2.17.0     - Apache License 2.0      https://www.tensorflow.org/lite
   Tesseract4Android 4.9.0   - Apache License 2.0      https://github.com/adaptech-cz/Tesseract4Android
     (Tesseract OCR, Apache 2.0; Leptonica, BSD 2-clause)
   Tesseract language models - Apache License 2.0      https://github.com/tesseract-ocr/tessdata_best
