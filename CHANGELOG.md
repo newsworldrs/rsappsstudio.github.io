@@ -4,6 +4,28 @@ All notable changes to the **RS Kusum Scanner** Android library (`scanner-androi
 Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPack:
 `implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")`.
 
+## [1.6.0] - 2026-10-06
+### Added
+- **HD scan:** a check box in the camera tool rail (off by default). HD pages are captured at the camera's full resolution (up to 6000 px), rendered at 5000 px and kept at that size in the PDF. Up to 5 HD pages per scan.
+- **First-run tour:** three swipeable pages, each a mockup of a screen with numbered buttons explained: camera buttons, scan modes, and editing and saving. Shown once per install; turn it off with `ScannerOptions(showIntro = false)`.
+- **Batch recovery:** a small manifest of the scan in progress (file paths and edit settings only) is kept on disk. If the app is killed or the phone restarts, the unfinished batch comes back.
+- **Back to exit:** in the camera, Back shows "Press back again to exit". If pages aren't saved, the next Back warns "Scan not saved. Press back again to exit", and the one after that leaves without saving. Back no longer jumps between the camera and review. `ScannerFlow` takes an optional `onExit`.
+- "Please wait, preparing your scans…" when the thumbnail is tapped while pages are still being prepared, and in review with the number left.
+- The screen stays on while scanning, while pages are prepared and while the PDF is saved.
+### Changed
+- **Text orientation now works on the device.** The orientation model needs TensorFlow Lite 2.17, and with 2.16.1 it never loaded. `org.tensorflow:tensorflow-lite` is now **2.17.0**. Orientation is decided before the first thumbnail, so pages show upright from the start. Model answers are also cross-checked, and the Devanagari headline test is stricter.
+- **Long batches (100+ pages) with bounded memory:**
+  - At most 2 photos are analysed at a time, and at most 3 captures can be queued.
+  - The PDF is written one page at a time.
+  - Thumbnails are RGB_565 at 280 px.
+  - Review decodes pages at 2400 px.
+  - Rendered pages are kept with the session instead of in the cache.
+- **Eraser:**
+  - *Everything* fills the area from the paper right around the stroke, so there are no grey or off-white patches over large marks.
+  - *Marks only* finds text against the local background and against the bare paper. Bold headings, light-grey print and black text under a highlighter are now kept.
+  - Tested with blue, red, green, purple, orange and light-blue pens, yellow, pink, green and blue highlighters, and a coffee stain.
+- The gallery import allows up to 30 pictures at once.
+
 ## [1.5.0] - 2026-10-05
 ### Added
 - **Text orientation for every script.** Pages are turned upright from the direction of their text lines, which works for any script. Upright vs. upside down is decided by the headline of Devanagari, Bengali and Gurmukhi words (Hindi, Marathi, Nepali, Sanskrit, ...) and by the on-device model for other scripts. Fixes Hindi pages that were left sideways or flipped.
@@ -90,6 +112,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Compressed PDF output with PDFBox, and JPEG pages.
 - Apache 2.0 licence and a full third-party licence audit.
 
+[1.6.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.6.0
 [1.5.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.5.0
 [1.4.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.4.0
 [1.3.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.3.0

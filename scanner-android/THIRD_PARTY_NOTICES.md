@@ -19,7 +19,7 @@ GPL, LGPL or AGPL, and nothing requires your app to be open source.
 
 | Component | Version | License | Commercial use | Notes |
 |---|---|---|---|---|
-| RS Kusum Scanner (this code), © RS KUSUM | 1.5.x | Apache 2.0 | Yes | |
+| RS Kusum Scanner (this code), © RS KUSUM | 1.6.x | Apache 2.0 | Yes | |
 | HED-lite edge model (`doc_edges_hed_lite.tflite`) | from SmartCropper (`hed_lite_model_quantize.tflite`) | Apache 2.0 | Yes | © 2017 pqpo |
 | Text orientation model (`doc_orientation.tflite`) | RapidOrientation 0.0.11 | Apache 2.0 | Yes | PaddleClas PP-LCNet (Apache 2.0); converted to TFLite with 8-bit weights. The conversion is recorded in NOTICE, as Apache 2.0 requires. |
 | OpenCV (`org.opencv:opencv`) | 4.12.0 | Apache 2.0 | Yes | Apache 2.0 since 4.5.0. Its bundled 3rd-party code (libjpeg-turbo, libpng, libwebp, zlib, OpenJPEG, protobuf, quirc, carotene, …) is BSD/zlib/MIT/IJG-style. |

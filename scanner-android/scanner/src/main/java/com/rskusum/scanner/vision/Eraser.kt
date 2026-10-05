@@ -180,8 +180,8 @@ object Eraser {
 
     /**
      * "Marks only" result: clean paper everywhere, except printed text, which keeps its darkness
-     * but loses any tint. Text is looked for twice: against the bare paper (any text, also big
-     * bold headings) and against the local background (black text under a highlighter). Coloured
+     * but loses any tint. Text is looked for twice: against the local background (any text, also
+     * black text under a highlighter) and against the bare paper (big bold headings). Coloured
      * pen (even dark blue ballpoint), highlighter and stains are not neutral and become paper.
      * 32F 3-channel.
      */
@@ -195,9 +195,11 @@ object Eraser {
         val p = Mat(); Core.max(paper, Scalar(1.0, 1.0, 1.0), p)
         val rP = Mat(); Core.divide(o, p, rP)
         val rL = Mat(); Core.divide(o, local, rL)
-        val tP = textMask(rP)
+        // Against the local background first (exact shade, also under a highlighter); against the
+        // bare paper for big / bold letters the local background can't separate.
         val tL = textMask(rL)
-        val notP = Mat(); Core.bitwise_not(tP, notP); Core.bitwise_and(tL, notP, tL)
+        val tP = textMask(rP)
+        val notP = Mat(); Core.bitwise_not(tL, notP); Core.bitwise_and(tP, notP, tP)
         fun meanOf(r: Mat): Mat {
             val c = ArrayList<Mat>(); Core.split(r, c)
             val m = Mat(); Core.add(c[0], c[1], m); Core.add(m, c[2], m)
