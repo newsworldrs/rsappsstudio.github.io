@@ -156,12 +156,9 @@ private enum class Flash(val mode: Int) {
     fun next() = entries[(ordinal + 1) % entries.size]
 }
 
-/**
- * Up to 100 pictures per gallery import (like a 100-page scan), never more than the system photo
- * picker allows on this device.
- */
+/** Up to 30 pictures per gallery import, never more than the system photo picker allows. */
 private fun maxGalleryPick(): Int =
-    runCatching { android.provider.MediaStore.getPickImagesMaxLimit() }.getOrDefault(100).coerceIn(2, 100)
+    runCatching { android.provider.MediaStore.getPickImagesMaxLimit() }.getOrDefault(30).coerceIn(2, 30)
 
 /** Captures waiting to be processed before the shutter pauses (memory stays bounded in long batches). */
 private const val MAX_QUEUED_CAPTURES = 3
