@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
@@ -142,6 +143,10 @@ fun ScannerFlow(
         }
     }
 
+    // First run: the button tour, once per install.
+    var showIntro by remember { mutableStateOf(options.showIntro && !com.rskusum.scanner.ui.intro.IntroPrefs.shown(context)) }
+
+    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = screen,
         transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -193,5 +198,12 @@ fun ScannerFlow(
                 onScan = { screen = Screen.CAMERA },
             )
         }
+    }
+    if (showIntro) {
+        com.rskusum.scanner.ui.intro.IntroScreen(onDone = {
+            com.rskusum.scanner.ui.intro.IntroPrefs.markShown(context)
+            showIntro = false
+        })
+    }
     }
 }

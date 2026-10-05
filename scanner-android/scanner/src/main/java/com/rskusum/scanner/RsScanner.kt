@@ -84,6 +84,8 @@ object RsScanner {
  * @param returnJpegs return every finished page as a JPEG ([ScanResult.pageUris]).
  * @param pdfQuality size / quality preset preselected for the PDF.
  * @param ocrLanguages Tesseract languages for AI Text / Extract text, e.g. "eng" or "eng+hin".
+ * @param showIntro show the three-page tour of the buttons the first time the scanner opens
+ *   after the app is installed (once per install).
  * @param standalone full app behaviour: home screen with the PDF library, QR scanner, and
  *   saving to the public Downloads folder. Leave false when embedding the scanner.
  */
@@ -99,6 +101,7 @@ data class ScannerOptions @JvmOverloads constructor(
     val pdfQuality: PdfQuality = PdfQuality.BALANCED,
     val standalone: Boolean = false,
     val ocrLanguages: String = "eng",
+    val showIntro: Boolean = true,
 ) : Parcelable {
     init {
         require(modes.isNotEmpty()) { "ScannerOptions.modes must not be empty" }
