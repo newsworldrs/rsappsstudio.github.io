@@ -9,6 +9,7 @@ import org.opencv.core.Rect
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import org.opencv.photo.Photo
 import kotlin.math.max
 import kotlin.math.min
 
@@ -48,9 +49,7 @@ object Eraser {
         if (strokes.isEmpty()) return
         val w = rgb.cols(); val h = rgb.rows()
         val original = rgb.clone()
-        // Page illumination (keeps shadows / gradients) and the page's plain paper colour.
-        val bg = ImageEnhancer.estimateBackground(original, kernelDiv = 25, floor = 0.8)
-        val paper = paperColour(bg)
+        val k = localKernel(w)
         try {
             var i = 0
             while (i < strokes.size) {
@@ -63,26 +62,27 @@ object Eraser {
                     maxR = max(maxR, draw(mask, strokes[j], w, h))
                     j++
                 }
-                val feather = if (mode == Mode.MARKS) 1.0 else maxR * 0.35
-                val roi = roiOf(mask, (feather * 3).toInt() + 2 + if (mode == Mode.MARKS) localKernel(w) else 0)
+                val feather = if (mode == Mode.MARKS) 1.0 else maxR * 0.25
+                val roi = roiOf(mask, max((feather * 3).toInt() + 2, 3 * k))
                 if (roi != null) {
                     val origRoi = original.submat(roi)
-                    val bgRoi = bg.submat(roi)
                     val rgbRoi = rgb.submat(roi)
                     val maskRoi = mask.submat(roi)
                     val target = when (mode) {
                         Mode.RESTORE -> origRoi.clone()
-                        Mode.EVERYTHING -> paperTarget(bgRoi, paper)
-                        Mode.MARKS -> marksTarget(origRoi, bgRoi, paper, localKernel(w))
+                        Mode.EVERYTHING -> paperFill(origRoi, maskRoi, k)
+                        Mode.MARKS -> paperFill(origRoi, maskRoi, k).let { paper ->
+                            marksTarget(origRoi, paper, k).also { paper.release() }
+                        }
                     }
                     blend(rgbRoi, target, maskRoi, feather)
-                    listOf(target, origRoi, bgRoi, rgbRoi, maskRoi).forEach { it.release() }
+                    listOf(target, origRoi, rgbRoi, maskRoi).forEach { it.release() }
                 }
                 mask.release()
                 i = j
             }
         } finally {
-            original.release(); bg.release()
+            original.release()
         }
     }
 
@@ -110,71 +110,107 @@ object Eraser {
         return Rect(x0, y0, x1 - x0, y1 - y0)
     }
 
-    /** The page's plain paper colour (90th percentile of the background per channel). */
-    private fun paperColour(bg: Mat): DoubleArray {
-        val small = Mat()
-        Imgproc.resize(bg, small, Size(64.0, 64.0), 0.0, 0.0, Imgproc.INTER_AREA)
-        val px = ByteArray(64 * 64 * 3)
-        small.get(0, 0, px)
-        small.release()
-        return DoubleArray(3) { c ->
-            val v = IntArray(64 * 64) { i -> px[i * 3 + c].toInt() and 0xFF }.sorted()
-            v[(v.size * 0.9).toInt()].toDouble().coerceAtLeast(1.0)
-        }
-    }
+    private fun ellipse(k: Int) = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble()))
 
     /**
-     * Clean paper: the page's paper colour at the local brightness. Brightness is the brightest
-     * channel of the background, which a yellow highlighter doesn't lower, so highlighted areas
-     * become plain paper (no grey band) while real shadows are kept. 32F 3-channel.
+     * The bare paper under the painted area, continued from the paper right around it: text is
+     * closed away, then the painted area (and any dark blob next to it, e.g. the rest of a marker
+     * smudge) is filled in from the surrounding paper. So an erased area matches its surroundings
+     * exactly - no off-white or grey patch - also on filtered (pure white) pages. 32F 3-channel.
      */
-    private fun paperTarget(bg: Mat, paper: DoubleArray): Mat {
-        val ch = ArrayList<Mat>(); Core.split(bg, ch)
-        val bright = Mat(); Core.max(ch[0], ch[1], bright); Core.max(bright, ch[2], bright)
-        val paperMax = paper.max()
-        val f = Mat(); bright.convertTo(f, CvType.CV_32F, 1.0 / paperMax)
-        Core.min(f, Scalar(1.0), f)
-        val planes = paper.map { c -> Mat().also { Core.multiply(f, Scalar(c), it) } }
-        val out = Mat(); Core.merge(planes, out)
-        (ch + planes + listOf(bright, f)).forEach { it.release() }
+    private fun paperFill(orig: Mat, mask: Mat, k: Int): Mat {
+        val s = min(1.0, 400.0 / max(orig.cols(), orig.rows()))
+        val size = Size(max(1.0, (orig.cols() * s).toInt().toDouble()), max(1.0, (orig.rows() * s).toInt().toDouble()))
+        val sm = Mat(); Imgproc.resize(orig, sm, size, 0.0, 0.0, Imgproc.INTER_AREA)
+        val ks = max(3, (k * s).toInt() or 1)
+        val closed = Mat(); Imgproc.morphologyEx(sm, closed, Imgproc.MORPH_CLOSE, ellipse(ks))
+        val msm = Mat(); Imgproc.resize(mask, msm, size, 0.0, 0.0, Imgproc.INTER_NEAREST)
+        val hole = Mat(); Imgproc.dilate(msm, hole, ellipse(ks + 2))
+        // Only real paper may feed the fill.
+        val ch = ArrayList<Mat>(); Core.split(closed, ch)
+        val lum = Mat(); Core.max(ch[0], ch[1], lum); Core.max(lum, ch[2], lum)
+        val n = lum.rows() * lum.cols()
+        val lb = ByteArray(n); lum.get(0, 0, lb)
+        val hb = ByteArray(n); hole.get(0, 0, hb)
+        val outside = IntArray(n).let { buf -> var c = 0; for (i in 0 until n) if (hb[i].toInt() == 0) buf[c++] = lb[i].toInt() and 0xFF; buf.copyOf(c) }
+        val filled = Mat()
+        if (outside.isEmpty()) {
+            // Painted everywhere: plain paper at the brightest level of the area.
+            val all = IntArray(n) { lb[it].toInt() and 0xFF }.sorted()
+            val lvl = all[(n * 0.9).toInt().coerceAtMost(n - 1)].toDouble()
+            closed.copyTo(filled); filled.setTo(Scalar(lvl, lvl, lvl))
+        } else {
+            outside.sort()
+            val lvl = outside[(outside.size * 0.9).toInt().coerceAtMost(outside.size - 1)]
+            val dark = Mat(); Core.compare(lum, Scalar(lvl * 0.8), dark, Core.CMP_LT)
+            Core.max(hole, dark, hole)
+            dark.release()
+            if (Core.countNonZero(hole) >= n) {
+                closed.copyTo(filled); filled.setTo(Scalar(lvl.toDouble(), lvl.toDouble(), lvl.toDouble()))
+            } else {
+                Photo.inpaint(closed, hole, filled, max(3.0, ks.toDouble()), Photo.INPAINT_TELEA)
+            }
+        }
+        Imgproc.GaussianBlur(filled, filled, Size(0.0, 0.0), max(1.0, ks / 2.0))
+        val up = Mat(); Imgproc.resize(filled, up, orig.size(), 0.0, 0.0, Imgproc.INTER_LINEAR)
+        val out = Mat(); up.convertTo(out, CvType.CV_32FC3)
+        (ch + listOf(sm, closed, msm, hole, lum, filled, up)).forEach { it.release() }
         return out
     }
 
     /**
-     * "Marks only" result: clean paper everywhere, except printed text, which keeps its darkness
-     * but loses any tint (black text under a highlighter comes back black). Text = darker than the
-     * LOCAL paper in every channel and neutral relative to it; coloured pen (even dark blue
-     * ballpoint), highlighter and pencil fail the test and become paper. 32F 3-channel.
+     * Text pixels of a ratio image (page / reference, 32FC3): clearly darker and neutral (seed),
+     * grown into the lighter, still neutral anti-aliased edges of the same letters. 8U 0/255.
      */
-    private fun marksTarget(orig: Mat, bg: Mat, paper: DoubleArray, k: Int): Mat {
-        val local = Mat()
-        Imgproc.morphologyEx(orig, local, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble())))
-        Imgproc.medianBlur(local, local, 5)
-        val o = Mat(); orig.convertTo(o, CvType.CV_32FC3)
-        val l = Mat(); local.convertTo(l, CvType.CV_32FC3)
-        Core.max(l, Scalar(1.0, 1.0, 1.0), l)
-        val r = Mat(); Core.divide(o, l, r)
+    private fun textMask(r: Mat): Mat {
         val rc = ArrayList<Mat>(); Core.split(r, rc)
         val rMax = Mat(); Core.max(rc[0], rc[1], rMax); Core.max(rMax, rc[2], rMax)
         val rMin = Mat(); Core.min(rc[0], rc[1], rMin); Core.min(rMin, rc[2], rMin)
         val spread = Mat(); Core.subtract(rMax, rMin, spread)
-        val dark = Mat(); Imgproc.threshold(rMax, dark, 0.6, 1.0, Imgproc.THRESH_BINARY_INV)
-        val neutral = Mat(); Imgproc.threshold(spread, neutral, 0.22, 1.0, Imgproc.THRESH_BINARY_INV)
-        val text = Mat(); Core.multiply(dark, neutral, text)
-        Imgproc.dilate(text, text, Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(3.0, 3.0)))
-        // shade = mean ratio for text pixels (keeps how dark the letter is), 1 elsewhere
-        val mean = Mat(); Core.add(rc[0], rc[1], mean); Core.add(mean, rc[2], mean); Core.multiply(mean, Scalar(1.0 / 3), mean)
-        Core.min(mean, Scalar(1.0), mean)
-        val one = Mat.ones(text.size(), CvType.CV_32F)
-        val shade = Mat()
-        // shade = text * mean + (1 - text) * 1
-        val inv = Mat(); Core.subtract(one, text, inv)
-        val tm = Mat(); Core.multiply(text, mean, tm)
-        Core.add(tm, inv, shade)
-        val target = paperTarget(bg, paper)
+        val neutral = Mat(); Core.compare(spread, Scalar(0.2), neutral, Core.CMP_LT)
+        val seed = Mat(); Core.compare(rMax, Scalar(0.72), seed, Core.CMP_LT); Core.bitwise_and(seed, neutral, seed)
+        val weak = Mat(); Core.compare(rMax, Scalar(0.93), weak, Core.CMP_LT); Core.bitwise_and(weak, neutral, weak)
+        val t = seed.clone()
+        val k3 = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+        repeat(3) { Imgproc.dilate(t, t, k3); Core.bitwise_and(t, weak, t) }
+        Core.max(t, seed, t)
+        (rc + listOf(rMax, rMin, spread, neutral, seed, weak, k3)).forEach { it.release() }
+        return t
+    }
+
+    /**
+     * "Marks only" result: clean paper everywhere, except printed text, which keeps its darkness
+     * but loses any tint. Text is looked for twice: against the bare paper (any text, also big
+     * bold headings) and against the local background (black text under a highlighter). Coloured
+     * pen (even dark blue ballpoint), highlighter and stains are not neutral and become paper.
+     * 32F 3-channel.
+     */
+    private fun marksTarget(orig: Mat, paper: Mat, k: Int): Mat {
+        val o = Mat(); orig.convertTo(o, CvType.CV_32FC3)
+        val local8 = Mat()
+        Imgproc.morphologyEx(orig, local8, Imgproc.MORPH_CLOSE, ellipse(k))
+        Imgproc.medianBlur(local8, local8, 5)
+        val local = Mat(); local8.convertTo(local, CvType.CV_32FC3)
+        Core.max(local, Scalar(1.0, 1.0, 1.0), local)
+        val p = Mat(); Core.max(paper, Scalar(1.0, 1.0, 1.0), p)
+        val rP = Mat(); Core.divide(o, p, rP)
+        val rL = Mat(); Core.divide(o, local, rL)
+        val tP = textMask(rP)
+        val tL = textMask(rL)
+        val notP = Mat(); Core.bitwise_not(tP, notP); Core.bitwise_and(tL, notP, tL)
+        fun meanOf(r: Mat): Mat {
+            val c = ArrayList<Mat>(); Core.split(r, c)
+            val m = Mat(); Core.add(c[0], c[1], m); Core.add(m, c[2], m)
+            Core.multiply(m, Scalar(1.0 / 3), m); Core.min(m, Scalar(1.0), m)
+            c.forEach { it.release() }
+            return m
+        }
+        val shade = Mat(orig.rows(), orig.cols(), CvType.CV_32F, Scalar(1.0))
+        val sP = meanOf(rP); val sL = meanOf(rL)
+        sP.copyTo(shade, tP); sL.copyTo(shade, tL)
         val sh3 = Mat(); Core.merge(listOf(shade, shade, shade), sh3)
-        Core.multiply(target, sh3, target)
-        (rc + listOf(local, o, l, r, rMax, rMin, spread, dark, neutral, text, mean, one, shade, inv, tm, sh3)).forEach { it.release() }
+        val target = Mat(); Core.multiply(paper, sh3, target)
+        listOf(o, local8, local, p, rP, rL, tP, tL, notP, shade, sP, sL, sh3).forEach { it.release() }
         return target
     }
 
