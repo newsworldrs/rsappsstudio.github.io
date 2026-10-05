@@ -156,6 +156,13 @@ private enum class Flash(val mode: Int) {
     fun next() = entries[(ordinal + 1) % entries.size]
 }
 
+/**
+ * Up to 100 pictures per gallery import (like a 100-page scan), never more than the system photo
+ * picker allows on this device.
+ */
+private fun maxGalleryPick(): Int =
+    runCatching { android.provider.MediaStore.getPickImagesMaxLimit() }.getOrDefault(100).coerceIn(2, 100)
+
 /** Captures waiting to be processed before the shutter pauses (memory stays bounded in long batches). */
 private const val MAX_QUEUED_CAPTURES = 3
 
@@ -171,7 +178,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     LaunchedEffect(Unit) { if (!granted) permissionLauncher.launch(Manifest.permission.CAMERA) }
 
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris: List<Uri> ->
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(maxGalleryPick())) { uris: List<Uri> ->
         if (uris.isNotEmpty()) {
             vm.importFromGallery(uris)
             onOpenReview()
