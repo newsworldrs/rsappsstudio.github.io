@@ -29,6 +29,11 @@
     <string name="rs_scanner_book_second_is_one">Bottom half is page 1</string>
     <string name="rs_scanner_book_turn_phone">Turn the phone sideways - the open book must fill the long side of the screen</string>
     <string name="rs_scanner_book_single_page">Only one page was found, so it was kept whole. Fit both pages of the book in view to scan them as two pages.</string>
+    <string name="rs_scanner_preparing_scans">Please wait, preparing your scans…</string>
+    <string name="rs_scanner_hd">HD</string>
+    <string name="rs_scanner_hd_on">HD scan on (up to %1$d HD pages)</string>
+    <string name="rs_scanner_hd_off">HD scan off</string>
+    <string name="rs_scanner_hd_limit">HD limit reached (%1$d pages). Turn off HD to keep scanning.</string>
     <string name="rs_scanner_press_back_exit">Press back again to exit</string>
     <string name="rs_scanner_exit_unsaved">Scan not saved. Press back again to exit</string>
     <string name="rs_scanner_brush">Brush</string>
@@ -224,12 +229,8 @@
         <item quantity="other">%1$d lines of text found - hold still</item>
     </plurals>
     <plurals name="rs_scanner_processing_pages">
-        <item quantity="one">Processing %1$d page…</item>
-        <item quantity="other">Processing %1$d pages…</item>
-    </plurals>
-    <plurals name="rs_scanner_processing_wait">
-        <item quantity="one">Please wait, %1$d page is still processing</item>
-        <item quantity="other">Please wait, %1$d pages are still processing</item>
+        <item quantity="one">Please wait, preparing your scans… %1$d left</item>
+        <item quantity="other">Please wait, preparing your scans… %1$d left</item>
     </plurals>
     <plurals name="rs_scanner_discard_message">
         <item quantity="one">%1$d page will be deleted.</item>

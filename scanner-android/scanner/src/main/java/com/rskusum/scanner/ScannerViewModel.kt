@@ -148,6 +148,26 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     /** Full-resolution rendering is memory heavy: one page at a time. */
     // Two renders at a time: phones have several cores; more would only cost memory.
     private val renderGate = Semaphore(2)
+    // At most two photos are analysed at a time; more captures wait their turn (bounded memory).
+    private val createGate = Semaphore(2)
+
+    /** HD scan: full sensor resolution, larger pages and a better-quality PDF (limited count). */
+    var hdMode by mutableStateOf(false)
+        private set
+    val hdPages: Int get() = pages.count { it.hd }
+
+    /** Turns HD on / off; returns false when HD can't be turned on (limit reached). */
+    fun toggleHd(): Boolean {
+        if (!hdMode && hdPages >= HD_LIMIT) {
+            _messages.tryEmit(str(R.string.rs_scanner_hd_limit, HD_LIMIT))
+            return false
+        }
+        hdMode = !hdMode
+        return true
+    }
+
+    /** Longest side photos are decoded at (HD keeps more of the sensor's detail). */
+    val photoSide: Int get() = if (hdMode) HD_PHOTO_SIDE else MAX_PHOTO_SIDE
 
     init {
         refreshDocuments()
@@ -172,6 +192,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             )
             return null
         }
+        val hd = hdMode
+        if (hd && hdPages >= HD_LIMIT) {
+            photo.recycle()
+            _messages.tryEmit(str(R.string.rs_scanner_hd_limit, HD_LIMIT))
+            return null
+        }
         processingCaptures++
         val mode = mode
         val smart = aiAssist
@@ -181,7 +207,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val front = idFront
                 val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
-                val created = withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported) }
+                val created = createGate.withPermit {
+                    withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported) }
+                }
+                created.forEach { it.hd = hd }
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
@@ -224,7 +253,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 for (uri in uris) {
                     importRemaining = (importRemaining - 1).coerceAtLeast(0)
                     val bmp = withContext(Dispatchers.IO) {
-                        runCatching { Images.decodeUri(getApplication(), uri, MAX_PHOTO_SIDE) }.getOrNull()
+                        runCatching { Images.decodeUri(getApplication(), uri, photoSide) }.getOrNull()
                     } ?: continue
                     // One picture at a time, in the chosen order: only one full-size photo in
                     // memory; its render overlaps with the next picture's detection.
@@ -573,14 +602,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Page images for the PDF, in order; ID card sides are merged onto one page. */
-    private fun pdfPageFiles(): List<File> {
-        val out = ArrayList<File>()
+    /** PDF pages in order: (rendered file, HD). ID card sides are combined on one page. */
+    private fun pdfPageFiles(): List<Pair<File, Boolean>> {
+        val out = ArrayList<Pair<File, Boolean>>()
         val doneGroups = HashSet<String>()
         for (p in pages) {
             val g = p.idGroup
-            if (g == null) { p.processedFile?.let { out += it }; continue }
+            if (g == null) { p.processedFile?.let { out += it to p.hd }; continue }
             if (!doneGroups.add(g)) continue
-            composeIdPage(pages.filter { it.idGroup == g })?.let { out += it }
+            composeIdPage(pages.filter { it.idGroup == g })?.let { out += it to false }
         }
         return out
     }
@@ -646,10 +676,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
     private fun render(page: Page, pickSmartFilter: Boolean): Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>? {
-        val bmp = Images.decodeFile(page.originalFile, MAX_PHOTO_SIDE) ?: return null
+        val bmp = Images.decodeFile(page.originalFile, if (page.hd) HD_PHOTO_SIDE else MAX_PHOTO_SIDE) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = RENDER_MAX_SIDE, forcedOrientation = page.forcedOrientation)
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = if (page.hd) HD_RENDER_MAX_SIDE else RENDER_MAX_SIDE, forcedOrientation = page.forcedOrientation)
         rgb.release()
         if (page.uprightPending) {
             page.uprightPending = false
@@ -671,7 +701,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         enhanced.release()
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
         Images.saveJpeg(out, file, 95)
-        val thumb = Images.scaleDown(out, 360).asImageBitmap()
+        // Small thumbnails: a 100-page batch keeps only ~30 MB of them in memory.
+        val thumb = Images.scaleDown(out, 280).asImageBitmap()
         return Triple(file, thumb, pick)
     }
 
@@ -974,6 +1005,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val TAG = "ScannerVM"
         const val MAX_PHOTO_SIDE = 4000
+        /** HD: photos up to 6000 px (a 108 MB bitmap at most, never the full 50-200 MP). */
+        const val HD_PHOTO_SIDE = 6000
+        private const val HD_RENDER_MAX_SIDE = 5000
+        /** HD pages per scan. */
+        const val HD_LIMIT = 5
         /** Rendered page size: the largest PDF quality (HIGH) uses 3300 px, the viewer 3000 px. */
         private const val RENDER_MAX_SIDE = 3300
         /** Fingerprint correlation above which a capture counts as the same page (tested: same >= 0.976, different <= 0.75). */

@@ -238,8 +238,13 @@ fun ReviewScreen(
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
+            val pending = vm.pendingPages
             if (vm.pages.isEmpty()) {
-                CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color.White)
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.rs_scanner_preparing_scans), color = Color.White)
+                }
             } else {
                 var pageZoomed by remember { mutableStateOf(false) }
                 HorizontalPager(
@@ -267,6 +272,22 @@ fun ReviewScreen(
                         .background(Color.Black.copy(alpha = 0.6f))
                         .padding(horizontal = 12.dp, vertical = 4.dp),
                 )
+                // Pages still being prepared: "Please wait, preparing your scans... 3 left".
+                if (pending > 0) {
+                    Row(
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 6.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.Black.copy(alpha = 0.7f))
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(Modifier.size(14.dp), color = Color.White, strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text(pluralStringResource(R.plurals.rs_scanner_processing_pages, pending, pending), color = Color.White, fontSize = 13.sp)
+                    }
+                }
             }
             if (saving) {
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
@@ -340,7 +361,7 @@ fun ReviewScreen(
 private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
     val image by produceState<ImageBitmap?>(null, page.version, page.processedFile) {
         val f = page.processedFile
-        value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 3000)?.asImageBitmap() }
+        value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 2400)?.asImageBitmap() }
     }
     // Zoom: pinch (up to 5x), drag to move while zoomed, double-tap to zoom in / back out.
     var scale by remember(page.id) { mutableFloatStateOf(1f) }

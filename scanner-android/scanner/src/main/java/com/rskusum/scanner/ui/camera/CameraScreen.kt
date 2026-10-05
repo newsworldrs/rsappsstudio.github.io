@@ -63,6 +63,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CheckBox
+import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.FlashAuto
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
@@ -153,6 +155,9 @@ private enum class Flash(val mode: Int) {
 
     fun next() = entries[(ordinal + 1) % entries.size]
 }
+
+/** Captures waiting to be processed before the shutter pauses (memory stays bounded in long batches). */
+private const val MAX_QUEUED_CAPTURES = 3
 
 /** Gyroscope speed (rad/s x 1000) below which the phone counts as steady for the shutter. */
 private const val STEADY_SHAKE = 150
@@ -247,7 +252,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 val bmp: Bitmap? = try {
                     val buf = image.planes[0].buffer
                     val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
-                    Images.decodeBytes(bytes, image.imageInfo.rotationDegrees, ScannerViewModel.MAX_PHOTO_SIDE)
+                    Images.decodeBytes(bytes, image.imageInfo.rotationDegrees, vm.photoSide)
                 } catch (t: Throwable) {
                     null
                 } finally {
@@ -273,6 +278,11 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     fun capture(manual: Boolean) {
         val ic = holder.capture ?: return
         if (capturing) return
+        // Long batches: never more than a few photos waiting to be processed (bounded memory).
+        if (vm.processingCaptures >= MAX_QUEUED_CAPTURES) {
+            if (manual) toast = context.getString(R.string.rs_scanner_preparing_scans)
+            return
+        }
         capturing = true
         if (manual) vm.tracker.onManualCaptureStarted(SystemClock.elapsedRealtime())
         val hint = analyzer.lastQuad
@@ -409,7 +419,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     runCatching { cam.cameraControl.setZoomRatio(zoom.coerceAtMost(max)) }
                 }
                 if (granted) {
-                    CameraPreview(holder, analyzer, flash.mode)
+                    CameraPreview(holder, analyzer, flash.mode, hd = vm.hdMode)
                     val guide = vm.guideFrame
                     val book = vm.mode == ScanMode.BOOK && !qrMode
                     when {
@@ -450,7 +460,6 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     state.guidance != null -> stringResource(state.guidance!!)
                     vm.mode.extractText && state.textBoxes.size >= 3 && state.phase != CapturePhase.NEXT_PAGE ->
                         pluralStringResource(R.plurals.rs_scanner_text_lines_found, state.textBoxes.size, state.textBoxes.size)
-                    vm.processingCaptures > 0 && state.phase != CapturePhase.HOLD_STEADY -> stringResource(R.string.rs_scanner_processing)
                     else -> when (state.phase) {
                         CapturePhase.SEARCHING -> when {
                             vm.autoCapture && state.progress > 0f -> stringResource(R.string.rs_scanner_hold_still_capture)
@@ -532,6 +541,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                             vm.autoCapture = !vm.autoCapture
                             toast = context.getString(if (vm.autoCapture) R.string.rs_scanner_auto_capture_on else R.string.rs_scanner_auto_capture_off)
                         },
+                        hd = vm.hdMode,
+                        onToggleHd = {
+                            if (vm.toggleHd()) {
+                                toast = if (vm.hdMode) context.getString(R.string.rs_scanner_hd_on, ScannerViewModel.HD_LIMIT) else context.getString(R.string.rs_scanner_hd_off)
+                            }
+                        },
                         smartFilter = vm.aiAssist,
                         onToggleSmart = {
                             vm.aiAssist = !vm.aiAssist
@@ -578,7 +593,6 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             thumbnail = vm.pages.lastOrNull(),
             pageCount = vm.pages.size,
             processing = vm.processingCaptures > 0,
-            pending = vm.pendingPages,
             onGallery = if (vm.options.galleryImport) ({
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }) else null,
@@ -592,7 +606,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             onThumbnail = {
                 val pending = vm.pendingPages
                 if (pending > 0) {
-                    Toast.makeText(context, context.resources.getQuantityString(R.plurals.rs_scanner_processing_wait, pending, pending), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, R.string.rs_scanner_preparing_scans, Toast.LENGTH_SHORT).show()
                 }
                 if (vm.pages.isNotEmpty()) onOpenReview()
             },
@@ -606,7 +620,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
 // Camera
 
 @Composable
-private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flashMode: Int) {
+private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flashMode: Int, hd: Boolean) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember {
@@ -619,7 +633,8 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
     var focusPoint by remember { mutableStateOf<Offset?>(null) }
     var focusKey by remember { mutableIntStateOf(0) }
 
-    DisposableEffect(lifecycleOwner) {
+    // Rebinds when HD is switched: HD captures at the sensor's full resolution.
+    DisposableEffect(lifecycleOwner, hd) {
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
         future.addListener({
@@ -639,7 +654,16 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 // ~12 MP 4:3: full sensor detail on normal cameras. The maximum of 50-200 MP sensors
                 // is a slow re-mosaiced shot that is softer and makes processing much slower.
-                .setResolutionSelector(selector(Size(4000, 3000), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                .setResolutionSelector(
+                    if (hd) {
+                        ResolutionSelector.Builder()
+                            .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                            .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
+                            .build()
+                    } else {
+                        selector(Size(4000, 3000), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)
+                    }
+                )
                 .setFlashMode(flashMode)
                 .build()
 
@@ -1080,6 +1104,8 @@ private fun ToolRail(
     onFlash: () -> Unit,
     autoCapture: Boolean,
     onToggleAuto: () -> Unit,
+    hd: Boolean,
+    onToggleHd: () -> Unit,
     smartFilter: Boolean,
     onToggleSmart: () -> Unit,
     frame: com.rskusum.scanner.data.FrameOrientation?,
@@ -1106,6 +1132,16 @@ private fun ToolRail(
         }
         RailButton(selected = autoCapture, label = stringResource(R.string.rs_scanner_auto), onClick = onToggleAuto) {
             Text("A", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black)
+        }
+        // HD: a check box, ticked when on (normal quality has no label of its own).
+        RailButton(selected = hd, label = null, onClick = onToggleHd) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    if (hd) Icons.Filled.CheckBox else Icons.Filled.CheckBoxOutlineBlank,
+                    stringResource(R.string.rs_scanner_hd), tint = Color.White, modifier = Modifier.size(14.dp),
+                )
+                Text(stringResource(R.string.rs_scanner_hd), color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
         }
         RailButton(selected = smartFilter, label = stringResource(R.string.rs_scanner_smart), onClick = onToggleSmart) {
             Icon(Icons.Filled.AutoAwesome, stringResource(R.string.rs_scanner_smart_filter), tint = Color.White, modifier = Modifier.size(20.dp))
@@ -1204,27 +1240,10 @@ private fun BottomControls(
     thumbnail: com.rskusum.scanner.data.Page?,
     pageCount: Int,
     processing: Boolean,
-    pending: Int,
     onGallery: (() -> Unit)?,
     onShutter: () -> Unit,
     onThumbnail: () -> Unit,
 ) {
-    // "Processing 3 pages..." above the bar while captures / gallery pictures are being prepared.
-    if (pending > 0) {
-        Box(Modifier.fillMaxWidth().background(ScanColors.Bar).padding(top = 8.dp), contentAlignment = Alignment.Center) {
-            Row(
-                Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(ScanColors.SurfaceHigh)
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CircularProgressIndicator(Modifier.size(14.dp), color = ScanColors.AccentBright, strokeWidth = 2.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(pluralStringResource(R.plurals.rs_scanner_processing_pages, pending, pending), color = Color.White, fontSize = 13.sp)
-            }
-        }
-    }
     // Pages on the left, shutter in the middle, gallery on the right.
     Box(
         Modifier

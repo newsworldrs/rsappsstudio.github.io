@@ -53,22 +53,29 @@ class DocumentStore(private val context: Context) {
      * small. Pages are A4 wide (A4 long side for landscape pages); height follows the page aspect.
      * Uses the built-in [JpegPdfWriter] - no PDF library needed. Returns the file.
      */
-    fun savePdf(name: String, pageFiles: List<File>, quality: PdfQuality = PdfQuality.BALANCED, into: File = dir): File {
+    /**
+     * @param pageFiles rendered pages in order, each with its HD flag (HD pages keep up to 5000 px
+     *   at JPEG quality 92 or better, whatever the chosen [quality]). Pages are compressed and
+     *   written one at a time, so a 100-page PDF needs no more memory than a one-page one.
+     */
+    fun savePdf(name: String, pageFiles: List<Pair<File, Boolean>>, quality: PdfQuality = PdfQuality.BALANCED, into: File = dir): File {
         val file = uniqueFile(sanitize(name), "pdf", into)
-        val pages = pageFiles.map { pf ->
-            val (jpeg, w, h) = compressPage(pf, quality)
+        JpegPdfWriter.write(file, pageFiles.size, title = name, producer = "Scan - powered by RS Apps Studio") { i ->
+            val (pf, hd) = pageFiles[i]
+            val (jpeg, w, h) = compressPage(pf, quality, hd)
             val pw = if (w > h) A4_LONG else A4_SHORT
             JpegPdfWriter.PageImage(jpeg, w, h, pw, pw * h / w)
         }
-        JpegPdfWriter.write(file, pages, title = name, producer = "Scan - powered by RS Apps Studio")
         return file
     }
 
-    /** Downscale to the preset's resolution and JPEG-encode at its quality. */
-    private fun compressPage(file: File, quality: PdfQuality): Triple<ByteArray, Int, Int> {
-        val bmp = Images.decodeFile(file, quality.maxSide) ?: error("Cannot decode $file")
+    /** Downscale to the preset's resolution and JPEG-encode at its quality (HD: at least 5000 px / 92). */
+    private fun compressPage(file: File, quality: PdfQuality, hd: Boolean = false): Triple<ByteArray, Int, Int> {
+        val maxSide = if (hd) maxOf(quality.maxSide, 5000) else quality.maxSide
+        val jpegQuality = if (hd) maxOf(quality.jpegQuality, 92) else quality.jpegQuality
+        val bmp = Images.decodeFile(file, maxSide) ?: error("Cannot decode $file")
         val bytes = ByteArrayOutputStream().use { bos ->
-            bmp.compress(Bitmap.CompressFormat.JPEG, quality.jpegQuality, bos); bos.toByteArray()
+            bmp.compress(Bitmap.CompressFormat.JPEG, jpegQuality, bos); bos.toByteArray()
         }
         val result = Triple(bytes, bmp.width, bmp.height)
         bmp.recycle()

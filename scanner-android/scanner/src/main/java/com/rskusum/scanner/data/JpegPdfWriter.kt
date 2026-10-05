@@ -16,7 +16,8 @@ internal object JpegPdfWriter {
     /** One page: JPEG bytes, pixel size, and page size in PDF points (1/72 inch). */
     class PageImage(val jpeg: ByteArray, val width: Int, val height: Int, val pageWidth: Float, val pageHeight: Float)
 
-    fun write(file: File, pages: List<PageImage>, title: String, producer: String) {
+    /** Writes [pageCount] pages; [page] makes each one only when it is written (one in memory at a time). */
+    fun write(file: File, pageCount: Int, title: String, producer: String, page: (Int) -> PageImage) {
         BufferedOutputStream(FileOutputStream(file), 1 shl 16).use { raw ->
             val out = CountingStream(raw)
             val offsets = HashMap<Int, Long>()
@@ -37,7 +38,8 @@ internal object JpegPdfWriter {
             obj(1, "<< /Type /Catalog /Pages 2 0 R >>")
             obj(3, "<< /Title ${utf16Hex(title)} /Producer ${utf16Hex(producer)} >>")
             val kids = StringBuilder()
-            pages.forEachIndexed { i, p ->
+            for (i in 0 until pageCount) {
+                val p = page(i)
                 val pageObj = 4 + 3 * i
                 val imageObj = pageObj + 1
                 val contentObj = pageObj + 2
@@ -58,7 +60,7 @@ internal object JpegPdfWriter {
                 val content = "q $pw 0 0 $ph 0 0 cm /Im0 Do Q".toByteArray(Charsets.US_ASCII)
                 obj(contentObj, "<< /Length ${content.size} >>", content)
             }
-            obj(2, "<< /Type /Pages /Kids [${kids.toString().trim()}] /Count ${pages.size} >>")
+            obj(2, "<< /Type /Pages /Kids [${kids.toString().trim()}] /Count $pageCount >>")
 
             val size = (offsets.keys.maxOrNull() ?: 3) + 1
             val xref = out.count

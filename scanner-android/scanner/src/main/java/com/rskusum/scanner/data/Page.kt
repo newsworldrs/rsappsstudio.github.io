@@ -42,6 +42,8 @@ class Page(
     var rotation by mutableIntStateOf(0)
     /** Text orientation still to be checked (done by the first render, on the page it flattens anyway). */
     @Volatile var uprightPending = false
+    /** HD page: higher capture / render resolution and PDF quality. */
+    var hd = false
     /** Layout + feature signature of the page at capture, for "same page again?" checks. */
     var signature: com.rskusum.scanner.vision.PageSignature? = null
     var processedFile by mutableStateOf<File?>(null)
