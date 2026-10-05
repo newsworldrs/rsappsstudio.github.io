@@ -143,6 +143,15 @@ fun ScannerFlow(
         }
     }
 
+    // Screen stays on while scanning (camera open) and while pages are still being prepared, so
+    // a long batch is never interrupted by the screen timeout.
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    val keepAwake = screen == Screen.CAMERA || vm.isRendering
+    androidx.compose.runtime.DisposableEffect(keepAwake) {
+        hostView.keepScreenOn = keepAwake
+        onDispose { hostView.keepScreenOn = false }
+    }
+
     // First run: the button tour, once per install.
     var showIntro by remember { mutableStateOf(options.showIntro && !com.rskusum.scanner.ui.intro.IntroPrefs.shown(context)) }
 

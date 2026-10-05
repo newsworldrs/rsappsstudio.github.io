@@ -138,6 +138,12 @@ fun ReviewScreen(
     var renaming by remember { mutableStateOf(false) }
     var confirmDiscard by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
+    // Keep the screen on while the PDF is being written (a long batch can take a while).
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.runtime.DisposableEffect(saving) {
+        if (saving) view.keepScreenOn = true
+        onDispose { if (saving) view.keepScreenOn = false }
+    }
     val current: Page? = vm.pages.getOrNull(pagerState.currentPage)
 
     fun doSave(asJpeg: Boolean) {
