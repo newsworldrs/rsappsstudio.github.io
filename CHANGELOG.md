@@ -4,6 +4,25 @@ All notable changes to the **RS Kusum Scanner** Android library (`scanner-androi
 Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPack:
 `implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")`.
 
+## [1.5.0] - 2026-10-05
+### Added
+- **Text orientation for every script.** Pages are turned upright from the direction of their text lines, which works for any script. Upright vs. upside down is decided by the headline of Devanagari, Bengali and Gurmukhi words (Hindi, Marathi, Nepali, Sanskrit, ...) and by the on-device model for other scripts. Fixes Hindi pages that were left sideways or flipped.
+- **Gallery imports keep already-cropped pictures whole.** The picture borders are the page corners unless a real page lying on a surface is found. Shapes inside the picture (a photo, a table, a box) are no longer cropped to, and the picture keeps its own proportions.
+- **Camera zoom** (pinch or 1x / 2x chips, up to 2x) and **zoom in review** (pinch up to 5x, double-tap, pan).
+- Blue-purple brand gradient on buttons and icon buttons.
+### Changed
+- **Book mode:**
+  - A two-page spread is told apart from a single page by the direction of its text lines, so one page is never cut into two halves. A single page is kept whole.
+  - When the capture finds only one page, the whole open book shown by the live outline is used. The other page can also be found from its text when its edges are faint.
+  - Each page's outer edges are cropped again after the split. Book pages are always portrait.
+- **Frame mode** trusts the frame. Two or three real sides near the frame are enough, and the missing corners are completed from them, so there is no false "Move closer". At capture, if the page doesn't sit on the frame all round, the page itself is searched and the frame is only a hint.
+- **Sharper, faster captures:**
+  - The camera takes ~12 MP 4:3 photos instead of the sensor maximum (50-200 MP sensors give slow, softer shots).
+  - The shutter waits for a steady phone (gyroscope).
+  - A quick preview thumbnail appears at once.
+  - Two pages render in parallel at 3300 px (the largest PDF quality).
+  - Gallery pictures are processed one at a time in the chosen order.
+
 ## [1.4.0] - 2026-09-30
 ### Changed
 - **Branding:** the camera now shows **"Scan · powered by RS Apps Studio"**. PDFs are labelled "Scan - powered by RS Apps Studio", and the standalone app saves to the `RS Apps Studio Scan` folder.
@@ -71,6 +90,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Compressed PDF output with PDFBox, and JPEG pages.
 - Apache 2.0 licence and a full third-party licence audit.
 
+[1.5.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.5.0
 [1.4.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.4.0
 [1.3.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.3.0
 [1.2.1]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.2.1
