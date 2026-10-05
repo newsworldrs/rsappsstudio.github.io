@@ -62,6 +62,17 @@ object Images {
         return rotate(scaleDown(bmp, maxSide), deg)
     }
 
+    /**
+     * Small grid / strip thumbnail in RGB_565 (2 bytes a pixel): ~0.15 MB each, so even a
+     * 100-page batch keeps only ~15 MB of thumbnails in memory. [bmp] is recycled.
+     */
+    fun thumbnail(bmp: Bitmap, maxSide: Int = 280): Bitmap {
+        val small = scaleDown(bmp, maxSide)
+        val out = small.copy(Bitmap.Config.RGB_565, false) ?: return small
+        if (out !== small) small.recycle()
+        return out
+    }
+
     fun scaleDown(bmp: Bitmap, maxSide: Int): Bitmap {
         val long = max(bmp.width, bmp.height)
         if (long <= maxSide) return bmp

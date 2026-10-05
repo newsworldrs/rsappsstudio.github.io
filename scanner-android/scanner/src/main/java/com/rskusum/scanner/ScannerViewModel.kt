@@ -28,6 +28,7 @@ import com.rskusum.scanner.vision.SmartFilter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -144,7 +145,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     private val sessionDir = File(app.filesDir, "session").apply { mkdirs() }
-    private val renderDir = File(app.cacheDir, "rendered").apply { mkdirs() }
+    // Rendered pages live next to the photos (not in the cache, which Android may clear), so an
+    // interrupted batch comes back complete.
+    private val renderDir = File(app.filesDir, "session_rendered").apply { mkdirs() }
+    private val sessionStore = com.rskusum.scanner.data.SessionStore(sessionDir)
     /** Full-resolution rendering is memory heavy: one page at a time. */
     // Two renders at a time: phones have several cores; more would only cost memory.
     private val renderGate = Semaphore(2)
@@ -171,6 +175,50 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refreshDocuments()
+        restoreSession()
+        // Keep the on-disk manifest of the batch up to date (paths and edit settings only).
+        viewModelScope.launch {
+            androidx.compose.runtime.snapshotFlow {
+                documentName to pages.map { p ->
+                    listOf(p.quad, p.filter, p.removeShadow, p.rotation, p.processedFile, p.erasures.size, p.smartLabel, p.ocrText)
+                }
+            }.collectLatest {
+                kotlinx.coroutines.delay(300)
+                val snapshot = pages.toList()
+                val name = documentName
+                withContext(Dispatchers.IO) {
+                    if (snapshot.isEmpty()) sessionStore.clear() else sessionStore.save(name, snapshot)
+                }
+            }
+        }
+    }
+
+    /**
+     * Brings back a batch that was interrupted (app killed, phone restarted): its pages are read
+     * from the saved photos / rendered files; pages that were not finished are rendered again.
+     */
+    private fun restoreSession() {
+        val restored = sessionStore.restore() ?: return
+        restored.name?.let { documentName = it }
+        pages.addAll(restored.pages)
+        for (p in restored.pages) {
+            val done = p.processedFile
+            if (done != null) {
+                p.rendering = false
+                viewModelScope.launch {
+                    p.thumbnail = withContext(Dispatchers.IO) {
+                        Images.decodeFile(done, 560)?.let { Images.thumbnail(it).asImageBitmap() }
+                    }
+                }
+            } else {
+                launchRender(p)
+            }
+        }
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(800) // let the camera screen start listening
+            val n = restored.pages.size
+            _messages.tryEmit(getApplication<Application>().resources.getQuantityString(R.plurals.rs_scanner_session_restored, n, n))
+        }
     }
 
     // --- Pipeline --------------------------------------------------------------------------
@@ -671,7 +719,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
         val out = Images.toBitmap(flat)
         flat.release()
-        return out.asImageBitmap()
+        return Images.thumbnail(out).asImageBitmap()
     }
 
     /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
@@ -701,8 +749,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         enhanced.release()
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
         Images.saveJpeg(out, file, 95)
-        // Small thumbnails: a 100-page batch keeps only ~30 MB of them in memory.
-        val thumb = Images.scaleDown(out, 280).asImageBitmap()
+        val thumb = Images.thumbnail(out).asImageBitmap() // recycles out
+
         return Triple(file, thumb, pick)
     }
 
@@ -911,6 +959,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     fun discardSession() {
         pages.toList().forEach { deletePage(it) }
         sessionDir.listFiles()?.forEach { it.delete() }
+        renderDir.listFiles()?.forEach { it.delete() }
+        sessionStore.clear()
         documentName = defaultName()
         tracker.reset()
         resetIdCard()

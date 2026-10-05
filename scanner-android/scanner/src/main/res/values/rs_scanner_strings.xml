@@ -275,6 +275,10 @@
         <item quantity="one">Please wait, preparing your scans… %1$d left</item>
         <item quantity="other">Please wait, preparing your scans… %1$d left</item>
     </plurals>
+    <plurals name="rs_scanner_session_restored">
+        <item quantity="one">Your unfinished scan is back: %1$d page</item>
+        <item quantity="other">Your unfinished scan is back: %1$d pages</item>
+    </plurals>
     <plurals name="rs_scanner_discard_message">
         <item quantity="one">%1$d page will be deleted.</item>
         <item quantity="other">All %1$d pages will be deleted.</item>
