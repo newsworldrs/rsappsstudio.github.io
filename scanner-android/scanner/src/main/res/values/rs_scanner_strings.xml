@@ -29,6 +29,8 @@
     <string name="rs_scanner_book_second_is_one">Bottom half is page 1</string>
     <string name="rs_scanner_book_turn_phone">Turn the phone sideways - the open book must fill the long side of the screen</string>
     <string name="rs_scanner_book_single_page">Only one page was found, so it was kept whole. Fit both pages of the book in view to scan them as two pages.</string>
+    <string name="rs_scanner_press_back_exit">Press back again to exit</string>
+    <string name="rs_scanner_exit_unsaved">Scan not saved. Press back again to exit</string>
     <string name="rs_scanner_brush">Brush</string>
     <string name="rs_scanner_camera_needed">Camera access is needed to scan documents.</string>
     <string name="rs_scanner_cancel">Cancel</string>

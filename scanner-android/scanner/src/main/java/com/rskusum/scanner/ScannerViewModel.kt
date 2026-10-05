@@ -610,13 +610,26 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Flattened page at thumbnail size, without filters (shown until the full render is done). */
+    /**
+     * Flattened page at thumbnail size, without filters (shown until the full render is done).
+     * A new page's text orientation is decided here, so even the first thumbnail is upright.
+     */
     private fun quickThumbnail(page: Page): ImageBitmap? {
-        val bmp = Images.decodeFile(page.originalFile, 1000) ?: return null
+        val pending = page.uprightPending
+        val bmp = Images.decodeFile(page.originalFile, if (pending) 2000 else 1000) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = 360, forcedOrientation = page.forcedOrientation)
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = if (pending) 1600 else 360, forcedOrientation = page.forcedOrientation)
         rgb.release()
+        if (pending) {
+            page.uprightPending = false
+            uprightTurn(page, flat)?.let { page.rotation = it }
+            val f = 360.0 / maxOf(flat.cols(), flat.rows())
+            val small = Mat()
+            Imgproc.resize(flat, small, org.opencv.core.Size(flat.cols() * f, flat.rows() * f), 0.0, 0.0, Imgproc.INTER_AREA)
+            flat.release()
+            flat = small
+        }
         rotate(flat, page.rotation)?.let { flat.release(); flat = it }
         val out = Images.toBitmap(flat)
         flat.release()

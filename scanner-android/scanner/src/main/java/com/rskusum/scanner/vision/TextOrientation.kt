@@ -29,43 +29,75 @@ object TextOrientation {
         Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
         try {
             val axis = lineAxis(gray)
+            // 1. Headline scripts: count word headlines on top / bottom with the lines horizontal.
+            //    Upright = many on top, almost none at the bottom; this also works when the line
+            //    direction is unclear (tables, forms, mixed layouts).
+            val none = Headlines(0, 0, 0)
+            val rows = if (axis != Axis.COLUMNS) headlines(gray) else none
+            val cols = if (axis != Axis.ROWS && allowQuarter) {
+                val r = Mat(); Core.rotate(gray, r, Core.ROTATE_90_CLOCKWISE)
+                headlines(r).also { r.release() }
+            } else none
+            // (rotation, words with the bar on top after it, words with the bar at the bottom, words)
+            val votes = listOf(
+                intArrayOf(0, rows.top, rows.bottom, rows.words), intArrayOf(180, rows.bottom, rows.top, rows.words),
+                intArrayOf(90, cols.top, cols.bottom, cols.words), intArrayOf(270, cols.bottom, cols.top, cols.words),
+            )
+            val best = votes.maxBy { it[1] - it[2] }
+            Log.d(TAG, "axis=$axis headlines rows=$rows cols=$cols")
+            // A headline script: most words carry the bar, all on the same side.
+            if (best[1] >= 5 && best[1] >= best[2] * 5 && best[1] >= best[3] * 0.3) return best[0]
+
+            // 2. Other scripts: the line direction says sideways or not, the model up or down.
+            if (model == null) return 0
             if (axis == null) {
-                // No clear text lines (pictures, a few words): the model alone, as before.
-                val r = model?.uprightRotation(rgb) ?: 0
-                return if (r == 180 || allowQuarter) r else 0
+                if (!allowQuarter) return if (upsideDown(rgb, model)) 180 else 0
+                return allTurns(rgb, model)
             }
             if (axis == Axis.COLUMNS && !allowQuarter) return 0
-            var base = 0
-            var g = gray
-            var col = rgb
-            if (axis == Axis.COLUMNS) {
-                base = 90
-                g = Mat(); Core.rotate(gray, g, Core.ROTATE_90_CLOCKWISE)
-                col = Mat(); Core.rotate(rgb, col, Core.ROTATE_90_CLOCKWISE)
-            }
-            try {
-                val (top, bottom) = headlines(g)
-                Log.d(TAG, "axis=$axis headlines top=$top bottom=$bottom")
-                val flip = when {
-                    top >= 8 && top >= bottom * 5 -> false
-                    bottom >= 8 && bottom >= top * 5 -> true
-                    else -> {
-                        // No headline script: the model decides between upright and upside down.
-                        val p = model?.probabilities(col)
-                        p != null && p[2] >= 0.6f && p[2] > p[0] * 2
-                    }
-                }
-                return (base + if (flip) 180 else 0) % 360
-            } finally {
-                if (g !== gray) g.release()
-                if (col !== rgb) col.release()
-            }
+            if (axis == Axis.ROWS) return if (upsideDown(rgb, model)) 180 else 0
+            val turned = Mat(); Core.rotate(rgb, turned, Core.ROTATE_90_CLOCKWISE)
+            return try { if (upsideDown(turned, model)) 270 else 90 } finally { turned.release() }
         } catch (t: Throwable) {
             Log.e(TAG, "orientation failed", t)
             return 0
         } finally {
             gray.release()
         }
+    }
+
+    /**
+     * No clear text lines: the model looks at the page in all four turns and the votes are added
+     * up (the same page seen four ways), so one biased look can't decide alone.
+     */
+    private fun allTurns(rgb: Mat, model: OrientationModel): Int {
+        val score = FloatArray(4)
+        val codes = intArrayOf(-1, Core.ROTATE_90_CLOCKWISE, Core.ROTATE_180, Core.ROTATE_90_COUNTERCLOCKWISE)
+        for (k in 0..3) {
+            val img = if (k == 0) rgb else Mat().also { Core.rotate(rgb, it, codes[k]) }
+            val p = model.probabilities(img)
+            if (k != 0) img.release()
+            // Turning the picture k quarter turns clockwise turns its content k quarters further.
+            if (p != null) for (a in 0..3) score[a] += p[(a + k) % 4] / 4
+        }
+        val a = score.indices.maxBy { score[it] }
+        Log.d(TAG, "all turns ${score.toList()}")
+        return if (a == 0 || score[a] < 0.5f) 0 else (360 - a * 90) % 360
+    }
+
+    /**
+     * Upside down? Asked twice (the page as is and turned 180 degrees) so a bias of the model
+     * towards one answer cancels out; only a clear result flips the page.
+     */
+    private fun upsideDown(rgb: Mat, model: OrientationModel): Boolean {
+        val p = model.probabilities(rgb) ?: return false
+        val r = Mat(); Core.rotate(rgb, r, Core.ROTATE_180)
+        val q = model.probabilities(r)
+        r.release()
+        if (q == null) return p[2] >= 0.6f && p[2] > p[0] * 2
+        val up = p[0] + q[2]
+        val down = p[2] + q[0]
+        return down >= 1.2f && down > up * 2
     }
 
     enum class Axis { ROWS, COLUMNS }
@@ -94,11 +126,15 @@ object TextOrientation {
         }
     }
 
+    /** Word-sized blobs ([words]) and how many carry a thin full-width bar on top / at the bottom. */
+    data class Headlines(val top: Int, val bottom: Int, val words: Int)
+
     /**
-     * Words whose widest solid horizontal bar lies at their top vs at their bottom (text lines
-     * horizontal). Headline scripts give a very one-sided count; other scripts a mixed one.
+     * Words with a thin bar across their full width (a Devanagari / Bengali / Gurmukhi headline)
+     * at their top vs at their bottom, text lines horizontal. Latin letters that run together
+     * give thick or partial bars and are not counted.
      */
-    fun headlines(gray: Mat): Pair<Int, Int> {
+    fun headlines(gray: Mat): Headlines {
         val ink = inkMap(gray, 1600)
         val labels = Mat(); val stats = Mat(); val cents = Mat()
         val n = Imgproc.connectedComponentsWithStats(ink, labels, stats, cents, 8, CvType.CV_32S)
@@ -108,22 +144,28 @@ object TextOrientation {
         val st = IntArray(n * 5)
         stats.get(0, 0, st)
         ink.release(); labels.release(); stats.release(); cents.release()
-        var top = 0; var bottom = 0
+        var top = 0; var bottom = 0; var words = 0
         for (k in 1 until n) {
             val bx = st[k * 5]; val by = st[k * 5 + 1]; val bw = st[k * 5 + 2]; val bh = st[k * 5 + 3]
             if (bh < 8 || bh > 80 || bw < bh * 1.5 || bw > 600) continue
-            var bestRow = 0; var bestFill = 0
+            words++
+            val fill = IntArray(bh)
+            var bestRow = 0
             for (y in 0 until bh) {
                 var c = 0
                 val o = (by + y) * w + bx
                 for (x in 0 until bw) if (lab[o + x] == k) c++
-                if (c > bestFill) { bestFill = c; bestRow = y }
+                fill[y] = c
+                if (c > fill[bestRow]) bestRow = y
             }
-            if (bestFill < bw * 0.75) continue
+            val bestFill = fill[bestRow]
+            if (bestFill < bw * 0.95) continue
+            // Thin bar: only a few rows are nearly as full as the fullest one.
+            if (fill.count { it >= bestFill * 0.8 } > bh * 0.25) continue
             val pos = bestRow.toFloat() / (bh - 1)
             if (pos < 0.35f) top++ else if (pos > 0.65f) bottom++
         }
-        return top to bottom
+        return Headlines(top, bottom, words)
     }
 
     private fun inkMap(gray: Mat, longSide: Int): Mat {

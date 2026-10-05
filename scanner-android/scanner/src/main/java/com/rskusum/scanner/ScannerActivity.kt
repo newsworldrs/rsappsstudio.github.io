@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
@@ -17,7 +18,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.core.content.IntentCompat
@@ -61,14 +64,25 @@ class ScannerActivity : ComponentActivity() {
 
 private enum class Screen { CAMERA, REVIEW, CROP, ERASE, HOME, AI_TEXT }
 
+/** Back presses further apart than this start the exit sequence again. */
+private const val EXIT_WINDOW_MS = 2500L
+
 /**
  * The whole scanner as one composable: camera -> review -> crop / erase -> result.
  * Use it to host the scanner inside your own Compose navigation instead of [ScannerActivity];
  * wrap it in [ScannerTheme]. [onResult] is called once the user taps Done (never in
  * [ScannerOptions.standalone] mode, which saves to its own library instead).
  */
+/**
+ * @param onExit called when the user leaves with Back (the unsaved scan is discarded). Default:
+ *   finishes the hosting activity (result: cancelled).
+ */
 @Composable
-fun ScannerFlow(options: ScannerOptions = ScannerOptions(), onResult: (ScanResult) -> Unit = {}) {
+fun ScannerFlow(
+    options: ScannerOptions = ScannerOptions(),
+    onResult: (ScanResult) -> Unit = {},
+    onExit: (() -> Unit)? = null,
+) {
     RsScanner.init(androidx.compose.ui.platform.LocalContext.current)
     val vm: ScannerViewModel = viewModel()
     vm.configure(options)
@@ -93,13 +107,38 @@ fun ScannerFlow(options: ScannerOptions = ScannerOptions(), onResult: (ScanResul
         vm.aiRequests.collect { page -> aiPageId = page.id; screen = Screen.AI_TEXT }
     }
 
-    BackHandler(enabled = screen != Screen.CAMERA || vm.pages.isNotEmpty()) {
-        screen = when (screen) {
-            Screen.CROP, Screen.ERASE -> Screen.REVIEW
-            Screen.AI_TEXT -> Screen.CAMERA
-            Screen.REVIEW -> Screen.CAMERA
-            Screen.HOME -> Screen.CAMERA
-            Screen.CAMERA -> Screen.REVIEW
+    // Leaving from the camera: Back once = "press again to exit"; with unsaved pages a second
+    // Back warns that the scan is not saved; the next Back exits without saving.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var exitStep by remember { mutableIntStateOf(0) }
+    var exitAt by remember { mutableLongStateOf(0L) }
+    var exitToast by remember { mutableStateOf<Toast?>(null) }
+    fun toast(@androidx.annotation.StringRes id: Int) {
+        exitToast?.cancel()
+        exitToast = Toast.makeText(context, id, Toast.LENGTH_SHORT).also { it.show() }
+    }
+    fun exit() {
+        exitToast?.cancel()
+        vm.discardSession()
+        if (onExit != null) onExit() else (context as? Activity)?.finish()
+    }
+    BackHandler {
+        if (screen != Screen.CAMERA) {
+            exitStep = 0
+            screen = when (screen) {
+                Screen.CROP, Screen.ERASE -> Screen.REVIEW
+                else -> Screen.CAMERA
+            }
+            return@BackHandler
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - exitAt > EXIT_WINDOW_MS) exitStep = 0
+        exitAt = now
+        val unsaved = vm.pages.isNotEmpty()
+        when {
+            exitStep == 0 -> { exitStep = 1; toast(R.string.rs_scanner_press_back_exit) }
+            exitStep == 1 && unsaved -> { exitStep = 2; toast(R.string.rs_scanner_exit_unsaved) }
+            else -> { exitStep = 0; exit() }
         }
     }
 
