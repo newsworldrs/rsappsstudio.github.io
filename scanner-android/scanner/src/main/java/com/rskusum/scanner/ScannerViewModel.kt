@@ -133,12 +133,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     var processingCaptures by mutableStateOf(0)
         private set
     var importing by mutableStateOf(false)
+        private set
     /** Gallery pictures picked but not started yet. */
     var importRemaining by mutableIntStateOf(0)
         private set
     /** Pages still on their way: picked / captured but not processed, or still rendering. */
     val pendingPages: Int get() = importRemaining + processingCaptures + pages.count { it.rendering }
-        private set
 
     var documents by mutableStateOf<List<SavedDocument>>(emptyList())
         private set
