@@ -1,0 +1,37 @@
+# Deletes every stored build artifact in this repository in one go, to free
+# GitHub Actions storage (artifacts count against the account's storage quota).
+# Run it any time from Actions → "Delete all artifacts" → Run workflow.
+name: Delete all artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/delete-artifacts.yml
+
+permissions:
+  actions: write
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner: context.repo.owner, repo: context.repo.repo, per_page: 100 },
+            );
+            let freed = 0;
+            for (const a of artifacts) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: a.id,
+              });
+              freed += a.size_in_bytes;
+              core.info(`Deleted ${a.name} (#${a.id}, ${(a.size_in_bytes / 1e6).toFixed(0)} MB)`);
+            }
+            core.notice(`Deleted ${artifacts.length} artifacts, freed ${(freed / 1e9).toFixed(2)} GB`);
