@@ -37,12 +37,9 @@ jobs:
           ./gradlew --no-daemon :scanner:publishReleasePublicationToMavenLocal
           ls -R ~/.m2/repository/com/github/newsworldrs/ | head -20
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rskusum-scanner-apks
-          path: |
-            scanner-android/app/build/outputs/apk/debug/*.apk
-            scanner-android/app/build/outputs/apk/release/*.apk
+      # No upload-artifact step: build artifacts count against the account's paid Actions
+      # storage (each APK bundle was ~370 MB kept for 90 days). The APKs are published
+      # below as a GitHub Release instead, which doesn't use Actions storage.
 
       - name: Publish APK as a downloadable release
         if: github.event_name != 'pull_request'
