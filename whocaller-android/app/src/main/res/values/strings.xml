@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">WhoCaller</string>
+    <string name="developer_name" translatable="false">RS APPS STUDIO</string>
+    <string name="splash_tagline">Know who\'s calling.\nStay protected.</string>
+    <string name="app_description">WhoCaller helps you identify unknown callers, detect suspicious calls, search phone numbers and protect yourself from unwanted communication.</string>
+
+    <string name="widget_label">WhoCaller</string>
+    <string name="widget_search">Search Number</string>
+    <string name="widget_recent_spam">Recent Spam</string>
+    <string name="widget_no_recent_spam">No spam blocked recently</string>
+    <string name="widget_protection_active">Protection Active</string>
+    <string name="widget_protection_setup">Protection Setup Required</string>
+    <string name="widget_description">Search numbers and see your protection status.</string>
+
+    <string name="shortcut_search_short">Search</string>
+    <string name="shortcut_search_long">Search Number</string>
+    <string name="shortcut_calls_short">Calls</string>
+    <string name="shortcut_calls_long">Recent Calls</string>
+    <string name="shortcut_protection_short">Protection</string>
+    <string name="shortcut_protection_long">Spam Protection</string>
+    <string name="shortcut_blocked_short">Blocked</string>
+    <string name="shortcut_blocked_long">Blocked Numbers</string>
+
+    <string name="onboarding_1_title">Know who\'s calling</string>
+    <string name="onboarding_1_body">Identify unknown callers before you answer.</string>
+    <string name="onboarding_2_title">Block unwanted calls</string>
+    <string name="onboarding_2_body">Protect yourself from spam and suspicious numbers.</string>
+    <string name="onboarding_3_title">Search any number</string>
+    <string name="onboarding_3_body">Find information about phone numbers using WhoCaller.</string>
+    <string name="onboarding_4_title">Your privacy matters</string>
+    <string name="onboarding_4_body">Your contacts and personal information remain under your control.</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_page">Page %1$d of %2$d</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_calls">Calls</string>
+    <string name="nav_protection">Protection</string>
+    <string name="nav_settings">Settings</string>
+    <string name="update_ready_title">Update ready</string>
+    <string name="update_ready_text">A new version of WhoCaller has been downloaded. Restart to finish updating.</string>
+    <string name="update_restart">Restart</string>
+    <!-- WHOCALLER VIDEO (experimental) -->
+    <string name="vc_starting">Starting…</string>
+    <string name="vc_calling">Calling on WhoCaller video…</string>
+    <string name="vc_incoming">WhoCaller video call</string>
+    <string name="vc_incoming_title">%1$s is video calling</string>
+    <string name="vc_connecting">Connecting…</string>
+    <string name="vc_ended">Call ended</string>
+    <string name="vc_declined">Call declined</string>
+    <string name="vc_missed">Missed video call</string>
+    <string name="vc_no_answer">No answer</string>
+    <string name="vc_failed">Couldn\'t start the video call</string>
+    <string name="vc_connection_lost">Connection lost</string>
+    <string name="vc_accept">Accept</string>
+    <string name="vc_decline">Decline</string>
+    <string name="vc_end">End</string>
+    <string name="vc_mic">Mic</string>
+    <string name="vc_camera">Camera</string>
+    <string name="vc_switch">Flip</string>
+    <string name="vc_swap_views">Swap videos</string>
+    <string name="vc_speaker">Speaker</string>
+    <string name="vc_someone">Someone</string>
+    <string name="vc_whatsapp">WhatsApp</string>
+    <string name="vc_invite">Invite</string>
+    <string name="vc_not_on_whocaller_short">Not on WhoCaller yet</string>
+    <string name="vc_not_on_whocaller">WhoCaller video works between WhoCaller users with a verified WhoCaller ID. Invite them, or use WhatsApp video.</string>
+    <string name="vc_invite_text">Let\'s video call on WhoCaller, free over the internet, and see who\'s calling: %1$s</string>
+    <string name="vc_permissions_needed">Camera and microphone access are needed for video calls</string>
+    <string name="vc_sign_in_needed">Sign in to WhoCaller to make video calls</string>
+</resources>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <TextView
+        android:id="@+id/widget_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/widget_label"
+        android:textColor="@color/widget_text"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="@string/widget_protection_setup"
+        android:textColor="@color/widget_warning"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/widget_recent_spam"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="@string/widget_no_recent_spam"
+        android:textColor="@color/widget_text_secondary"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/widget_search"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/widget_button_background"
+        android:drawablePadding="8dp"
+        android:gravity="center"
+        android:text="@string/widget_search"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp" />
+</LinearLayout>

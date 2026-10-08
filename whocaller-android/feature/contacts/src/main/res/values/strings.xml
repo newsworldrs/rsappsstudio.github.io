@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="contacts_title">Contacts</string>
+    <string name="contacts_search">Search contacts</string>
+    <string name="contacts_favorites">Favorites</string>
+    <string name="contacts_empty">No contacts</string>
+    <string name="contacts_no_match">No contacts match your search</string>
+    <string name="contacts_permission_title">Recognise people you know</string>
+    <string name="contacts_permission_body">Allow contacts access so saved contacts are never shown as unknown or spam. Your contacts stay on this device and are never uploaded.</string>
+    <string name="contacts_permission_button">Allow access</string>
+    <string name="contacts_add">Add contact</string>
+    <string name="contacts_index_letter">Jump to %1$s</string>
+
+    <string name="contact_details">Contact details</string>
+    <string name="contact_video">Video</string>
+    <string name="contact_edit">Edit contact</string>
+    <string name="contact_delete">Delete contact</string>
+    <string name="contact_delete_confirm">Delete %1$s from your phone? This can\'t be undone.</string>
+    <string name="contact_favorite_add">Add to favorites</string>
+    <string name="contact_favorite_remove">Remove from favorites</string>
+    <string name="contact_recent_calls">Recent calls</string>
+    <string name="contact_no_calls">No recent calls with this contact.</string>
+    <string name="contact_not_found">This contact no longer exists.</string>
+    <string name="contact_write_needed">WhoCaller needs permission to change contacts for this.</string>
+    <string name="contacts_from_recents">From recent calls</string>
+</resources>

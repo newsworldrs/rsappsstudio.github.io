@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="callerid_identified_title">WhoCaller identified an incoming caller</string>
+    <string name="callerid_verified_business">Verified Business</string>
+    <string name="callerid_category">Category: %1$s</string>
+    <string name="callerid_suspected_spam">⚠ Suspected Spam</string>
+    <string name="callerid_possible_scam">⚠ Possible Scam</string>
+    <string name="callerid_scam_detail">Multiple reports indicate suspicious activity.</string>
+    <plurals name="callerid_reported_by">
+        <item quantity="one">Reported by %d user</item>
+        <item quantity="other">Reported by %d users</item>
+    </plurals>
+    <string name="callerid_blocked_title">Spam call blocked</string>
+    <string name="callerid_blocked_hidden">Blocked a call from a private number</string>
+    <string name="callerid_blocked_unknown">Blocked a call from an unknown number</string>
+    <string name="callerid_blocked_list">Blocked a number on your block list</string>
+    <string name="callerid_action_report">Report</string>
+    <string name="callerid_action_details">Details</string>
+    <string name="callerid_incoming_from">Incoming call from %1$s</string>
+    <string name="callerid_identified_by">Identified by WhoCaller</string>
+    <string name="callerid_not_in_contacts">Not in your contacts · no reports</string>
+    <string name="callerid_private">a private number</string>
+    <string name="callerid_hidden_detail">The caller hid their number</string>
+    <string name="callerid_spoofed">⚠ Caller ID not verified by your network. The number shown may be fake (spoofed). Don\'t share codes or payment details.</string>
+</resources>

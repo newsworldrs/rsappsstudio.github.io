@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="splash_tagline">اعرف من المتصل.\nابقَ محميًا.</string>
+    <string name="onboarding_1_title">اعرف من المتصل</string>
+    <string name="onboarding_1_body">تعرّف على المتصلين المجهولين قبل الرد.</string>
+    <string name="onboarding_2_title">احظر المكالمات غير المرغوب فيها</string>
+    <string name="onboarding_2_body">احمِ نفسك من الرسائل المزعجة والأرقام المشبوهة.</string>
+    <string name="onboarding_3_title">ابحث عن أي رقم</string>
+    <string name="onboarding_3_body">اعثر على معلومات عن أرقام الهاتف باستخدام WhoCaller.</string>
+    <string name="onboarding_4_title">خصوصيتك مهمة</string>
+    <string name="onboarding_4_body">تبقى جهات اتصالك ومعلوماتك الشخصية تحت سيطرتك.</string>
+    <string name="onboarding_continue">متابعة</string>
+    <string name="onboarding_skip">تخطٍ</string>
+    <string name="onboarding_get_started">ابدأ</string>
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_search">بحث</string>
+    <string name="nav_calls">المكالمات</string>
+    <string name="nav_protection">الحماية</string>
+    <string name="nav_settings">الإعدادات</string>
+</resources>

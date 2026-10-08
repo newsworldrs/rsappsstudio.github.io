@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="splash_tagline">Wissen, wer anruft.\nGeschützt bleiben.</string>
+    <string name="onboarding_1_title">Wissen, wer anruft</string>
+    <string name="onboarding_1_body">Unbekannte Anrufer erkennen, bevor Sie abheben.</string>
+    <string name="onboarding_2_title">Unerwünschte Anrufe blockieren</string>
+    <string name="onboarding_2_body">Schützen Sie sich vor Spam und verdächtigen Nummern.</string>
+    <string name="onboarding_3_title">Beliebige Nummer suchen</string>
+    <string name="onboarding_3_body">Finden Sie mit WhoCaller Informationen zu Telefonnummern.</string>
+    <string name="onboarding_4_title">Ihre Privatsphäre zählt</string>
+    <string name="onboarding_4_body">Ihre Kontakte und persönlichen Daten bleiben unter Ihrer Kontrolle.</string>
+    <string name="onboarding_continue">Weiter</string>
+    <string name="onboarding_skip">Überspringen</string>
+    <string name="onboarding_get_started">Los geht\'s</string>
+    <string name="nav_home">Start</string>
+    <string name="nav_search">Suche</string>
+    <string name="nav_calls">Anrufe</string>
+    <string name="nav_protection">Schutz</string>
+    <string name="nav_settings">Einstellungen</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- Untranslated strings fall back to English; translations are added incrementally (see docs/ARCHITECTURE.md). -->
+    <issue id="MissingTranslation" severity="warning" />
+    <!-- Dependency versions are pinned deliberately in gradle/libs.versions.toml and upgraded as a batch. -->
+    <issue id="GradleDependency" severity="informational" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="informational" />
+    <issue id="OldTargetApi" severity="informational" />
+</lint>

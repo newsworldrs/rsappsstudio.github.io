@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="home_greeting_morning">Selamat pagi, %1$s</string>
+    <string name="home_greeting_afternoon">Selamat siang, %1$s</string>
+    <string name="home_greeting_evening">Selamat malam, %1$s</string>
+    <string name="home_default_name">Pengguna</string>
+    <string name="home_search_hint">Cari nomor telepon</string>
+    <string name="home_action_search">Cari nomor</string>
+    <string name="home_action_calls">Panggilan terbaru</string>
+    <string name="home_action_spam">Perlindungan spam</string>
+    <string name="home_action_blocked">Nomor diblokir</string>
+    <string name="home_stat_identified">Panggilan dikenali</string>
+    <string name="home_stat_blocked">Spam diblokir</string>
+    <string name="home_stat_reported">Nomor dilaporkan</string>
+    <string name="home_protection_active">Perlindungan aktif</string>
+    <string name="home_protection_setup">Perlu mengatur perlindungan</string>
+    <string name="home_syncing">Menyinkronkan data perlindungan…</string>
+</resources>

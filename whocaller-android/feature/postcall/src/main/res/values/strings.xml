@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="postcall_title">Know this caller?</string>
+    <string name="postcall_subtitle">Help improve caller identification</string>
+    <string name="postcall_notification_text">%1$s · Save the number or report spam</string>
+    <string name="postcall_close">Close</string>
+    <string name="postcall_unknown_caller">Unknown Caller</string>
+    <plurals name="postcall_suspected_spam">
+        <item quantity="one">Suspected spam · %d report</item>
+        <item quantity="other">Suspected spam · %d reports</item>
+    </plurals>
+    <string name="postcall_know_caller">Know this caller?</string>
+    <string name="postcall_save_desc">Save the number to your contacts if it\'s not already saved.</string>
+    <string name="postcall_saved">Saved to Contacts</string>
+    <string name="postcall_saved_desc">This number is in your contacts.</string>
+    <string name="postcall_add_contact">Add to Contacts</string>
+    <string name="postcall_view_contact">View Contact</string>
+    <string name="postcall_already_known">Already know the number?</string>
+    <string name="postcall_already_known_desc">You can still report it, or skip this step.</string>
+    <string name="postcall_is_spam">Is this number spam?</string>
+    <string name="postcall_pick_up_to">Select up to 2 categories (optional).</string>
+    <string name="postcall_counter">%1$d / %2$d</string>
+    <string name="postcall_limit">You can select up to 2 categories.</string>
+    <string name="postcall_latest_selection">Latest selection</string>
+    <string name="postcall_submit">Submit Report</string>
+    <string name="postcall_skip">Not Spam / Skip</string>
+    <string name="postcall_failed">Couldn\'t save the report. Please try again.</string>
+    <string name="postcall_thanks">Thanks for your report</string>
+    <string name="postcall_thanks_desc">It helps identify callers and protect others from spam.</string>
+
+    <string name="postcall_cat_spam">Spam</string>
+    <string name="postcall_cat_telemarketing">Telemarketing</string>
+    <string name="postcall_cat_financial_scam">Financial Scam</string>
+    <string name="postcall_cat_fraud_offer">Fraud / Fake Offer</string>
+    <string name="postcall_cat_impersonation">Impersonation</string>
+    <string name="postcall_cat_banking_scam">Banking Scam</string>
+    <string name="postcall_cat_business">Business / Service</string>
+    <string name="postcall_cat_delivery">Delivery</string>
+    <string name="postcall_cat_robocall">Robocall</string>
+    <string name="postcall_cat_harassment">Harassment</string>
+    <string name="postcall_cat_other">Other</string>
+    <string name="postcall_cat_not_spam">Not spam</string>
+    <string name="id_reminder_title">Set up your WhoCaller ID</string>
+    <string name="id_reminder_text">Add your name and verify your number to get the blue tick, so people you call know it\'s really you, and to protect yourself from spam.</string>
+</resources>

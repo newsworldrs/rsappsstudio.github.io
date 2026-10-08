@@ -1,0 +1,131 @@
+rules_version = '2';
+// WhoCaller rules.
+//
+// IMPORTANT: Firestore rules apply to the whole Firebase project. If other apps use this project,
+// do NOT deploy this file as-is: copy the blocks marked WHOCALLER into your existing
+// rules instead (see FIRESTORE.md).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- WHOCALLER: caller identity + community summary. Read-only for app users. ----
+    // Written only by the seed/aggregate tools and the Cloud Function (Admin SDK bypasses rules).
+    match /callerNumbers/{number} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ---- WHOCALLER: one report per user per number, id "<E.164 digits>_<uid>". ----
+    // Users may create, replace (re-report), read or delete their own report, never others'.
+    match /reports/{reportId} {
+      allow create, update: if request.auth != null
+        && reportId == request.resource.data.phoneNumber.replace('[+]', '') + '_' + request.auth.uid
+        && validReport(request.resource.data);
+      allow read, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // ---- WHOCALLER: app configuration (e.g. the SMS spam model phones download). Read-only. ----
+    match /appConfig/{doc} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ---- WHOCALLER: WhoCaller ID account (name + verified mobile). Owner only. ----
+    // phoneNumber must be the number the user verified by SMS code (Firebase Auth phone_number claim).
+    match /whocallerUsers/{uid} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create: if ownsVerifiedNumber(uid) && validWhoCallerUser(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if ownsVerifiedNumber(uid) && validWhoCallerUser(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    // ---- WHOCALLER: public caller ID, id = E.164 number. Shown to other users on calls/search. ----
+    // Only the verified owner of the number can set or remove the name on it.
+    match /registeredCallers/{number} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.token.phone_number == number
+        && request.resource.data.keys().hasOnly(['name', 'uid', 'updatedAt', 'carrier'])
+        && request.resource.data.uid == request.auth.uid
+        && (!('name' in request.resource.data)
+            || (request.resource.data.name is string
+                && request.resource.data.name.size() >= 2 && request.resource.data.name.size() <= 60))
+        && (!('carrier' in request.resource.data)
+            || (request.resource.data.carrier is string && request.resource.data.carrier.size() <= 40))
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+    }
+
+    // ---- WHOCALLER VIDEO (experimental): app-to-app video call signalling. ----
+    // Only the two people in a call can read or change it; nobody can delete it.
+    match /videoCalls/{callId} {
+      allow create: if request.auth != null
+        && request.resource.data.callerUid == request.auth.uid
+        && request.resource.data.calleeUid is string
+        && request.resource.data.status == 'ringing';
+      allow read: if request.auth != null
+        && (resource.data.callerUid == request.auth.uid || resource.data.calleeUid == request.auth.uid);
+      allow update: if request.auth != null
+        && (resource.data.callerUid == request.auth.uid || resource.data.calleeUid == request.auth.uid)
+        && request.resource.data.callerUid == resource.data.callerUid
+        && request.resource.data.calleeUid == resource.data.calleeUid;
+      allow delete: if false;
+
+      match /candidates/{candidateId} {
+        allow read: if inVideoCall(callId);
+        allow create: if inVideoCall(callId) && request.resource.data.from == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    function inVideoCall(callId) {
+      let call = get(/databases/$(database)/documents/videoCalls/$(callId)).data;
+      return request.auth != null && (call.callerUid == request.auth.uid || call.calleeUid == request.auth.uid);
+    }
+
+    // Device push token per user (for ringing video calls). Only the owner writes it; only the
+    // Cloud Function (Admin SDK) reads it.
+    match /pushTokens/{uid} {
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'updatedAt'])
+        && request.resource.data.token is string && request.resource.data.token.size() < 400;
+      allow read, delete: if false;
+    }
+    // ---- end WHOCALLER VIDEO ----
+
+    function ownsVerifiedNumber(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.token.phone_number != null
+        && request.resource.data.phoneNumber == request.auth.token.phone_number;
+    }
+
+    function validWhoCallerUser(d) {
+      return d.keys().hasOnly(['name', 'phoneNumber', 'email', 'showNameToCallers', 'createdAt', 'updatedAt'])
+        && d.keys().hasAll(['name', 'phoneNumber', 'showNameToCallers', 'createdAt', 'updatedAt'])
+        && d.name is string && d.name.size() >= 2 && d.name.size() <= 60
+        && d.email is string && d.email.size() <= 120
+        && d.showNameToCallers is bool
+        && d.updatedAt == request.time;
+    }
+
+    function validReport(d) {
+      return d.keys().hasOnly(['phoneNumber', 'userId', 'categories', 'callType', 'callAnswered', 'reportedAt', 'appVersion'])
+        && d.keys().hasAll(['phoneNumber', 'userId', 'categories', 'callType', 'callAnswered', 'reportedAt', 'appVersion'])
+        && d.phoneNumber is string && d.phoneNumber.matches('^[+][1-9][0-9]{6,14}$')
+        && d.userId == request.auth.uid
+        && d.categories is list && d.categories.size() >= 1 && d.categories.size() <= 2
+        && d.categories.hasOnly(['SPAM', 'TELEMARKETING', 'FINANCIAL_SCAM', 'FRAUD_FAKE_OFFER', 'IMPERSONATION',
+                                 'BANKING_SCAM', 'BUSINESS_SERVICE', 'DELIVERY', 'ROBOCALL', 'HARASSMENT', 'OTHER', 'NOT_SPAM'])
+        && d.callType in ['INCOMING_UNKNOWN', 'MANUAL']
+        && d.callAnswered is bool
+        && d.reportedAt == request.time
+        && d.appVersion is string && d.appVersion.size() <= 32;
+    }
+    // ---- end WHOCALLER ----
+
+    // Everything else stays closed (the REST API in functions/ uses the Admin SDK).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

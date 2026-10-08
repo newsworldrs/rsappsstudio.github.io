@@ -1,0 +1,58 @@
+name: WhoCaller US spam data
+
+# Builds the USA spam list from the FCC's public consumer-complaint data (unwanted calls /
+# robocalls; US government public data) and publishes it as the "whocaller-us-datasets"
+# pre-release. Editing whocaller-android/backend/tools/us-request.txt runs it; so does the Actions tab.
+# Uploading to Firestore is a separate step (external-list.mjs, see backend/FIRESTORE.md).
+on:
+  push:
+    paths:
+      - "whocaller-android/backend/tools/us-request.txt"
+  workflow_dispatch:
+    inputs:
+      since_days:
+        description: "Complaints from the last N days"
+        default: "365"
+      min_complaints:
+        description: "Keep numbers with at least this many complaints"
+        default: "3"
+
+permissions:
+  contents: write # only to publish the CSV as a release
+
+concurrency:
+  group: whocaller-us-data
+  cancel-in-progress: true
+
+jobs:
+  us-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: whocaller-android/backend/tools
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: whocaller-android/backend/tools/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: FCC complaints → CSV
+        run: node import-us-fcc.mjs --out data/us-fcc-callers.csv --since-days "${{ github.event.inputs.since_days || '365' }}" --min "${{ github.event.inputs.min_complaints || '3' }}"
+      - name: Check the file
+        run: node external-list.mjs import data/us-fcc-callers.csv --list us-fcc-check --region US --dry-run
+      - uses: actions/upload-artifact@v4
+        with:
+          name: whocaller-us-datasets
+          path: whocaller-android/backend/tools/data/us-fcc-callers.csv
+          retention-days: 14
+      - name: Publish as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete whocaller-us-datasets --yes --cleanup-tag || true
+          gh release create whocaller-us-datasets data/us-fcc-callers.csv --prerelease --target "$GITHUB_SHA" \
+            --title "WhoCaller US spam list (FCC complaints)" \
+            --notes "Numbers with several recent consumer complaints to the US FCC (unwanted calls / robocalls). US government public data."

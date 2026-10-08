@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calls_title">Recent Calls</string>
+    <string name="calls_open_keypad">Open keypad</string>
+    <string name="calls_tab_all">All</string>
+    <string name="calls_tab_missed">Missed</string>
+    <string name="calls_tab_incoming">Incoming</string>
+    <string name="calls_tab_outgoing">Outgoing</string>
+    <string name="calls_tab_spam">Spam</string>
+    <string name="calls_tab_unknown">Unknown</string>
+    <string name="calls_type_incoming">Incoming</string>
+    <string name="calls_type_outgoing">Outgoing</string>
+    <string name="calls_type_missed">Missed</string>
+    <string name="calls_type_rejected">Declined</string>
+    <string name="calls_type_blocked">Blocked</string>
+    <string name="calls_type_voicemail">Voicemail</string>
+    <string name="calls_type_other">Call</string>
+    <string name="calls_empty">No calls here</string>
+    <string name="calls_permission_title">See your recent calls</string>
+    <string name="calls_permission_body">Allow call history access to see recent calls with caller names and spam labels. Your call history stays on this device.</string>
+    <string name="calls_permission_button">Allow access</string>
+    <string name="calls_permission_settings">Open settings</string>
+    <string name="calls_actions_for">Actions for %1$s</string>
+    <string name="calls_blocked_toast">Blocked %1$s</string>
+    <string name="calls_error">Couldn\'t load your call history.</string>
+    <string name="calls_spam_label">Spam</string>
+</resources>

@@ -1,0 +1,20 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.jks
+*.keystore
+# Never commit secrets or per-developer config
+keystore.properties
+.env
+# Temporary test Firebase config is committed (owner's choice); replace before release.
+*.p12
+*.pem
+
+# Shared test signing key (not secret, see app/build.gradle.kts)
+!app/debug.keystore

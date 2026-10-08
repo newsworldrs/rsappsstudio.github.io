@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="splash_tagline">Saiba quem está ligando.\nFique protegido.</string>
+    <string name="onboarding_1_title">Saiba quem está ligando</string>
+    <string name="onboarding_1_body">Identifique chamadas desconhecidas antes de atender.</string>
+    <string name="onboarding_2_title">Bloqueie chamadas indesejadas</string>
+    <string name="onboarding_2_body">Proteja-se contra spam e números suspeitos.</string>
+    <string name="onboarding_3_title">Pesquise qualquer número</string>
+    <string name="onboarding_3_body">Encontre informações sobre números de telefone com o WhoCaller.</string>
+    <string name="onboarding_4_title">Sua privacidade importa</string>
+    <string name="onboarding_4_body">Seus contatos e informações pessoais continuam sob seu controle.</string>
+    <string name="onboarding_continue">Continuar</string>
+    <string name="onboarding_skip">Pular</string>
+    <string name="onboarding_get_started">Começar</string>
+    <string name="nav_home">Início</string>
+    <string name="nav_search">Pesquisar</string>
+    <string name="nav_calls">Chamadas</string>
+    <string name="nav_protection">Proteção</string>
+    <string name="nav_settings">Configurações</string>
+</resources>

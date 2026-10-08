@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="callerid_identified_title">WhoCaller ਨੇ ਆਉਣ ਵਾਲੇ ਕਾਲਰ ਦੀ ਪਛਾਣ ਕੀਤੀ</string>
+    <string name="callerid_verified_business">ਪ੍ਰਮਾਣਿਤ ਕਾਰੋਬਾਰ</string>
+    <string name="callerid_suspected_spam">⚠ ਸ਼ੱਕੀ ਸਪੈਮ</string>
+    <string name="callerid_possible_scam">⚠ ਸੰਭਾਵੀ ਧੋਖਾ</string>
+    <string name="callerid_scam_detail">ਕਈ ਰਿਪੋਰਟਾਂ ਸ਼ੱਕੀ ਗਤੀਵਿਧੀ ਦਰਸਾਉਂਦੀਆਂ ਹਨ।</string>
+    <string name="callerid_blocked_title">ਸਪੈਮ ਕਾਲ ਬਲੌਕ ਕੀਤੀ ਗਈ</string>
+</resources>

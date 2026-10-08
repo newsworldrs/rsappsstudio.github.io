@@ -1,0 +1,168 @@
+name: WhoCaller Firestore
+
+# Two jobs in one workflow:
+#  1. Nightly: recompute callerNumbers (spam score, report counts, categories) from user reports.
+#  2. On demand (Actions tab → Run workflow): build caller datasets from public sources and
+#     preview them (downloadable CSV) or upload them to Firestore.
+# Uploading and aggregating need the repository secret FIREBASE_SERVICE_ACCOUNT (service-account JSON).
+on:
+  # Editing backend/tools/import-request.txt builds the public datasets and publishes them as the
+  # "whocaller-datasets" pre-release (preview only, nothing is written to Firestore).
+  push:
+    paths:
+      - "whocaller-android/backend/tools/import-request.txt"
+  schedule:
+    - cron: "17 21 * * *" # every night, 02:47 IST
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "What to run"
+        type: choice
+        options:
+          - import-all
+          - import-ifsc
+          - import-osm
+          - import-wikidata
+          - aggregate
+          - seed-sample
+        default: import-all
+      mode:
+        description: "preview = build CSVs only (download them from the run page); upload = also write to Firestore"
+        type: choice
+        options: [preview, upload]
+        default: preview
+      max_writes:
+        description: "Upload at most this many numbers. 0 = no limit (Blaze plan). Use 18000 on the free Spark plan (20,000 writes/day)."
+        default: "0"
+      start:
+        description: "Continue from this number (the previous run prints it when it stops at the limit)"
+        default: "0"
+
+permissions:
+  contents: write # only used to publish the dataset CSVs as a release
+
+jobs:
+  firestore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: whocaller-android/backend/tools
+    env:
+      TASK: ${{ github.event.inputs.task || (github.event_name == 'push' && 'import-all') || 'aggregate' }}
+      MODE: ${{ github.event.inputs.mode || (github.event_name == 'push' && 'preview') || 'upload' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for credentials
+        id: creds
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret not set - previews only, nothing is uploaded."
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: whocaller-android/backend/tools/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      # ---------- Build datasets ----------
+
+      - name: Bank branches (RBI IFSC list, public domain)
+        if: env.TASK == 'import-all' || env.TASK == 'import-ifsc'
+        run: node import-ifsc.mjs --out data/ifsc-callers.csv
+
+      - name: Organisations (Wikidata, CC0)
+        if: env.TASK == 'import-all' || env.TASK == 'import-wikidata'
+        continue-on-error: true
+        run: node import-wikidata.mjs --out data/wikidata-callers.csv
+
+      - name: Businesses (OpenStreetMap India, ODbL)
+        if: env.TASK == 'import-all' || env.TASK == 'import-osm'
+        continue-on-error: true
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          # Geofabrik first, then mirrors (Geofabrik sometimes answers with a redirect loop).
+          ok=""
+          for url in \
+            https://download.geofabrik.de/asia/india-latest.osm.pbf \
+            https://download.openstreetmap.fr/extracts/asia/india-latest.osm.pbf \
+            https://download.openstreetmap.fr/extracts/asia/india.osm.pbf; do
+            echo "Downloading $url"
+            if curl -fsSL --retry 3 --max-redirs 10 -A "WhoCallerDatasetImporter/1.0" -o /tmp/india.osm.pbf "$url" \
+               && [ "$(stat -c %s /tmp/india.osm.pbf)" -gt 100000000 ]; then ok=1; break; fi
+          done
+          [ -n "$ok" ] || { echo "Could not download OpenStreetMap India"; exit 1; }
+          ls -lh /tmp/india.osm.pbf
+          osmium tags-filter /tmp/india.osm.pbf nwr/phone nwr/contact:phone nwr/contact:mobile -o /tmp/phones.osm.pbf --overwrite
+          osmium export /tmp/phones.osm.pbf -f geojsonseq -o /tmp/phones.geojsonseq --overwrite
+          node import-osm.mjs /tmp/phones.geojsonseq --out data/osm-callers.csv
+
+      - name: Check the files
+        if: startsWith(env.TASK, 'import-')
+        run: |
+          for f in data/*-callers.csv; do
+            [ -f "$f" ] || continue
+            [ "$f" = "data/sample-callers.csv" ] && continue
+            echo "== $f"; node seed.mjs "$f" --region IN --dry-run || true
+          done
+
+      - name: Keep the CSVs (download from this run's page)
+        if: startsWith(env.TASK, 'import-')
+        uses: actions/upload-artifact@v4
+        with:
+          name: whocaller-datasets
+          path: whocaller-android/backend/tools/data/*-callers.csv
+          retention-days: 14
+
+      - name: Publish the CSVs as a release (push trigger)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete whocaller-datasets --yes --cleanup-tag || true
+          gh release create whocaller-datasets data/*-callers.csv --prerelease --target "$GITHUB_SHA" \
+            --title "WhoCaller public caller datasets" \
+            --notes "Built from the RBI IFSC list (public domain), Wikidata (CC0) and OpenStreetMap (© OpenStreetMap contributors, ODbL)."
+
+      # ---------- Upload ----------
+
+      - name: Upload datasets to Firestore
+        if: steps.creds.outputs.ok == 'true' && env.MODE == 'upload' && startsWith(env.TASK, 'import-')
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          MAX_WRITES: ${{ github.event.inputs.max_writes || '0' }}
+          START: ${{ github.event.inputs.start || '0' }}
+        run: |
+          # Later files win for the same number, so the most trusted source (RBI) goes last.
+          files=""
+          for f in data/osm-callers.csv data/wikidata-callers.csv data/ifsc-callers.csv; do
+            [ -f "$f" ] && files="$files $f"
+          done
+          limit=""
+          [ "$MAX_WRITES" != "0" ] && limit="--max-writes $MAX_WRITES"
+          npm run seed -- $files --region IN --start "$START" $limit
+
+      - name: Upload sample callers
+        if: steps.creds.outputs.ok == 'true' && env.TASK == 'seed-sample'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: npm run seed -- data/sample-callers.csv --region IN
+
+      - name: Aggregate reports
+        if: steps.creds.outputs.ok == 'true' && env.TASK == 'aggregate'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: npm run aggregate

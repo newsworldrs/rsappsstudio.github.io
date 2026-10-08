@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="report_title">Report this number</string>
+    <string name="report_question">Why are you reporting it?</string>
+    <string name="report_comment">Comment (optional)</string>
+    <string name="report_comment_hint">What happened on the call? Don\'t include personal details.</string>
+    <string name="report_also_block">Also block this number</string>
+    <string name="report_submit">Submit Report</string>
+    <string name="report_thanks">Thanks! Your report helps protect others.</string>
+    <string name="report_saved_offline">Report saved. It will be sent when you\'re back online.</string>
+    <string name="report_counter">%1$d/%2$d</string>
+
+    <string name="spam_title">Spam Protection</string>
+    <string name="spam_status_active">Protection Active</string>
+    <string name="spam_status_setup">Protection Setup Required</string>
+    <string name="spam_status_active_desc">WhoCaller checks incoming calls from numbers that aren\'t in your contacts.</string>
+    <string name="spam_status_setup_desc">Allow WhoCaller to screen calls so it can identify callers and warn you about spam.</string>
+    <string name="spam_status_legacy_desc">On this Android version WhoCaller can identify and warn about calls, but only your phone app can block them.</string>
+    <string name="spam_setup_button">Set up</string>
+    <string name="spam_caller_id">Caller identification</string>
+    <string name="spam_caller_id_desc">Show who is calling when the number isn\'t in your contacts.</string>
+    <string name="spam_protection">Spam protection</string>
+    <string name="spam_protection_desc">Warn about numbers the community has reported.</string>
+    <string name="spam_auto_block">Block very high risk calls</string>
+    <string name="spam_auto_block_desc">Reject calls with a very high spam score based on many reports.</string>
+    <string name="spam_block_categories">Block these categories</string>
+    <string name="spam_block_categories_desc">Calls with high risk in a selected category are rejected automatically.</string>
+    <string name="spam_my_reports">Your reports</string>
+    <string name="spam_no_reports">You haven\'t reported any numbers yet.</string>
+    <string name="spam_report_pending">Waiting to sync</string>
+    <string name="spam_report_synced">Sent</string>
+    <string name="spam_report_failed">Will retry</string>
+    <string name="spam_blocked_numbers">Blocked numbers</string>
+    <string name="spam_how_it_works">How spam scores work</string>
+    <string name="spam_how_it_works_body">Scores come from reports by WhoCaller users, how recent they are, how often a number is blocked, verified business status and your own reports. A number with no reports is shown as unknown, never as spam. Scores: 0–19 low, 20–49 moderate, 50–74 high, 75–100 very high.</string>
+</resources>

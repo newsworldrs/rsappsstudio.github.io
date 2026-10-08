@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_greeting_morning">Good morning, %1$s</string>
+    <string name="home_greeting_afternoon">Good afternoon, %1$s</string>
+    <string name="home_greeting_evening">Good evening, %1$s</string>
+    <string name="home_default_name">User</string>
+    <string name="home_search_hint">Search phone number</string>
+    <string name="home_action_search">Search Number</string>
+    <string name="home_action_calls">Recent Calls</string>
+    <string name="home_action_spam">Spam Protection</string>
+    <string name="home_action_blocked">Blocked Numbers</string>
+    <string name="home_action_contacts">Contacts</string>
+    <string name="home_action_messages">Messages</string>
+    <string name="home_stat_identified">Calls Identified</string>
+    <string name="home_stat_blocked">Spam Blocked</string>
+    <string name="home_stat_reported">Numbers Reported</string>
+    <string name="home_protection_active">Protection Active</string>
+    <string name="home_protection_setup">Protection Setup Required</string>
+    <string name="home_protection_active_desc">Incoming calls from unknown numbers are checked.</string>
+    <string name="home_protection_setup_desc">Tap to let WhoCaller identify and screen calls.</string>
+    <string name="home_recent_unidentified">Recent unidentified callers</string>
+    <string name="home_no_unidentified">No unidentified callers recently.</string>
+    <string name="home_calls_permission">Allow call history access to see unidentified callers.</string>
+    <string name="home_syncing">Syncing protection data…</string>
+    <string name="home_offline">You\'re offline. Protection uses data saved on this device.</string>
+    <string name="home_profile">Profile</string>
+</resources>

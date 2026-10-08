@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="callerid_identified_title">WhoCaller mengenali penelepon masuk</string>
+    <string name="callerid_verified_business">Bisnis terverifikasi</string>
+    <string name="callerid_suspected_spam">⚠ Diduga spam</string>
+    <string name="callerid_possible_scam">⚠ Kemungkinan penipuan</string>
+    <string name="callerid_scam_detail">Beberapa laporan menunjukkan aktivitas mencurigakan.</string>
+    <string name="callerid_blocked_title">Panggilan spam diblokir</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the call recordings folder can be shared (when the user taps Share). -->
+<paths>
+    <files-path name="recordings" path="call_recordings/" />
+</paths>

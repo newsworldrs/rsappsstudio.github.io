@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared labels used by several features. -->
+    <string name="core_app_name" translatable="false">WhoCaller</string>
+
+    <string name="label_contact">Contact</string>
+    <string name="label_verified_business">Verified business</string>
+    <string name="label_business">Business</string>
+    <string name="label_person">Person</string>
+    <string name="label_suspected_spam">Suspected spam</string>
+    <string name="label_possible_spam_list">Possible spam</string>
+    <string name="label_flagged_by_list">Flagged in %1$s, not yet reported by WhoCaller users</string>
+    <string name="label_possible_scam">Possible scam</string>
+    <string name="label_telemarketing">Telemarketing</string>
+    <string name="label_hidden">Private number</string>
+    <string name="label_unknown">Unknown</string>
+
+    <string name="category_safe">Safe</string>
+    <string name="category_unknown">Unknown</string>
+    <string name="category_telemarketing">Telemarketing</string>
+    <string name="category_spam">Spam</string>
+    <string name="category_scam">Scam</string>
+    <string name="category_fraud">Fraud</string>
+    <string name="category_robocall">Robocall</string>
+    <string name="category_debt_collection">Debt collection</string>
+    <string name="category_political">Political</string>
+    <string name="category_charity">Charity</string>
+    <string name="category_business">Business</string>
+
+    <string name="risk_low">Low risk</string>
+    <string name="risk_moderate">Moderate risk</string>
+    <string name="risk_high">High risk</string>
+    <string name="risk_very_high">Very high risk</string>
+    <string name="risk_score_description">Spam risk %1$s, score %2$d out of 100</string>
+
+    <string name="reason_spam">Spam</string>
+    <string name="reason_scam">Scam</string>
+    <string name="reason_telemarketing">Telemarketing</string>
+    <string name="reason_fraud">Fraud</string>
+    <string name="reason_robocall">Robocall</string>
+    <string name="reason_harassment">Harassment</string>
+    <string name="reason_fake_bank_call">Fake bank call</string>
+    <string name="reason_fake_delivery_call">Fake delivery call</string>
+    <string name="reason_other">Other</string>
+
+    <string name="error_network">You\'re offline. Showing information saved on this device.</string>
+    <string name="error_timeout">The server took too long to respond. Try again later.</string>
+    <string name="error_not_found">No identity found</string>
+    <string name="error_invalid_number">That doesn\'t look like a valid phone number.</string>
+    <string name="error_unauthorized">Please sign in again.</string>
+    <string name="error_rate_limited">Too many requests. Please try again later.</string>
+    <string name="error_duplicate">You\'ve already reported this number recently.</string>
+    <string name="error_server">We couldn\'t identify this number. Try again later or search manually.</string>
+    <string name="error_backend_not_configured">Online lookup isn\'t available in this build. Local protection still works.</string>
+    <string name="error_permission">Permission needed for this feature.</string>
+    <string name="error_storage">Couldn\'t access data on this device.</string>
+    <string name="error_unknown">Something went wrong. Please try again.</string>
+
+    <string name="action_retry">Retry</string>
+    <string name="action_call">Call</string>
+    <string name="action_message">Message</string>
+    <string name="action_search">Search</string>
+    <string name="action_block">Block</string>
+    <string name="action_unblock">Unblock</string>
+    <string name="action_report">Report</string>
+    <string name="action_share">Share</string>
+    <string name="action_save_contact">Save contact</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_back">Back</string>
+    <string name="action_close">Close</string>
+    <string name="action_more">More options</string>
+    <string name="action_clear">Clear</string>
+
+    <string name="time_today">Today, %1$s</string>
+    <string name="time_yesterday">Yesterday, %1$s</string>
+    <string name="loading">Loading…</string>
+    <string name="unknown_number">Unknown number</string>
+    <string name="private_number">Private number</string>
+    <string name="share_number_text">%1$s — looked up with WhoCaller</string>
+    <string name="source_demo_notice">Demo data from the development backend</string>
+    <string name="no_app_to_handle">No app found to complete this action.</string>
+
+    <string name="channel_caller_alerts">Caller Alerts</string>
+    <string name="channel_caller_alerts_desc">Shows who is calling while your phone rings.</string>
+    <string name="channel_spam_alerts">Spam Alerts</string>
+    <string name="channel_spam_alerts_desc">Warnings about suspected spam and blocked calls.</string>
+    <string name="channel_security">Security</string>
+    <string name="channel_security_desc">Account and security notices.</string>
+    <string name="channel_general">General</string>
+    <string name="channel_general_desc">Sync status and other information.</string>
+    <string name="channel_incoming_calls">Incoming calls</string>
+    <string name="channel_incoming_calls_desc">Shows who is calling when WhoCaller is your phone app.</string>
+    <string name="channel_ongoing_calls">Ongoing calls</string>
+    <string name="channel_ongoing_calls_desc">Controls for the call in progress.</string>
+    <string name="channel_messages">Messages</string>
+    <string name="channel_messages_desc">New text messages when WhoCaller is your SMS app.</string>
+    <string name="action_video_call">Video call</string>
+    <string name="action_whatsapp">WhatsApp</string>
+    <string name="channel_post_call">After unknown calls</string>
+    <string name="channel_post_call_desc">Asks whether you know a caller who isn\'t in your contacts, so you can save or report the number.</string>
+    <string name="channel_spam_messages">Suspected spam messages</string>
+    <string name="channel_spam_messages_desc">Texts WhoCaller moved to Spam. Shown quietly so they don\'t disturb you.</string>
+    <string name="operator_original_short">%1$s (original)</string>
+    <string name="operator_original_long">Originally %1$s. The number may have moved to another network.</string>
+    <string name="label_verified_id">Verified WhoCaller ID</string>
+    <string name="action_whatsapp_call">WhatsApp call</string>
+    <string name="action_whatsapp_video">WhatsApp video</string>
+    <string name="whatsapp_not_installed">WhatsApp isn\'t installed on this phone</string>
+    <string name="whatsapp_tap_call">Tap the call button in WhatsApp to start the call</string>
+    <string name="whatsapp_tap_video">Tap the video button in WhatsApp to start the video call</string>
+    <string name="action_whocaller_video">WhoCaller video</string>
+    <!-- WHOCALLER VIDEO invite -->
+    <string name="wc_invite_title">%1$s is not on WhoCaller</string>
+    <string name="wc_invite_body">Do you want to share WhoCaller with %1$s? WhatsApp opens with an invite card ready to send, and an SMS with the download link is sent to %1$s.</string>
+    <string name="wc_invite_yes">Yes, share</string>
+    <string name="wc_invite_no">Not now</string>
+    <string name="wc_invite_sms_sent">Invite SMS sent to %1$s</string>
+    <string name="wc_invite_message_named">Hi %1$s! I\'m using WhoCaller to see who\'s calling, block spam and make free HD video calls. Install it so we can video call on WhoCaller: %2$s</string>
+    <string name="wc_invite_message">Hi! I\'m using WhoCaller to see who\'s calling, block spam and make free HD video calls. Install it so we can video call on WhoCaller: %1$s</string>
+    <string name="wc_card_tagline">Know who\'s calling</string>
+    <string name="wc_card_feature_video">Free HD video calls</string>
+    <string name="wc_card_feature_callerid">Caller ID for unknown numbers</string>
+    <string name="wc_card_feature_spam">Spam &amp; scam call blocking</string>
+    <string name="wc_card_feature_sms">SMS spam filter</string>
+    <string name="wc_card_feature_dialer">Smart dialer with call recorder</string>
+    <string name="wc_card_cta">Get WhoCaller free on Google Play</string>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="home_greeting_morning">Guten Morgen, %1$s</string>
+    <string name="home_greeting_afternoon">Guten Tag, %1$s</string>
+    <string name="home_greeting_evening">Guten Abend, %1$s</string>
+    <string name="home_default_name">Nutzer</string>
+    <string name="home_search_hint">Telefonnummer suchen</string>
+    <string name="home_action_search">Nummer suchen</string>
+    <string name="home_action_calls">Letzte Anrufe</string>
+    <string name="home_action_spam">Spamschutz</string>
+    <string name="home_action_blocked">Blockierte Nummern</string>
+    <string name="home_stat_identified">Erkannte Anrufe</string>
+    <string name="home_stat_blocked">Blockierter Spam</string>
+    <string name="home_stat_reported">Gemeldete Nummern</string>
+    <string name="home_protection_active">Schutz aktiv</string>
+    <string name="home_protection_setup">Schutz einrichten</string>
+    <string name="home_syncing">Schutzdaten werden synchronisiert…</string>
+</resources>

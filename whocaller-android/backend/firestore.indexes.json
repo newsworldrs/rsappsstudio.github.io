@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "callerNumbers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "region", "order": "ASCENDING" },
+        { "fieldPath": "spamScore", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

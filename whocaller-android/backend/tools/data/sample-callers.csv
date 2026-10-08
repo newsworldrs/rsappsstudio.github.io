@@ -1,0 +1,5 @@
+phoneNumber,displayName,businessName,categories,spamScore,isVerified
++12025550142,,[Demo] Example Telemarketing,TELEMARKETING,60,false
++12025550199,,,FINANCIAL_SCAM|IMPERSONATION,88,false
++12025550123,,[Demo] Example Internet Services,BUSINESS_SERVICE,,true
++442079460321,,[Demo] Example Pizza,DELIVERY|BUSINESS_SERVICE,,false

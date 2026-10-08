@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Machine-assisted translation: review by a native speaker before release. -->
+<resources>
+    <string name="label_contact">Kontakt</string>
+    <string name="label_verified_business">Verifiziertes Unternehmen</string>
+    <string name="label_business">Unternehmen</string>
+    <string name="label_person">Person</string>
+    <string name="label_suspected_spam">Spamverdacht</string>
+    <string name="label_possible_scam">Möglicher Betrug</string>
+    <string name="label_telemarketing">Telefonwerbung</string>
+    <string name="label_hidden">Unterdrückte Nummer</string>
+    <string name="label_unknown">Unbekannt</string>
+    <string name="category_safe">Sicher</string>
+    <string name="category_unknown">Unbekannt</string>
+    <string name="category_telemarketing">Telefonwerbung</string>
+    <string name="category_spam">Spam</string>
+    <string name="category_scam">Betrug</string>
+    <string name="category_fraud">Betrugsversuch</string>
+    <string name="category_robocall">Roboteranruf</string>
+    <string name="category_business">Unternehmen</string>
+    <string name="risk_low">Geringes Risiko</string>
+    <string name="risk_moderate">Mittleres Risiko</string>
+    <string name="risk_high">Hohes Risiko</string>
+    <string name="risk_very_high">Sehr hohes Risiko</string>
+    <string name="action_call">Anrufen</string>
+    <string name="action_message">Nachricht</string>
+    <string name="action_search">Suchen</string>
+    <string name="action_block">Blockieren</string>
+    <string name="action_unblock">Freigeben</string>
+    <string name="action_report">Melden</string>
+    <string name="action_share">Teilen</string>
+    <string name="action_save_contact">Kontakt speichern</string>
+    <string name="action_cancel">Abbrechen</string>
+    <string name="action_back">Zurück</string>
+    <string name="action_close">Schließen</string>
+    <string name="action_retry">Erneut versuchen</string>
+    <string name="error_not_found">Keine Identität gefunden</string>
+    <string name="error_server">Wir konnten diese Nummer nicht erkennen. Versuchen Sie es später erneut oder suchen Sie manuell.</string>
+    <string name="unknown_number">Unbekannte Nummer</string>
+    <string name="private_number">Unterdrückte Nummer</string>
+    <string name="channel_caller_alerts">Anruferhinweise</string>
+    <string name="channel_spam_alerts">Spam-Warnungen</string>
+    <string name="channel_security">Sicherheit</string>
+    <string name="channel_general">Allgemein</string>
+</resources>

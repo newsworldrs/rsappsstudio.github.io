@@ -1,0 +1,16 @@
+{
+  "name": "whocaller-firestore-tools",
+  "private": true,
+  "type": "module",
+  "description": "Upload a caller dataset to Firestore and recompute community spam summaries.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "seed": "node seed.mjs",
+    "aggregate": "node aggregate.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "libphonenumber-js": "^1.11.17"
+  }
+}

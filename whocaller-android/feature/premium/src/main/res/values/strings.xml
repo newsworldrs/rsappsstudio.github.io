@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="premium_title">WhoCaller Premium</string>
+    <string name="premium_subtitle">More protection against spam and scam calls.</string>
+    <string name="premium_active">Premium is active. Thank you for supporting WhoCaller!</string>
+    <string name="premium_free">Free</string>
+    <string name="premium_plan">Premium</string>
+    <string name="premium_feature_callerid">Caller ID</string>
+    <string name="premium_feature_basic_spam">Basic spam detection</string>
+    <string name="premium_feature_search">Number search</string>
+    <string name="premium_feature_basic_block">Basic blocking</string>
+    <string name="premium_feature_history">Call history</string>
+    <string name="premium_feature_advanced_spam">Advanced spam protection</string>
+    <string name="premium_feature_lookup">Enhanced reverse lookup</string>
+    <string name="premium_feature_more_searches">More search requests</string>
+    <string name="premium_feature_advanced_block">Advanced blocking</string>
+    <string name="premium_feature_business">Business caller information</string>
+    <string name="premium_feature_no_ads">Ad-free experience</string>
+    <string name="premium_feature_stats">Advanced statistics</string>
+    <string name="premium_loading_prices">Loading prices from Google Play…</string>
+    <string name="premium_unavailable">Subscriptions aren\'t available right now. Check that Google Play is installed and you\'re signed in.</string>
+    <string name="premium_subscribe">Subscribe %1$s</string>
+    <string name="premium_per_period">%1$s / %2$s</string>
+    <string name="premium_period_month">month</string>
+    <string name="premium_period_year">year</string>
+    <string name="premium_restore">Restore purchases</string>
+    <string name="premium_manage">Manage subscription</string>
+    <string name="premium_legal">Monthly and yearly plans renew automatically until you cancel in Google Play. Lifetime is a one-time payment. Prices are shown in your local currency by Google Play.</string>
+    <string name="premium_pending">Your purchase is pending. Premium unlocks once payment completes.</string>
+    <string name="premium_error">The purchase couldn\'t be completed.</string>
+    <string name="premium_plan_monthly">Monthly</string>
+    <string name="premium_plan_yearly">Yearly</string>
+    <string name="premium_plan_lifetime">Lifetime</string>
+    <string name="premium_best_value">Best value</string>
+    <string name="premium_per_month">per month</string>
+    <string name="premium_per_year">per year</string>
+    <string name="premium_one_time">one-time</string>
+    <string name="premium_save">Save %1$d%% compared with monthly</string>
+    <string name="premium_trial">%1$d days free, then billed yearly</string>
+    <string name="premium_cancel_anytime">Cancel anytime</string>
+    <string name="premium_lifetime_desc">Pay once, Premium forever on your Google account</string>
+    <string name="premium_continue">Continue</string>
+    <string name="premium_start_trial">Start free trial</string>
+    <string name="premium_buy_lifetime">Buy lifetime</string>
+    <string name="premium_lifetime_owned">You own WhoCaller Premium Lifetime.</string>
+</resources>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="blocking_title">Blocked Numbers</string>
+    <string name="blocking_tab_numbers">Blocked</string>
+    <string name="blocking_tab_history">History</string>
+    <string name="blocking_add">Block a number</string>
+    <string name="blocking_add_title">Block a number</string>
+    <string name="blocking_number_label">Phone number</string>
+    <string name="blocking_label_label">Label (optional)</string>
+    <string name="blocking_block_button">Block</string>
+    <string name="blocking_unblock_confirm">Unblock %1$s?</string>
+    <string name="blocking_unblocked">Unblocked %1$s</string>
+    <string name="blocking_undo">Undo</string>
+    <string name="blocking_empty">No blocked numbers</string>
+    <string name="blocking_empty_desc">Numbers you block will appear here. WhoCaller rejects their calls.</string>
+    <string name="blocking_history_empty">No blocked calls yet</string>
+    <string name="blocking_clear_history">Clear history</string>
+    <string name="blocking_blocked_at">Blocked %1$s</string>
+    <string name="blocking_block_unknown">Block unknown callers</string>
+    <string name="blocking_block_unknown_desc">Reject calls from numbers that aren\'t in your contacts. Needs contacts access.</string>
+    <string name="blocking_block_unknown_needs_contacts">Allow contacts access first, otherwise every caller would look unknown.</string>
+    <string name="blocking_block_hidden">Block private numbers</string>
+    <string name="blocking_block_hidden_desc">Reject calls that hide their number.</string>
+    <string name="blocking_legacy_notice">On Android 9 and older, only your phone app can reject calls. WhoCaller will warn you instead.</string>
+    <string name="blocking_reason_list">Your block list</string>
+    <string name="blocking_reason_hidden">Private number</string>
+    <string name="blocking_reason_unknown">Unknown caller</string>
+    <string name="blocking_reason_category">Blocked category</string>
+    <string name="blocking_reason_high_risk">Very high risk</string>
+</resources>
