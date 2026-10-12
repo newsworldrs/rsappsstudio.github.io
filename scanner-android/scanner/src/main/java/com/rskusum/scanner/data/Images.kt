@@ -31,7 +31,41 @@ object Images {
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
         val bmp = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
-        return scaleDown(bmp, maxSide)
+        // Camera photos are stored as the camera's own JPEG plus an EXIF orientation (no re-encode).
+        return rotate(scaleDown(bmp, maxSide), exifRotation(file))
+    }
+
+    /** Clockwise rotation recorded in the file's EXIF orientation (0 when none). */
+    fun exifRotation(file: File): Int = runCatching {
+        when (ExifInterface(file.absolutePath).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+            ExifInterface.ORIENTATION_ROTATE_90 -> 90
+            ExifInterface.ORIENTATION_ROTATE_180 -> 180
+            ExifInterface.ORIENTATION_ROTATE_270 -> 270
+            else -> 0
+        }
+    }.getOrDefault(0)
+
+    /**
+     * Saves a camera JPEG as it is (no decode / re-encode: ~0.5 s saved per capture, no extra
+     * quality loss) and records [rotationDegrees] as its EXIF orientation.
+     */
+    fun saveCameraJpeg(bytes: ByteArray, rotationDegrees: Int, file: File) {
+        file.parentFile?.mkdirs()
+        FileOutputStream(file).use { it.write(bytes) }
+        runCatching {
+            ExifInterface(file.absolutePath).apply {
+                setAttribute(
+                    ExifInterface.TAG_ORIENTATION,
+                    when ((rotationDegrees % 360 + 360) % 360) {
+                        90 -> ExifInterface.ORIENTATION_ROTATE_90
+                        180 -> ExifInterface.ORIENTATION_ROTATE_180
+                        270 -> ExifInterface.ORIENTATION_ROTATE_270
+                        else -> ExifInterface.ORIENTATION_NORMAL
+                    }.toString(),
+                )
+                saveAttributes()
+            }
+        }
     }
 
     fun decodeBytes(bytes: ByteArray, rotationDegrees: Int, maxSide: Int): Bitmap? {

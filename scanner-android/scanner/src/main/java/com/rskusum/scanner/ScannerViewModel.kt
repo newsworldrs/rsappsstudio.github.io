@@ -231,8 +231,25 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * @param deviceRotation physical phone orientation at capture (OrientationEventListener
      *   degrees snapped to 0/90/180/270); used to turn book pages upright.
      */
-    fun addPhoto(photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false): kotlinx.coroutines.Job? {
+    /** New file for a camera photo in this session (see [Images.saveCameraJpeg]). */
+    fun newPhotoFile(): File = File(sessionDir, "${System.currentTimeMillis()}_${(0..9999).random()}.jpg")
+
+    /**
+     * Small flattened preview of the photo being processed, shown in the camera's thumbnail the
+     * moment the shutter closes (the finished page replaces it a moment later).
+     */
+    var pendingPreview by mutableStateOf<ImageBitmap?>(null)
+        private set
+
+    /**
+     * @param photoFile the photo already saved on disk (camera JPEG as captured); null = save [photo].
+     */
+    fun addPhoto(
+        photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false,
+        photoFile: File? = null,
+    ): kotlinx.coroutines.Job? {
         if (!captureAllowed) {
+            photoFile?.delete()
             photo.recycle()
             _messages.tryEmit(
                 if (pageLimitReached) str(R.string.rs_scanner_page_limit_reached, options.pageLimit)
@@ -244,6 +261,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         if (hd && hdPages >= HD_LIMIT) {
             photo.recycle()
             _messages.tryEmit(str(R.string.rs_scanner_hd_limit, HD_LIMIT))
+            photoFile?.delete()
             return null
         }
         processingCaptures++
@@ -251,12 +269,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val smart = aiAssist
         return viewModelScope.launch {
             try {
+                // Instant feedback: a small flattened preview, ready in a few milliseconds.
+                withContext(Dispatchers.Default) { runCatching { previewOf(photo, hint ?: frame) }.getOrNull() }
+                    ?.let { pendingPreview = it }
                 val isId = mode == ScanMode.ID_CARD
                 val front = idFront
                 val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
                 val created = createGate.withPermit {
-                    withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported) }
+                    withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported, photoFile) }
                 }
                 created.forEach { it.hd = hd }
                 if (isId && created.size == 1) {
@@ -289,6 +310,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 Log.e(TAG, "capture processing failed", t)
             } finally {
                 processingCaptures--
+                if (processingCaptures == 0) pendingPreview = null
             }
         }
     }
@@ -319,12 +341,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private fun createPages(
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
         idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false,
-        imported: Boolean = false,
+        imported: Boolean = false, photoFile: File? = null,
     ): List<Page> {
         val photoW = photo.width
         val photoH = photo.height
-        val file = File(sessionDir, "${System.currentTimeMillis()}_${(0..9999).random()}.jpg")
-        Images.saveJpeg(photo, file, 95)
+        val file = photoFile ?: newPhotoFile().also { Images.saveJpeg(photo, it, 92) }
         val gray = Images.toGrayMat(photo)
         try {
             var sidesFound = 4
@@ -374,14 +395,23 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 else -> {
-                    // Free mode: the learned edge model, the classic detector (two scales) and the live
-                    // outline all compete; each is refined on the full photo and ranked by how well its
-                    // four sides lie on real edges - the best one wins (not simply the first found).
-                    val prob = edgeProbability(photo)
-                    val best = try {
-                        DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint))
-                    } finally {
-                        prob?.release()
+                    // Fast path: the live outline (tracked steadily before the shutter) refined on the
+                    // full photo. Taken when its four sides lie on clear edges - one refine instead
+                    // of the whole detector competition, the bulk of the processing time.
+                    val fast = hint?.let { h ->
+                        val q = DocumentDetector.refine(gray, h)
+                        q.takeIf { it.distanceTo(h) < 0.08f && DocumentDetector.scoreQuad(gray, it) >= 0.6 }
+                    }
+                    // Otherwise the learned edge model, the classic detector (two scales) and the
+                    // live outline all compete; each is refined on the full photo and ranked by how
+                    // well its four sides lie on real edges.
+                    val best = fast ?: run {
+                        val prob = edgeProbability(photo)
+                        try {
+                            DocumentDetector.autoDetect(gray, prob, listOfNotNull(hint))
+                        } finally {
+                            prob?.release()
+                        }
                     }
                     when {
                         best != null -> best
@@ -490,6 +520,20 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             gray.release()
             photo.recycle()
         }
+    }
+
+    /** Small flattened preview (~300 px) of [photo] cut out with [quad] (the whole photo when null). */
+    private fun previewOf(photo: Bitmap, quad: Quad?): ImageBitmap {
+        val f = minOf(1f, 600f / maxOf(photo.width, photo.height))
+        val small = Bitmap.createScaledBitmap(photo, maxOf(1, (photo.width * f).toInt()), maxOf(1, (photo.height * f).toInt()), true)
+        if (quad == null) return Images.thumbnail(if (small === photo) small.copy(Bitmap.Config.ARGB_8888, false) else small).asImageBitmap()
+        val rgb = Images.toRgbMat(small)
+        if (small !== photo) small.recycle()
+        val flat = DocumentDetector.warp(rgb, quad, null, maxSide = 300)
+        rgb.release()
+        val out = Images.toBitmap(flat)
+        flat.release()
+        return Images.thumbnail(out).asImageBitmap()
     }
 
     /** Page-edge probability map of the learned edge model (null when the model is unavailable). */

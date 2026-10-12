@@ -253,10 +253,14 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                         flashOverlay.animateTo(0f, tween(320))
                     }
                 }
+                var photoFile: java.io.File? = null
                 val bmp: Bitmap? = try {
                     val buf = image.planes[0].buffer
                     val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
-                    Images.decodeBytes(bytes, image.imageInfo.rotationDegrees, vm.photoSide)
+                    val rotation = image.imageInfo.rotationDegrees
+                    // Keep the camera's own JPEG as the page photo (no slow re-encode).
+                    photoFile = runCatching { vm.newPhotoFile().also { Images.saveCameraJpeg(bytes, rotation, it) } }.getOrNull()
+                    Images.decodeBytes(bytes, rotation, vm.photoSide)
                 } catch (t: Throwable) {
                     null
                 } finally {
@@ -265,7 +269,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 mainExecutor.execute {
                     capturing = false
                     vm.tracker.onCaptured(bmp != null)
-                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get()) else toast = context.getString(R.string.rs_scanner_capture_failed)
+                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), photoFile = photoFile)
+                    else { photoFile?.delete(); toast = context.getString(R.string.rs_scanner_capture_failed) }
                 }
             }
 
@@ -595,7 +600,9 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             autoCapture = vm.autoCapture,
             flash = flash,
             thumbnail = vm.pages.lastOrNull(),
-            pageCount = vm.pages.size,
+            preview = if (vm.processingCaptures > 0) vm.pendingPreview else null,
+            // Count the photo being processed right away (feels instant).
+            pageCount = vm.pages.size + vm.processingCaptures,
             processing = vm.processingCaptures > 0,
             onGallery = if (vm.options.galleryImport) ({
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -655,7 +662,11 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
             preview.setSurfaceProvider(previewView.surfaceProvider)
 
             val capture = ImageCapture.Builder()
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                // Normal scans: fast single-frame capture - the shot is taken the instant the
+                // shutter fires, so a hand moving away right after the beep can't blur it, and
+                // the next page is ready sooner. HD: the camera's slower best-quality processing.
+                .setCaptureMode(if (hd) ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY else ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                .setJpegQuality(if (hd) 100 else 95)
                 // ~12 MP 4:3: full sensor detail on normal cameras. The maximum of 50-200 MP sensors
                 // is a slow re-mosaiced shot that is softer and makes processing much slower.
                 .setResolutionSelector(
@@ -1242,6 +1253,7 @@ private fun BottomControls(
     autoCapture: Boolean,
     flash: Flash,
     thumbnail: com.rskusum.scanner.data.Page?,
+    preview: androidx.compose.ui.graphics.ImageBitmap?,
     pageCount: Int,
     processing: Boolean,
     onGallery: (() -> Unit)?,
@@ -1256,7 +1268,7 @@ private fun BottomControls(
             .padding(horizontal = 28.dp, vertical = 16.dp),
     ) {
         Box(Modifier.align(Alignment.CenterStart)) {
-            ThumbnailStack(thumbnail, pageCount, processing, onThumbnail)
+            ThumbnailStack(thumbnail, preview, pageCount, processing, onThumbnail)
         }
         Box(Modifier.align(Alignment.Center)) {
             Shutter(progress, capturing, autoCapture, onShutter)
@@ -1324,7 +1336,7 @@ private fun Shutter(progress: Float, capturing: Boolean, autoCapture: Boolean, o
 }
 
 @Composable
-private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, count: Int, processing: Boolean, onClick: () -> Unit) {
+private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, preview: androidx.compose.ui.graphics.ImageBitmap?, count: Int, processing: Boolean, onClick: () -> Unit) {
     val pulse = remember { Animatable(1f) }
     LaunchedEffect(count) {
         if (count > 0) {
@@ -1343,11 +1355,12 @@ private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, count: Int, pro
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            val thumb = page?.thumbnail
+            // The photo just taken shows at once; the finished page replaces it.
+            val thumb = preview ?: page?.thumbnail
             if (thumb != null) {
                 Image(thumb, contentDescription = stringResource(R.string.rs_scanner_scanned_pages), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }
-            if (processing || (page != null && thumb == null)) {
+            if (thumb == null && (processing || page != null)) {
                 CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
             }
         }
