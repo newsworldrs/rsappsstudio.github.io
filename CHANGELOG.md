@@ -4,6 +4,13 @@ All notable changes to the **RS Kusum Scanner** Android library (`scanner-androi
 Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPack:
 `implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")`.
 
+## [Unreleased]
+### Added
+- `ScannerOptions(startWithGallery = true)`: opens the system photo picker instead of the camera (for an "image to PDF" button). Picked pictures go through the same edge detection, cropping, straightening and filters as camera pages and open in the editor. Cancelling the picker closes the scanner.
+- `ScannerOptions(startHd = true)`: opens the camera with HD already ticked.
+### Changed
+- Faster capture: normal pages use the camera's low-latency mode (HD keeps maximum quality), the camera JPEG is saved as it is, and the thumbnail shows at once.
+
 ## [1.6.0] - 2026-10-06
 ### Added
 - **HD scan:** a check box in the camera tool rail (off by default). HD pages are captured at the camera's full resolution (up to 6000 px), rendered at 5000 px and kept at that size in the PDF. Up to 5 HD pages per scan.

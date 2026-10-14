@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rskusum.scanner.ui.ScannerTheme
 import com.rskusum.scanner.ui.camera.CameraScreen
+import com.rskusum.scanner.ui.camera.maxGalleryPick
+import androidx.compose.foundation.background
 import com.rskusum.scanner.ui.crop.CropScreen
 import com.rskusum.scanner.ui.erase.EraseScreen
 import com.rskusum.scanner.ui.home.HomeScreen
@@ -63,7 +65,7 @@ class ScannerActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { CAMERA, REVIEW, CROP, ERASE, HOME, AI_TEXT }
+private enum class Screen { CAMERA, REVIEW, CROP, ERASE, HOME, AI_TEXT, IMPORT }
 
 /** Back presses further apart than this start the exit sequence again. */
 private const val EXIT_WINDOW_MS = 2500L
@@ -87,12 +89,41 @@ fun ScannerFlow(
     RsScanner.init(androidx.compose.ui.platform.LocalContext.current)
     val vm: ScannerViewModel = viewModel()
     vm.configure(options)
-    // Opens straight into the camera.
-    var screen by rememberSaveable { mutableStateOf(Screen.CAMERA) }
+    // Opens straight into the camera, or into the photo picker for "image to PDF".
+    var screen by rememberSaveable { mutableStateOf(if (options.startWithGallery) Screen.IMPORT else Screen.CAMERA) }
     var cropIndex by rememberSaveable { mutableIntStateOf(0) }
     var reviewIndex by rememberSaveable { mutableIntStateOf(0) }
     var aiPageId by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Image to PDF: the system photo picker opens first; the picked pictures are cropped,
+    // straightened and enhanced like camera pages and land in the editor. Cancel = leave.
+    var galleryAsked by rememberSaveable { mutableStateOf(false) }
+    val pickerContext = androidx.compose.ui.platform.LocalContext.current
+    val startPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.PickMultipleVisualMedia(maxGalleryPick()),
+    ) { uris: List<android.net.Uri> ->
+        if (uris.isNotEmpty()) {
+            vm.importFromGallery(uris)
+            reviewIndex = 0
+            screen = Screen.REVIEW
+        } else if (vm.pages.isEmpty() && !vm.isRendering) {
+            vm.discardSession()
+            if (onExit != null) onExit() else (pickerContext as? Activity)?.finish()
+        } else {
+            screen = Screen.REVIEW
+        }
+    }
+    LaunchedEffect(screen) {
+        if (screen == Screen.IMPORT && !galleryAsked) {
+            galleryAsked = true
+            startPicker.launch(
+                androidx.activity.result.PickVisualMediaRequest(
+                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly,
+                ),
+            )
+        }
+    }
 
     // Process death loses the in-memory session; never land on an empty editor.
     if ((screen == Screen.REVIEW || screen == Screen.CROP || screen == Screen.ERASE || screen == Screen.AI_TEXT) && vm.pages.isEmpty() && !vm.isRendering) {
@@ -162,6 +193,11 @@ fun ScannerFlow(
         label = "nav",
     ) { s ->
         when (s) {
+            Screen.IMPORT -> androidx.compose.foundation.layout.Box(
+                androidx.compose.ui.Modifier
+                    .fillMaxSize()
+                    .then(androidx.compose.ui.Modifier.background(androidx.compose.ui.graphics.Color.Black)),
+            )
             Screen.CAMERA -> CameraScreen(
                 vm = vm,
                 onOpenReview = { reviewIndex = vm.pages.lastIndex.coerceAtLeast(0); screen = Screen.REVIEW },
