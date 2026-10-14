@@ -79,6 +79,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         pdfQuality = o.pdfQuality
         orientation = o.startMode.defaultOrientation
         mode = o.startMode
+        hdMode = o.startHd
     }
 
     /** Finished scans for the calling app (embedded mode). */

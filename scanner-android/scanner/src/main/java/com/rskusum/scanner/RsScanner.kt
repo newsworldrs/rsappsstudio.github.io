@@ -84,6 +84,8 @@ object RsScanner {
  * @param returnJpegs return every finished page as a JPEG ([ScanResult.pageUris]).
  * @param pdfQuality size / quality preset preselected for the PDF.
  * @param ocrLanguages Tesseract languages for AI Text / Extract text, e.g. "eng" or "eng+hin".
+ * @param startHd open the camera with HD scan already ticked (e.g. for a "4K scan" button);
+ *   the user can still switch it off. HD pages are limited to 5 per scan.
  * @param showIntro show the three-page tour of the buttons the first time the scanner opens
  *   after the app is installed (once per install).
  * @param standalone full app behaviour: home screen with the PDF library, QR scanner, and
@@ -102,6 +104,7 @@ data class ScannerOptions @JvmOverloads constructor(
     val standalone: Boolean = false,
     val ocrLanguages: String = "eng",
     val showIntro: Boolean = true,
+    val startHd: Boolean = false,
 ) : Parcelable {
     init {
         require(modes.isNotEmpty()) { "ScannerOptions.modes must not be empty" }
