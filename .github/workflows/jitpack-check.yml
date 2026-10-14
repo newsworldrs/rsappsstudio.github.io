@@ -1,0 +1,20 @@
+name: JitPack check (temporary)
+on:
+  push:
+    paths: ['.github/workflows/jitpack-check.yml']
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request 41a27a6 from JitPack and wait for the build
+        run: |
+          base=https://jitpack.io/com/github/newsworldrs/rsappsstudio.github.io/41a27a6
+          for i in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 600 "$base/rsappsstudio.github.io-41a27a6.pom")
+            echo "try $i: HTTP $code"
+            [ "$code" = "200" ] && break
+            sleep 30
+          done
+          echo "---- build.log (tail) ----"
+          curl -s --max-time 120 "$base/build.log" | tail -40
+          [ "$code" = "200" ]
