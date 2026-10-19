@@ -240,7 +240,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         onDispose { sm?.unregisterListener(listener) }
     }
 
-    fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?) {
+    fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?, manual: Boolean) {
         ic.takePicture(captureExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 // The photo is fully captured at this point: only now give the shutter feedback,
@@ -253,14 +253,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                         flashOverlay.animateTo(0f, tween(320))
                     }
                 }
-                var photoFile: java.io.File? = null
+                // The photo is turned upright in its pixels (as in 1.6.0), whatever way the phone or
+                // the screen is turned; the saved page photo never depends on an EXIF tag.
                 val bmp: Bitmap? = try {
                     val buf = image.planes[0].buffer
                     val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
-                    val rotation = image.imageInfo.rotationDegrees
-                    // Keep the camera's own JPEG as the page photo (no slow re-encode).
-                    photoFile = runCatching { vm.newPhotoFile().also { Images.saveCameraJpeg(bytes, rotation, it) } }.getOrNull()
-                    Images.decodeBytes(bytes, rotation, vm.photoSide)
+                    Images.decodeBytes(bytes, image.imageInfo.rotationDegrees, vm.photoSide)
                 } catch (t: Throwable) {
                     null
                 } finally {
@@ -269,8 +267,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 mainExecutor.execute {
                     capturing = false
                     vm.tracker.onCaptured(bmp != null)
-                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), photoFile = photoFile)
-                    else { photoFile?.delete(); toast = context.getString(R.string.rs_scanner_capture_failed) }
+                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), manual = manual)
+                    else toast = context.getString(R.string.rs_scanner_capture_failed)
                 }
             }
 
@@ -297,7 +295,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         val hint = analyzer.lastQuad
         val frame = vm.guideFrame
 
-        // Focus on the page before shooting (sharp text), then capture. Never wait > 1.2 s.
+        // Manual shutter: focus on the page before shooting (sharp text), then capture. Never wait > 0.7 s.
         // Shutter sound/flash are played in takePhoto once the image is actually captured.
         var shot = false
         fun shoot() {
@@ -307,8 +305,14 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             scope.launch {
                 val until = SystemClock.elapsedRealtime() + 800
                 while (shake.get() > STEADY_SHAKE && SystemClock.elapsedRealtime() < until) kotlinx.coroutines.delay(30)
-                takePhoto(ic, hint, frame)
+                takePhoto(ic, hint, frame, manual)
             }
+        }
+        if (!manual) {
+            // Auto capture: the page has been steady and in focus (continuous autofocus) for a
+            // while already - shoot at once instead of focusing again.
+            shoot()
+            return
         }
         val cam = holder.camera
         val pv = holder.previewView
@@ -321,7 +325,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 .build()
             runCatching { cam.cameraControl.startFocusAndMetering(action).addListener({ shoot() }, mainExecutor) }
                 .onFailure { shoot() }
-            scope.launch { kotlinx.coroutines.delay(1200); shoot() }
+            scope.launch { kotlinx.coroutines.delay(700); shoot() }
         } else {
             shoot()
         }

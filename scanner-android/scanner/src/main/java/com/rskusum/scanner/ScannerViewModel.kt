@@ -156,6 +156,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     // At most two photos are analysed at a time; more captures wait their turn (bounded memory).
     private val createGate = Semaphore(2)
 
+    /** Writes page photos in the background while the page outline is being found. */
+    private val photoSaver = java.util.concurrent.Executors.newFixedThreadPool(2)
+
+    override fun onCleared() {
+        photoSaver.shutdown()
+        super.onCleared()
+    }
+
     /** HD scan: full sensor resolution, larger pages and a better-quality PDF (limited count). */
     var hdMode by mutableStateOf(false)
         private set
@@ -243,14 +251,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     /**
-     * @param photoFile the photo already saved on disk (camera JPEG as captured); null = save [photo].
+     * @param manual the user pressed the shutter: the photo is always kept (never refused as
+     *   "already scanned" - only auto capture is checked for repeats).
      */
     fun addPhoto(
         photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false,
-        photoFile: File? = null,
+        manual: Boolean = false,
     ): kotlinx.coroutines.Job? {
         if (!captureAllowed) {
-            photoFile?.delete()
             photo.recycle()
             _messages.tryEmit(
                 if (pageLimitReached) str(R.string.rs_scanner_page_limit_reached, options.pageLimit)
@@ -262,7 +270,6 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         if (hd && hdPages >= HD_LIMIT) {
             photo.recycle()
             _messages.tryEmit(str(R.string.rs_scanner_hd_limit, HD_LIMIT))
-            photoFile?.delete()
             return null
         }
         processingCaptures++
@@ -270,17 +277,21 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val smart = aiAssist
         return viewModelScope.launch {
             try {
-                // Instant feedback: a small flattened preview, ready in a few milliseconds.
-                withContext(Dispatchers.Default) { runCatching { previewOf(photo, hint ?: frame) }.getOrNull() }
-                    ?.let { pendingPreview = it }
+                // Instant feedback: a small flattened preview, ready in a few milliseconds. It is
+                // also the new page's first thumbnail, so the strip never waits on a spinner.
+                val preview = withContext(Dispatchers.Default) { runCatching { previewOf(photo, hint ?: frame) }.getOrNull() }
+                preview?.let { pendingPreview = it }
                 val isId = mode == ScanMode.ID_CARD
                 val front = idFront
                 val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
                 val created = createGate.withPermit {
-                    withContext(Dispatchers.Default) { createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported, photoFile) }
+                    withContext(Dispatchers.Default) {
+                        createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported, checkRepeat = !manual && !imported)
+                    }
                 }
                 created.forEach { it.hd = hd }
+                if (created.size == 1 && created[0].thumbnail == null) created[0].thumbnail = preview
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
@@ -342,11 +353,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private fun createPages(
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
         idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false,
-        imported: Boolean = false, photoFile: File? = null,
+        imported: Boolean = false, checkRepeat: Boolean = true,
     ): List<Page> {
         val photoW = photo.width
         val photoH = photo.height
-        val file = photoFile ?: newPhotoFile().also { Images.saveJpeg(photo, it, 92) }
+        // The page photo is written in the background while the page is being found (the JPEG
+        // encode no longer delays the thumbnail); it is complete before this function returns.
+        val file = newPhotoFile()
+        val saving = photoSaver.submit { Images.saveJpeg(photo, file, 95) }
         val gray = Images.toGrayMat(photo)
         try {
             var sidesFound = 4
@@ -438,7 +452,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             // Same page as one already in this session? Layout + feature matching: works whatever the
             // crop, tilt, lighting, or if the page was turned sideways / upside down.
             val sig = if (blank) null else com.rskusum.scanner.vision.PageMatcher.signature(gray, quad)
-            val duplicate = if (sig == null) {
+            val duplicate = if (!checkRepeat) {
+                false
+            } else if (sig == null) {
                 sessionFingerprints.any { DocumentDetector.fingerprintSimilarity(fp, it) >= DUPLICATE_SIMILARITY }
             } else {
                 sessionSignatures.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }
@@ -505,6 +521,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                         forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
                     ).also { it.signature = sig; it.uprightPending = true }
                 }
+                runCatching { saving.get() }
                 file.delete() // the full spread photo is no longer needed
                 return pagesOut
             }
@@ -515,9 +532,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 ).also { it.signature = sig; it.uprightPending = true }
             )
         } catch (r: Rejected) {
+            runCatching { saving.get() }
             file.delete()
             throw r
         } finally {
+            // The photo must be fully written before it is recycled (and before the page renders).
+            runCatching { saving.get() }
             gray.release()
             photo.recycle()
         }
@@ -712,10 +732,16 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         page.rendering = true
         viewModelScope.launch {
             try {
-                // A quick small preview first, so the thumbnail shows up at once.
+                // A quick small preview first, so the thumbnail shows up at once (camera pages
+                // already have one from the shutter)...
                 if (page.thumbnail == null) {
-                    withContext(Dispatchers.Default) { runCatching { quickThumbnail(page) }.getOrNull() }
+                    withContext(Dispatchers.Default) { runCatching { quickThumbnail(page, decideUpright = false) }.getOrNull() }
                         ?.let { if (page.thumbnail == null) page.thumbnail = it }
+                }
+                // ...then the page is turned upright (text orientation) and the preview follows.
+                if (page.uprightPending) {
+                    withContext(Dispatchers.Default) { runCatching { quickThumbnail(page, decideUpright = true) }.getOrNull() }
+                        ?.let { page.thumbnail = it }
                 }
                 val result = withContext(Dispatchers.Default) {
                     renderGate.withPermit { render(page, pickSmartFilter) }
@@ -745,8 +771,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * Flattened page at thumbnail size, without filters (shown until the full render is done).
      * A new page's text orientation is decided here, so even the first thumbnail is upright.
      */
-    private fun quickThumbnail(page: Page): ImageBitmap? {
-        val pending = page.uprightPending
+    private fun quickThumbnail(page: Page, decideUpright: Boolean): ImageBitmap? {
+        val pending = decideUpright && page.uprightPending
         val bmp = Images.decodeFile(page.originalFile, if (pending) 2000 else 1000) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()

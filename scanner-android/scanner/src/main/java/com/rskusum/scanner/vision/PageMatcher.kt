@@ -18,20 +18,25 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
- * What a captured page looks like, for "is this the same page again?" checks. Two complementary
- * parts, both tolerant to a different crop, tilt, blur, lighting and to the page being turned
- * 90/180/270 degrees:
- *  - [density]: 64x64 map of where the text/drawings are (layout). Compared over 4 rotations and
- *    small shifts.
- *  - ORB feature points ([points] + [descriptors]): distinctive letter/word corners. Two captures
- *    of the same page share many points that line up under one perspective mapping; different
- *    pages practically never do.
+ * What a captured page looks like, for "is this the same page again?" checks. Tolerant to a
+ * different crop, tilt, blur, lighting and to the page being turned 90/180/270 degrees:
+ *  - [density]: 64x64 map of where the text/drawings are (layout), a cheap first filter.
+ *  - ORB feature points ([points] + [descriptors]): letter/word corners that line both captures
+ *    up under one perspective mapping.
+ *  - [ink]: a small black-and-white ink mask. Once the pages are lined up, the ink must match
+ *    everywhere - so two copies of the same form or bill with different names, dates or amounts
+ *    are different pages, even though their layout and printed text are identical.
  */
 class PageSignature internal constructor(
     internal val density: FloatArray,
     internal val points: FloatArray,
     internal val descriptors: ByteArray,
     internal val descriptorRows: Int,
+    internal val ink: ByteArray,
+    internal val inkW: Int,
+    internal val inkH: Int,
+    /** Ink-mask pixels per signature-page pixel. */
+    internal val inkScale: Double,
 )
 
 object PageMatcher {
@@ -39,12 +44,16 @@ object PageMatcher {
     private const val D = 64
     private const val LONG_SIDE = 800.0
 
-    // Decision rule (tuned on real + synthetic pages: 99/100 duplicates caught, 0/100 false alarms).
-    private const val STRONG_FEATURES = 25      // this many geometrically consistent points = same page
-    private const val STRONG_LAYOUT = 0.86      // layout this similar = same page
-    private const val LAYOUT_WITH_FEATURES = 0.80
-    private const val SOME_FEATURES = 15
+    private const val INK_SIDE = 320.0
+
+    // Decision rule. A similar layout or shared printed text is NOT enough (forms, bills and
+    // ID pages share both): the pages must line up AND their ink must agree everywhere.
+    // Tuned on synthetic captures (tilt, blur, shadows, 180-degree turns): same page -> worst
+    // cell <= 1.3 % different; same form with other data -> >= 9 %; 0 false duplicates.
     private const val LAYOUT_WORTH_MATCHING = 0.55 // below this, don't even run feature matching
+    private const val MIN_INLIERS = 15             // points agreeing on one mapping
+    private const val MAX_INK_DIFFERENCE = 0.05    // worst 1/16 x 1/16 cell with different ink
+    private const val GRID = 16
 
     private val orb: ORB by lazy { ORB.create(600, 1.2f, 6, 31, 0, 2, ORB.HARRIS_SCORE, 31, 12) }
     private val matcher: BFMatcher by lazy { BFMatcher.create(Core.NORM_HAMMING, false) }
@@ -80,19 +89,35 @@ object PageMatcher {
             if (bytes.isNotEmpty()) desc.get(0, 0, bytes)
             val rows = desc.rows()
             eq.release(); kps.release(); desc.release()
-            return PageSignature(density, pts, bytes, rows)
+
+            // Small ink mask (dark strokes = 255) for the final content comparison.
+            val inkScale = INK_SIDE / max(ow, oh)
+            val small = Mat()
+            Imgproc.resize(page, small, Size(ow * inkScale, oh * inkScale), 0.0, 0.0, Imgproc.INTER_AREA)
+            val inkMat = Mat()
+            Imgproc.adaptiveThreshold(small, inkMat, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, 15, 12.0)
+            val ink = ByteArray(inkMat.rows() * inkMat.cols())
+            inkMat.get(0, 0, ink)
+            val sig = PageSignature(density, pts, bytes, rows, ink, inkMat.cols(), inkMat.rows(), inkScale)
+            small.release(); inkMat.release()
+            return sig
         } finally {
             page.release()
         }
     }
 
-    /** True when [a] and [b] show the same page (any crop, rotation, lighting). */
+    /**
+     * True when [a] and [b] show the same page (any crop, rotation, lighting). When unsure the
+     * answer is "different": keeping a repeated page costs a tap, refusing a new one loses it.
+     */
     fun isSamePage(a: PageSignature, b: PageSignature): Boolean {
-        val layout = layoutSimilarity(a.density, b.density)
-        if (layout >= STRONG_LAYOUT) return true
-        if (layout < LAYOUT_WORTH_MATCHING) return false
-        val inliers = featureInliers(a, b)
-        return inliers >= STRONG_FEATURES || (layout >= LAYOUT_WITH_FEATURES && inliers >= SOME_FEATURES)
+        if (layoutSimilarity(a.density, b.density) < LAYOUT_WORTH_MATCHING) return false
+        val mapping = featureMapping(a, b) ?: return false
+        try {
+            return inkDifference(a, b, mapping) <= MAX_INK_DIFFERENCE
+        } finally {
+            mapping.release()
+        }
     }
 
     // --- layout -----------------------------------------------------------------------------
@@ -164,10 +189,13 @@ object PageMatcher {
 
     // --- features ---------------------------------------------------------------------------
 
-    /** Number of ORB matches that agree on one perspective mapping (RANSAC inliers). */
+    /**
+     * Perspective mapping from [b]'s page onto [a]'s, from ORB matches that agree on it (RANSAC);
+     * null when fewer than [MIN_INLIERS] points agree.
+     */
     @Synchronized
-    private fun featureInliers(a: PageSignature, b: PageSignature): Int {
-        if (a.descriptorRows < 20 || b.descriptorRows < 20) return 0
+    private fun featureMapping(a: PageSignature, b: PageSignature): Mat? {
+        if (a.descriptorRows < 20 || b.descriptorRows < 20) return null
         val da = Mat(a.descriptorRows, 32, CvType.CV_8U).apply { put(0, 0, a.descriptors) }
         val db = Mat(b.descriptorRows, 32, CvType.CV_8U).apply { put(0, 0, b.descriptors) }
         val knn = ArrayList<MatOfDMatch>()
@@ -178,17 +206,66 @@ object PageMatcher {
                 val pair = m.toArray()
                 if (pair.size == 2 && pair[0].distance < 0.8f * pair[1].distance) good += pair[0]
             }
-            if (good.size < 12) return good.size / 3
-            val src = MatOfPoint2f(*good.map { Point(a.points[2 * it.queryIdx].toDouble(), a.points[2 * it.queryIdx + 1].toDouble()) }.toTypedArray())
-            val dst = MatOfPoint2f(*good.map { Point(b.points[2 * it.trainIdx].toDouble(), b.points[2 * it.trainIdx + 1].toDouble()) }.toTypedArray())
+            if (good.size < MIN_INLIERS) return null
+            val src = MatOfPoint2f(*good.map { Point(b.points[2 * it.trainIdx].toDouble(), b.points[2 * it.trainIdx + 1].toDouble()) }.toTypedArray())
+            val dst = MatOfPoint2f(*good.map { Point(a.points[2 * it.queryIdx].toDouble(), a.points[2 * it.queryIdx + 1].toDouble()) }.toTypedArray())
             val mask = Mat()
             val hm = Calib3d.findHomography(src, dst, Calib3d.RANSAC, 8.0, mask)
             val inliers = if (hm.empty()) 0 else Core.countNonZero(mask)
-            src.release(); dst.release(); mask.release(); hm.release()
-            return inliers
+            src.release(); dst.release(); mask.release()
+            if (inliers < MIN_INLIERS) { hm.release(); return null }
+            return hm
         } finally {
             da.release(); db.release()
             knn.forEach { it.release() }
         }
+    }
+
+    /**
+     * Worst share of ink that is on one page but not near the same place on the other, over a
+     * 16 x 16 grid, with [b] mapped onto [a] by [mapping] (signature-page coordinates).
+     */
+    private fun inkDifference(a: PageSignature, b: PageSignature, mapping: Mat): Double {
+        val ia = Mat(a.inkH, a.inkW, CvType.CV_8U).apply { put(0, 0, a.ink) }
+        val ib = Mat(b.inkH, b.inkW, CvType.CV_8U).apply { put(0, 0, b.ink) }
+        // Signature-page mapping -> ink-mask mapping: scale(a) * mapping * scale(b)^-1.
+        val sa = Mat.eye(3, 3, CvType.CV_64F).apply { put(0, 0, a.inkScale); put(1, 1, a.inkScale) }
+        val sbInv = Mat.eye(3, 3, CvType.CV_64F).apply { put(0, 0, 1.0 / b.inkScale); put(1, 1, 1.0 / b.inkScale) }
+        val tmp = Mat()
+        val h = Mat()
+        Core.gemm(mapping, sbInv, 1.0, Mat(), 0.0, tmp)
+        Core.gemm(sa, tmp, 1.0, Mat(), 0.0, h)
+        val size = Size(a.inkW.toDouble(), a.inkH.toDouble())
+        val wb = Mat()
+        Imgproc.warpPerspective(ib, wb, h, size, Imgproc.INTER_NEAREST, org.opencv.core.Core.BORDER_CONSTANT, org.opencv.core.Scalar(0.0))
+        val valid = Mat()
+        val ones = Mat(b.inkH, b.inkW, CvType.CV_8U, org.opencv.core.Scalar(255.0))
+        Imgproc.warpPerspective(ones, valid, h, size, Imgproc.INTER_NEAREST, org.opencv.core.Core.BORDER_CONSTANT, org.opencv.core.Scalar(0.0))
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 5.0))
+        val nearA = Mat(); val nearB = Mat()
+        Imgproc.dilate(ia, nearA, kernel)
+        Imgproc.dilate(wb, nearB, kernel)
+        // Ink of a with no ink of b nearby (inside b's area), and ink of b with no ink of a nearby.
+        val notNearB = Mat(); Core.bitwise_not(nearB, notNearB)
+        val onlyA = Mat(); Core.bitwise_and(ia, notNearB, onlyA); Core.bitwise_and(onlyA, valid, onlyA)
+        val notNearA = Mat(); Core.bitwise_not(nearA, notNearA)
+        val onlyB = Mat(); Core.bitwise_and(wb, notNearA, onlyB)
+        val diff = Mat(); Core.bitwise_or(onlyA, onlyB, diff)
+        var worst = 0.0
+        val cw = maxOf(1, a.inkW / GRID)
+        val ch = maxOf(1, a.inkH / GRID)
+        var y = 0
+        while (y + ch <= a.inkH) {
+            var x = 0
+            while (x + cw <= a.inkW) {
+                val cell = diff.submat(y, y + ch, x, x + cw)
+                worst = max(worst, Core.countNonZero(cell).toDouble() / (cw * ch))
+                cell.release()
+                x += cw
+            }
+            y += ch
+        }
+        listOf(ia, ib, sa, sbInv, tmp, h, wb, valid, ones, kernel, nearA, nearB, notNearB, onlyA, notNearA, onlyB, diff).forEach { it.release() }
+        return worst
     }
 }
