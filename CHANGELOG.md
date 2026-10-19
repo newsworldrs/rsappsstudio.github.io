@@ -6,6 +6,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 
 ## [Unreleased]
 ### Added
+- **Color filter** (`ScanFilter.COLOR`): pure white paper with vivid ink, stamp, logo and photo colours. Lighting is evened out from brightness only, so large colour areas stay clean and even. Shown second in the filter list.
 - `ScannerOptions(startWithGallery = true)`: opens the system photo picker instead of the camera (for an "image to PDF" button). Picked pictures go through the same edge detection, cropping, straightening and filters as camera pages and open in the editor. Cancelling the picker closes the scanner.
 - `ScannerOptions(startHd = true)`: opens the camera with HD already ticked.
 ### Changed

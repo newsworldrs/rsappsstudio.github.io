@@ -20,6 +20,8 @@ enum class ScanFilter(@androidx.annotation.StringRes val labelRes: Int) {
     GRAYSCALE(com.rskusum.scanner.R.string.rs_scanner_filter_grayscale),
     BW(com.rskusum.scanner.R.string.rs_scanner_filter_bw),
     WHITEBOARD(com.rskusum.scanner.R.string.rs_scanner_filter_whiteboard),
+    /** Vivid colour scan: pure white paper, strong ink, stamp, logo and photo colours. */
+    COLOR(com.rskusum.scanner.R.string.rs_scanner_filter_color),
     /**
      * Old "No shadow" filter, kept so existing code compiles. Shadow removal is now a separate
      * switch that works with every filter ([ImageEnhancer.apply] `removeShadow`).
@@ -32,7 +34,7 @@ enum class ScanFilter(@androidx.annotation.StringRes val labelRes: Int) {
 
     companion object {
         /** Filters offered in the UI, in display order. */
-        val choices: List<ScanFilter> = listOf(AUTO, ORIGINAL, DARK_TEXT, LIGHT_TEXT, GRAYSCALE, BW, WHITEBOARD)
+        val choices: List<ScanFilter> = listOf(AUTO, COLOR, ORIGINAL, DARK_TEXT, LIGHT_TEXT, GRAYSCALE, BW, WHITEBOARD)
     }
 }
 
@@ -72,6 +74,7 @@ object ImageEnhancer {
     private fun applyFilter(rgb: Mat, filter: ScanFilter): Mat = when (filter) {
         ScanFilter.ORIGINAL -> rgb.clone()
         ScanFilter.DARK_TEXT -> darkText(rgb)
+        ScanFilter.COLOR -> vividColor(rgb)
         ScanFilter.AUTO -> {
             // Gentle: even out lighting, whiten paper, keep natural ink and photo colours.
             val n = normalize(rgb)
@@ -141,6 +144,82 @@ object ImageEnhancer {
         Imgproc.erode(out, out, k)
         k.release()
         return toRgb(out)
+    }
+
+    /**
+     * Color: lighting is evened out from the brightness only (one gain for all three channels),
+     * so large solid colour areas - headers, logos, photos - keep a clean, even colour instead of
+     * blotches. The paper is then made neutral white, contrast and colours are boosted, near-white
+     * paper is pushed to pure white and the text is sharpened.
+     */
+    private fun vividColor(rgb: Mat): Mat {
+        val w = rgb.cols()
+        val h = rgb.rows()
+        val gray = Mat()
+        Imgproc.cvtColor(rgb, gray, Imgproc.COLOR_RGB2GRAY)
+        // Paper brightness under the content (text and small marks removed).
+        val s = min(1.0, 800.0 / max(w, h))
+        val small = Mat()
+        Imgproc.resize(gray, small, Size(w * s, h * s), 0.0, 0.0, Imgproc.INTER_AREA)
+        gray.release()
+        val k = max(5, (max(small.cols(), small.rows()) / 14) or 1)
+        val bg = Mat()
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(k.toDouble(), k.toDouble()))
+        Imgproc.morphologyEx(small, bg, Imgproc.MORPH_CLOSE, kernel)
+        kernel.release(); small.release()
+        Imgproc.medianBlur(bg, bg, 9)
+        Core.max(bg, org.opencv.core.Scalar(percentile(bg, 0.95) * 0.45), bg)
+        val bgF = Mat()
+        bg.convertTo(bgF, CvType.CV_32F)
+        bg.release()
+        val full = Mat()
+        Imgproc.resize(bgF, full, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_LINEAR)
+        bgF.release()
+        val gain = Mat()
+        Core.max(full, org.opencv.core.Scalar(1.0), full)
+        Core.divide(245.0, full, gain)
+        full.release()
+        val gain3 = Mat()
+        Core.merge(listOf(gain, gain, gain), gain3)
+        gain.release()
+        val f = Mat()
+        rgb.convertTo(f, CvType.CV_32FC3)
+        Core.multiply(f, gain3, f)
+        gain3.release()
+        val even = Mat()
+        f.convertTo(even, CvType.CV_8UC3)
+        f.release()
+
+        // Neutral white paper: the brightest 40 % of the page is the paper; remove its colour cast.
+        val g2 = Mat()
+        Imgproc.cvtColor(even, g2, Imgproc.COLOR_RGB2GRAY)
+        val mask = Mat()
+        Imgproc.threshold(g2, mask, percentile(g2, 0.6), 255.0, Imgproc.THRESH_BINARY)
+        g2.release()
+        val m = Core.mean(even, mask)
+        mask.release()
+        val r = max(1.0, m.`val`[0]); val gg = max(1.0, m.`val`[1]); val b = max(1.0, m.`val`[2])
+        val avg = (r + gg + b) / 3.0
+        Core.multiply(even, org.opencv.core.Scalar(avg / r, avg / gg, avg / b), even)
+
+        val out = stretch(even, 0.01, 232.0)
+        even.release()
+        saturate(out, 1.4)
+        // Soft knee: near-white paper becomes pure white, darker tones are untouched.
+        val lab = Mat()
+        Imgproc.cvtColor(out, lab, Imgproc.COLOR_RGB2Lab)
+        val ch = ArrayList<Mat>()
+        Core.split(lab, ch)
+        val lut = Mat(1, 256, CvType.CV_8UC1)
+        lut.put(0, 0, ByteArray(256) { i -> (if (i > 215) minOf(255, 215 + (i - 215) * 2) else i).toByte() })
+        Core.LUT(ch[0], lut, ch[0])
+        lut.release()
+        Core.merge(ch, lab)
+        ch.forEach { it.release() }
+        Imgproc.cvtColor(lab, out, Imgproc.COLOR_Lab2RGB)
+        lab.release()
+        sharpen(out, 0.5)
+        return out
     }
 
     /** Divide by estimated background illumination. */

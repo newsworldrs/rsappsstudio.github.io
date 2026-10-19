@@ -135,6 +135,7 @@
     <string name="rs_scanner_filter_light_text">Light text</string>
     <string name="rs_scanner_filter_original">Original</string>
     <string name="rs_scanner_filter_whiteboard">Whiteboard</string>
+    <string name="rs_scanner_filter_color">Color</string>
     <string name="rs_scanner_filter_with_shadow">%1$s + shadow removal</string>
     <string name="rs_scanner_finding_edges">Finding page edges…</string>
     <string name="rs_scanner_flash">Flash</string>
