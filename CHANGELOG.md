@@ -16,7 +16,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - **Slow thumbnail and slow editor:**
   - The thumbnail appears the instant the shutter fires (cut from the live preview), and the shutter is free for the next page as soon as the photo is taken.
   - Every page is prepared in two steps: a screen-size version (about 1600 px) shows in the editor within moments, and the full-resolution version for the PDF follows in the background without holding anything up.
-  - Tapping the thumbnail opens the editor at once. Pages still being prepared show their thumbnail instead of "Please wait".
+  - Each page is loaded into memory as soon as its screen-size version is ready (the 6 most recent pages). Tapping the thumbnail opens the editor on the finished page at once: no decoding, no placeholder.
 - **Filters looked worse than in 1.6.0:** photos are taken with the camera's full-quality processing again (the low-latency mode added in the test builds made photos noisier, and every filter exaggerated that).
 - **Camera screen broke when the phone was turned sideways:** the scanner now always keeps its portrait layout. It is locked in code as well as in the manifest, and opted out of Android 16's and the user's "full screen" overrides. Only the icons (tool rail, shutter, thumbnail, gallery, top bar) turn with the phone, as in the system camera, so the preview, frame and every button stay usable.
 - **Wrong "already scanned":** a page is a repeat only when its ink matches the earlier page everywhere once the two are lined up. Copies of the same form, bill or ID page with different names, dates or amounts are new pages. A page you capture with the shutter button is always kept; only auto capture skips repeats.

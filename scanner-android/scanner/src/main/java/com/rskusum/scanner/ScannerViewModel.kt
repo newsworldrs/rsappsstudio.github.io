@@ -768,7 +768,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val quick = withContext(Dispatchers.Default) {
                     renderGate.withPermit { if (gen == page.renderGen) render(page, pickSmartFilter, QUICK_RENDER_SIDE) else null }
                 }
-                if (gen != page.renderGen) { quick?.first?.delete(); return@launch }
+                if (gen != page.renderGen) { quick?.file?.delete(); return@launch }
                 if (quick != null) {
                     applyRender(page, quick, pickSmartFilter)
                     page.refining = true // shown and editable now; full resolution follows
@@ -777,7 +777,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val full = withContext(Dispatchers.Default) {
                     fullRenderGate.withPermit { if (gen == page.renderGen) render(page, false) else null }
                 }
-                if (gen != page.renderGen) { full?.first?.delete(); return@launch }
+                if (gen != page.renderGen) { full?.file?.delete(); return@launch }
                 if (full != null) applyRender(page, full, announce = false)
             } catch (t: Throwable) {
                 Log.e(TAG, "render failed", t)
@@ -787,8 +787,30 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun applyRender(page: Page, result: Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>, announce: Boolean) {
-        val (file, thumb, pick) = result
+    /** A finished render: page file, strip thumbnail, filter used, and (screen-size step) the editor image. */
+    private class RenderResult(val file: File, val thumb: ImageBitmap, val pick: com.rskusum.scanner.vision.SmartPick, val display: ImageBitmap?)
+
+    /** Pages whose editor image is held in memory, oldest first (see [keepDisplay]). */
+    private val displayed = ArrayDeque<Page>()
+
+    /**
+     * Keeps [image] ready for the editor, so tapping the thumbnail shows the finished page at
+     * once - no decoding, no placeholder. Only the most recent pages are kept in memory (each is
+     * a few MB); older ones are read from their file when they are viewed.
+     */
+    private fun keepDisplay(page: Page, image: ImageBitmap) {
+        displayed.removeAll { it !in pages } // pages deleted or saved meanwhile
+        page.display = image
+        displayed.remove(page)
+        displayed.addLast(page)
+        while (displayed.size > DISPLAY_CACHE) displayed.removeFirst().display = null
+    }
+
+    private fun applyRender(page: Page, result: RenderResult, announce: Boolean) {
+        val file = result.file
+        val thumb = result.thumb
+        val pick = result.pick
+        result.display?.let { keepDisplay(page, it) }
         page.processedFile?.takeIf { it != file }?.delete()
         page.filter = pick.filter
         page.removeShadow = pick.removeShadow
@@ -829,7 +851,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
     /** @param maxSide null = full print resolution; otherwise a smaller, much faster render. */
-    private fun render(page: Page, pickSmartFilter: Boolean, maxSide: Int? = null): Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>? {
+    private fun render(page: Page, pickSmartFilter: Boolean, maxSide: Int? = null): RenderResult? {
         val decodeSide = if (maxSide != null) (maxSide * 5 / 4) else if (page.hd) HD_PHOTO_SIDE else MAX_PHOTO_SIDE
         val bmp = Images.decodeFile(page.originalFile, decodeSide) ?: return null
         val rgb = Images.toRgbMat(bmp)
@@ -857,9 +879,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         enhanced.release()
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
         Images.saveJpeg(out, file, if (maxSide != null) 90 else 95)
+        // Screen-size step: keep the page itself ready for the editor (RGB_565 = half the memory).
+        val display = if (maxSide != null) out.copy(Bitmap.Config.RGB_565, false)?.asImageBitmap() else null
         val thumb = Images.thumbnail(out).asImageBitmap() // recycles out
 
-        return Triple(file, thumb, pick)
+        return RenderResult(file, thumb, pick, display)
     }
 
     /** Small previews of every filter for the filter strip. */
@@ -1054,6 +1078,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deletePage(page: Page) {
+        displayed.remove(page); page.display = null
         pages.remove(page)
         page.processedFile?.delete()
         if (pages.none { it.originalFile == page.originalFile }) page.originalFile.delete()
@@ -1172,6 +1197,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         private const val RENDER_MAX_SIDE = 3300
         /** First, screen-size render of a new or edited page (see launchRender). */
         private const val QUICK_RENDER_SIDE = 1600
+        /** Pages whose editor image stays in memory (~7 MB each). */
+        private const val DISPLAY_CACHE = 6
         /** Fingerprint correlation above which a capture counts as the same page (tested: same >= 0.976, different <= 0.75). */
         const val DUPLICATE_SIMILARITY = 0.88
     }

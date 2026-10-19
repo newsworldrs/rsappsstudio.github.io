@@ -365,10 +365,13 @@ fun ReviewScreen(
 
 @Composable
 private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
-    val image by produceState<ImageBitmap?>(null, page.version, page.processedFile) {
+    // Recent pages are already decoded in memory (prepared right after capture); older ones are
+    // read from their file.
+    val loaded by produceState<ImageBitmap?>(null, page.version, page.processedFile, page.display) {
         val f = page.processedFile
-        value = if (f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 2400)?.asImageBitmap() }
+        value = if (page.display != null || f == null) null else withContext(Dispatchers.IO) { Images.decodeFile(f, 2400)?.asImageBitmap() }
     }
+    val image = page.display ?: loaded
     // Zoom: pinch (up to 5x), drag to move while zoomed, double-tap to zoom in / back out.
     var scale by remember(page.id) { mutableFloatStateOf(1f) }
     var offset by remember(page.id) { mutableStateOf(Offset.Zero) }
@@ -412,8 +415,7 @@ private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Until the page itself is decoded, its thumbnail stands in (no empty "please wait").
-        (image ?: page.thumbnail)?.let {
+        image?.let {
             Image(
                 it,
                 contentDescription = stringResource(R.string.rs_scanner_page),

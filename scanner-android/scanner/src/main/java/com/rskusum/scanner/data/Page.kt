@@ -50,6 +50,8 @@ class Page(
     var signature: com.rskusum.scanner.vision.PageSignature? = null
     var processedFile by mutableStateOf<File?>(null)
     var thumbnail by mutableStateOf<ImageBitmap?>(null)
+    /** The finished page, already decoded for the editor (recent pages only; null = read [processedFile]). */
+    var display by mutableStateOf<ImageBitmap?>(null)
     var rendering by mutableStateOf(true)
     /** The screen-size page is shown; only the full-resolution version (for the PDF) is still being made. */
     var refining by mutableStateOf(false)
