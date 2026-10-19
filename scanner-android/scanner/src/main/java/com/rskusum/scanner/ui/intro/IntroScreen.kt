@@ -34,7 +34,7 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.FlashAuto
-import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.AutoFixNormal
@@ -49,7 +49,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.ImportContacts
 import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.QrCodeScanner
-import androidx.compose.material.icons.outlined.TextSnippet
+import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.ZoomOutMap
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -108,10 +108,10 @@ private val modeItems = listOf(
 private val editItems = listOf(
     Item(Icons.Outlined.AddAPhoto, R.string.rs_scanner_tool_add, R.string.rs_scanner_intro_add_text),
     Item(Icons.Outlined.Crop, R.string.rs_scanner_tool_crop, R.string.rs_scanner_intro_crop_text),
-    Item(Icons.Filled.RotateRight, R.string.rs_scanner_tool_rotate, R.string.rs_scanner_intro_rotate_text),
+    Item(Icons.AutoMirrored.Filled.RotateRight, R.string.rs_scanner_tool_rotate, R.string.rs_scanner_intro_rotate_text),
     Item(Icons.Outlined.AutoFixNormal, R.string.rs_scanner_tool_erase, R.string.rs_scanner_intro_erase_text),
     Item(Icons.Outlined.AutoFixHigh, R.string.rs_scanner_tool_filters, R.string.rs_scanner_intro_filters_text),
-    Item(Icons.Outlined.TextSnippet, R.string.rs_scanner_tool_text, R.string.rs_scanner_intro_text_text),
+    Item(Icons.AutoMirrored.Outlined.TextSnippet, R.string.rs_scanner_tool_text, R.string.rs_scanner_intro_text_text),
     Item(Icons.Outlined.Delete, R.string.rs_scanner_tool_delete, R.string.rs_scanner_intro_delete_text),
     Item(Icons.Outlined.Description, R.string.rs_scanner_intro_save, R.string.rs_scanner_intro_save_text),
 )

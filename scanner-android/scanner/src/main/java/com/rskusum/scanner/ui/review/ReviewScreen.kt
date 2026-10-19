@@ -31,13 +31,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.outlined.AddAPhoto
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.AutoFixNormal
 import androidx.compose.material.icons.outlined.Crop
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.TextSnippet
+import androidx.compose.material.icons.automirrored.outlined.TextSnippet
 import androidx.compose.material.icons.outlined.WbShade
 import androidx.compose.material.icons.outlined.DoneAll
 import androidx.compose.material3.AlertDialog
@@ -229,10 +229,10 @@ fun ReviewScreen(
                 ) {
                     ToolButton(Icons.Outlined.AddAPhoto, stringResource(R.string.rs_scanner_tool_add)) { onAddPage() }
                     ToolButton(Icons.Outlined.Crop, stringResource(R.string.rs_scanner_tool_crop)) { current?.let { onCrop(vm.pages.indexOf(it)) } }
-                    ToolButton(Icons.Filled.RotateRight, stringResource(R.string.rs_scanner_tool_rotate)) { current?.let { vm.rotate(it) } }
+                    ToolButton(Icons.AutoMirrored.Filled.RotateRight, stringResource(R.string.rs_scanner_tool_rotate)) { current?.let { vm.rotate(it) } }
                     ToolButton(Icons.Outlined.AutoFixNormal, stringResource(R.string.rs_scanner_tool_erase)) { current?.let { onErase(vm.pages.indexOf(it)) } }
                     ToolButton(Icons.Outlined.AutoFixHigh, stringResource(R.string.rs_scanner_tool_filters), selected = showFilters) { showFilters = !showFilters }
-                    ToolButton(Icons.Outlined.TextSnippet, stringResource(R.string.rs_scanner_tool_text)) { current?.let { onText(vm.pages.indexOf(it)) } }
+                    ToolButton(Icons.AutoMirrored.Outlined.TextSnippet, stringResource(R.string.rs_scanner_tool_text)) { current?.let { onText(vm.pages.indexOf(it)) } }
                     ToolButton(Icons.Outlined.Delete, stringResource(R.string.rs_scanner_tool_delete)) {
                         current?.let {
                             vm.deletePage(it)

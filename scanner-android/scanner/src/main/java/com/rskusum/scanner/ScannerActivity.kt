@@ -38,6 +38,7 @@ import com.rskusum.scanner.ui.review.ReviewScreen
 
 /** Full-screen scanner. Open it with [ScanDocument] (or [RsScanner.createIntent]). */
 class ScannerActivity : ComponentActivity() {
+    @android.annotation.SuppressLint("SourceLockedOrientationActivity") // deliberate: see below
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.BLACK),
