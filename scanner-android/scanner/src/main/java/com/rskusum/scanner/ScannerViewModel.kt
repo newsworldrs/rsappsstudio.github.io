@@ -133,6 +133,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val pages = mutableStateListOf<Page>()
     var documentName by mutableStateOf(defaultName())
     var processingCaptures by mutableStateOf(0)
+        private set
 
     /** Photos the camera is still taking (shutter fired, picture not delivered yet). */
     var shutterShots by mutableStateOf(0)
@@ -148,13 +149,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             }?.let { pendingPreview = it }
         }
     }
-        private set
+
     var importing by mutableStateOf(false)
         private set
     /** Gallery pictures picked but not started yet. */
     var importRemaining by mutableIntStateOf(0)
         private set
-    /** Pages still on their way: picked / captured but not processed, or still rendering. */
     /** Pages not visible yet (a page whose screen-size version is shown no longer counts). */
     val pendingPages: Int get() = importRemaining + processingCaptures + pages.count { it.rendering && !it.refining }
 
