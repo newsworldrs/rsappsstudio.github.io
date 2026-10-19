@@ -712,11 +712,10 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
             preview.setSurfaceProvider(previewView.surfaceProvider)
 
             val capture = ImageCapture.Builder()
-                // Normal scans: fast single-frame capture - the shot is taken the instant the
-                // shutter fires, so a hand moving away right after the beep can't blur it, and
-                // the next page is ready sooner. HD: the camera's slower best-quality processing.
-                .setCaptureMode(if (hd) ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY else ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .setJpegQuality(if (hd) 100 else 95)
+                // Always the camera's full-quality processing (multi-frame noise reduction, HDR),
+                // as in 1.6.0: the fast low-latency mode gave noisier photos that every filter
+                // made look worse (grainy paper, rough text).
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                 // ~12 MP 4:3: full sensor detail on normal cameras. The maximum of 50-200 MP sensors
                 // is a slow re-mosaiced shot that is softer and makes processing much slower.
                 .setResolutionSelector(

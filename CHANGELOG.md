@@ -10,9 +10,10 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - `ScannerOptions(startWithGallery = true)`: opens the system photo picker instead of the camera (for an "image to PDF" button). Picked pictures go through the same edge detection, cropping, straightening and filters as camera pages and open in the editor. Cancelling the picker closes the scanner.
 - `ScannerOptions(startHd = true)`: opens the camera with HD already ticked.
 ### Changed
-- Faster capture: normal pages use the camera's low-latency mode (HD keeps maximum quality). Auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
+- Faster capture: auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
 - Thumbnails show instantly: the preview taken at the shutter becomes the page's first thumbnail, the page is turned upright afterwards, and the page photo is written in the background while the outline is found.
 ### Fixed
+- **Filters looked worse than in 1.6.0:** photos are taken with the camera's full-quality processing again (the low-latency mode added in the test builds made photos noisier, and every filter exaggerated that).
 - **Camera screen broke when the phone was turned sideways:** the scanner now always keeps its portrait layout. It is locked in code as well as in the manifest, and opted out of Android 16's and the user's "full screen" overrides. Only the icons (tool rail, shutter, thumbnail, gallery, top bar) turn with the phone, as in the system camera, so the preview, frame and every button stay usable.
 - **Wrong "already scanned":** a page is a repeat only when its ink matches the earlier page everywhere once the two are lined up. Copies of the same form, bill or ID page with different names, dates or amounts are new pages. A page you capture with the shutter button is always kept; only auto capture skips repeats.
 - **Orientation:** page photos are turned upright in their pixels again (as in 1.6.0) instead of relying on an EXIF tag, so pages taken with the phone or screen turned sideways come out the right way.
