@@ -44,6 +44,9 @@ class ScannerActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(Color.BLACK),
         )
         super.onCreate(savedInstanceState)
+        // Portrait only, also when the manifest lock is overridden: the scanner layout never
+        // rotates; its icons turn with the phone instead (see rememberIconTurn).
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         RsScanner.init(this)
         val options = IntentCompat.getParcelableExtra(intent, RsScanner.EXTRA_OPTIONS, ScannerOptions::class.java)
             ?: ScannerOptions()
@@ -198,11 +201,15 @@ fun ScannerFlow(
                     .fillMaxSize()
                     .then(androidx.compose.ui.Modifier.background(androidx.compose.ui.graphics.Color.Black)),
             )
-            Screen.CAMERA -> CameraScreen(
-                vm = vm,
-                onOpenReview = { reviewIndex = vm.pages.lastIndex.coerceAtLeast(0); screen = Screen.REVIEW },
-                onHome = if (options.standalone) ({ vm.refreshDocuments(); screen = Screen.HOME }) else null,
-            )
+            Screen.CAMERA -> androidx.compose.runtime.CompositionLocalProvider(
+                com.rskusum.scanner.ui.camera.LocalIconTurn provides com.rskusum.scanner.ui.camera.rememberIconTurn(),
+            ) {
+                CameraScreen(
+                    vm = vm,
+                    onOpenReview = { reviewIndex = vm.pages.lastIndex.coerceAtLeast(0); screen = Screen.REVIEW },
+                    onHome = if (options.standalone) ({ vm.refreshDocuments(); screen = Screen.HOME }) else null,
+                )
+            }
             Screen.REVIEW -> ReviewScreen(
                 vm = vm,
                 initialPage = reviewIndex,

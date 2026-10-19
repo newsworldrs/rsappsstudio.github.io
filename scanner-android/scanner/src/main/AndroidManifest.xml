@@ -19,8 +19,22 @@
             android:name="com.rskusum.scanner.ScannerActivity"
             android:exported="false"
             android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.RsScanner" />
+            android:theme="@style/Theme.RsScanner">
+            <!-- The scanner screen always keeps its portrait layout; only its icons turn with the
+                 phone. Android 16 may ignore the portrait lock for apps targeting API 36 and
+                 users can force "full screen" per app: opt this screen out of both. -->
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+                android:value="true" />
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_OVERRIDE"
+                android:value="false" />
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_USER_ASPECT_RATIO_FULLSCREEN_OVERRIDE"
+                android:value="false" />
+        </activity>
 
         <!-- Own provider class + authority so it never clashes with the host app's FileProvider. -->
         <provider

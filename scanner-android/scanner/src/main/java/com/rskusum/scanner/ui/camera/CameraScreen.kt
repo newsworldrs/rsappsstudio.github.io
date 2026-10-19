@@ -156,6 +156,52 @@ private enum class Flash(val mode: Int) {
     fun next() = entries[(ordinal + 1) % entries.size]
 }
 
+/**
+ * How far (degrees, clockwise) the camera's icons are turned so they read upright the way the
+ * phone is held. The scanner layout itself always stays portrait - like the system camera.
+ */
+internal val LocalIconTurn = androidx.compose.runtime.compositionLocalOf { 0f }
+
+/**
+ * Follows the phone's physical orientation (portrait, sideways either way, upside down) and
+ * returns the animated icon angle. Turns take the short way round (270 -> 0 is a quarter turn).
+ */
+@Composable
+internal fun rememberIconTurn(): Float {
+    val context = LocalContext.current
+    var target by remember { mutableFloatStateOf(0f) }
+    DisposableEffect(Unit) {
+        val listener = object : android.view.OrientationEventListener(context) {
+            override fun onOrientationChanged(o: Int) {
+                if (o == ORIENTATION_UNKNOWN) return
+                // Snap with a little hysteresis so the icons don't flicker near 45 degrees.
+                val snapped = when (o) {
+                    in 60..120 -> 90
+                    in 150..210 -> 180
+                    in 240..300 -> 270
+                    in 0..30, in 330..359 -> 0
+                    else -> return
+                }
+                // The phone turned clockwise by [snapped]: icons turn back the other way.
+                val wanted = -snapped.toFloat()
+                // Shortest way from the current angle.
+                var delta = (wanted - target) % 360f
+                if (delta > 180f) delta -= 360f
+                if (delta < -180f) delta += 360f
+                if (delta != 0f) target += delta
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose { listener.disable() }
+    }
+    val angle by animateFloatAsState(target, tween(280), label = "iconTurn")
+    return angle
+}
+
+/** Turns this element's content with the phone (see [LocalIconTurn]). */
+@Composable
+private fun Modifier.turnWithPhone(): Modifier = rotate(LocalIconTurn.current)
+
 /** Up to 30 pictures per gallery import, never more than the system photo picker allows. */
 internal fun maxGalleryPick(): Int =
     runCatching { android.provider.MediaStore.getPickImagesMaxLimit() }.getOrDefault(30).coerceIn(2, 30)
@@ -1101,13 +1147,13 @@ private fun TopBar(qrMode: Boolean, onHome: (() -> Unit)?, onQr: (() -> Unit)?) 
                     Icons.Outlined.QrCodeScanner,
                     contentDescription = stringResource(R.string.rs_scanner_qr_code),
                     tint = if (qrMode) ScanColors.AccentBright else Color.White,
-                    modifier = Modifier.size(26.dp),
+                    modifier = Modifier.size(26.dp).turnWithPhone(),
                 )
             }
         }
         if (onHome != null) {
             IconButton(onClick = onHome) {
-                Icon(Icons.Outlined.FolderOpen, contentDescription = stringResource(R.string.rs_scanner_my_scans), tint = Color.White, modifier = Modifier.size(26.dp))
+                Icon(Icons.Outlined.FolderOpen, contentDescription = stringResource(R.string.rs_scanner_my_scans), tint = Color.White, modifier = Modifier.size(26.dp).turnWithPhone())
             }
         }
     }
@@ -1190,7 +1236,7 @@ private fun RailButton(selected: Boolean, label: String?, onClick: () -> Unit, c
                 .background(ScanColors.buttonBackground(selected))
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
-        ) { content() }
+        ) { Box(Modifier.turnWithPhone(), contentAlignment = Alignment.Center) { content() } }
         if (label != null) Text(label, color = Color.White.copy(alpha = 0.8f), fontSize = 9.sp)
     }
 }
@@ -1283,7 +1329,8 @@ private fun BottomControls(
                     .align(Alignment.CenterEnd)
                     .clip(RoundedCornerShape(12.dp))
                     .clickable(onClick = onGallery)
-                    .padding(6.dp),
+                    .padding(6.dp)
+                    .turnWithPhone(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(Icons.Outlined.PhotoLibrary, stringResource(R.string.rs_scanner_import_gallery), tint = Color.White, modifier = Modifier.size(28.dp))
@@ -1326,15 +1373,17 @@ private fun Shutter(progress: Float, capturing: Boolean, autoCapture: Boolean, o
             }
             drawCircle(ScanColors.Gradient, (size.minDimension / 2 - 9.dp.toPx()) * press)
         }
-        Icon(Icons.Filled.CameraAlt, contentDescription = stringResource(R.string.rs_scanner_capture), tint = Color.White, modifier = Modifier.size(28.dp).scale(press))
-        if (autoCapture) {
-            Text(
-                stringResource(R.string.rs_scanner_auto_badge),
-                color = Color.White,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
-            )
+        Box(Modifier.fillMaxSize().turnWithPhone(), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.CameraAlt, contentDescription = stringResource(R.string.rs_scanner_capture), tint = Color.White, modifier = Modifier.size(28.dp).scale(press))
+            if (autoCapture) {
+                Text(
+                    stringResource(R.string.rs_scanner_auto_badge),
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp),
+                )
+            }
         }
     }
 }
@@ -1348,7 +1397,7 @@ private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, preview: androi
             pulse.animateTo(1f, tween(300))
         }
     }
-    Box(Modifier.size(width = 60.dp, height = 60.dp).scale(pulse.value)) {
+    Box(Modifier.size(width = 60.dp, height = 60.dp).scale(pulse.value).turnWithPhone()) {
         Box(
             Modifier
                 .align(Alignment.BottomStart)
