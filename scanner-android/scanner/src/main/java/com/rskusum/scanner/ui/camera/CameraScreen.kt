@@ -287,11 +287,17 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     }
 
     fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?, manual: Boolean) {
+        // Instant thumbnail: what the preview shows right now, cut out with the live outline.
+        // It appears in the thumbnail the moment the shutter fires; the real photo replaces it.
+        vm.shutterShots++
+        runCatching { holder.previewView?.bitmap }.getOrNull()?.let { vm.showShutterPreview(it, hint ?: frame) }
         ic.takePicture(captureExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 // The photo is fully captured at this point: only now give the shutter feedback,
-                // so moving the phone after hearing it can't disturb the image.
+                // so moving the phone after hearing it can't disturb the image. The shutter is
+                // free again at once (decoding continues in the background).
                 mainExecutor.execute {
+                    capturing = false
                     sound.play(MediaActionSound.SHUTTER_CLICK)
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     scope.launch {
@@ -311,7 +317,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     image.close()
                 }
                 mainExecutor.execute {
-                    capturing = false
+                    vm.shutterShots = (vm.shutterShots - 1).coerceAtLeast(0)
                     vm.tracker.onCaptured(bmp != null)
                     if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), manual = manual)
                     else toast = context.getString(R.string.rs_scanner_capture_failed)
@@ -320,6 +326,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
 
             override fun onError(exception: ImageCaptureException) {
                 mainExecutor.execute {
+                    vm.shutterShots = (vm.shutterShots - 1).coerceAtLeast(0)
                     capturing = false
                     vm.tracker.onCaptured(false)
                     toast = context.getString(R.string.rs_scanner_capture_failed_code, exception.imageCaptureError)
@@ -332,7 +339,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         val ic = holder.capture ?: return
         if (capturing) return
         // Long batches: never more than a few photos waiting to be processed (bounded memory).
-        if (vm.processingCaptures >= MAX_QUEUED_CAPTURES) {
+        if (vm.processingCaptures + vm.shutterShots >= MAX_QUEUED_CAPTURES) {
             if (manual) toast = context.getString(R.string.rs_scanner_preparing_scans)
             return
         }
@@ -650,10 +657,10 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             autoCapture = vm.autoCapture,
             flash = flash,
             thumbnail = vm.pages.lastOrNull(),
-            preview = if (vm.processingCaptures > 0) vm.pendingPreview else null,
+            preview = if (vm.processingCaptures > 0 || vm.shutterShots > 0) vm.pendingPreview else null,
             // Count the photo being processed right away (feels instant).
-            pageCount = vm.pages.size + vm.processingCaptures,
-            processing = vm.processingCaptures > 0,
+            pageCount = vm.pages.size + vm.processingCaptures + vm.shutterShots,
+            processing = vm.processingCaptures > 0 || vm.shutterShots > 0,
             onGallery = if (vm.options.galleryImport) ({
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }) else null,
@@ -665,11 +672,11 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 }
             },
             onThumbnail = {
-                val pending = vm.pendingPages
-                if (pending > 0) {
+                // The editor opens at once: pages show their thumbnail until the page is ready.
+                if (vm.pages.isNotEmpty()) onOpenReview()
+                else if (vm.pendingPages > 0 || vm.shutterShots > 0) {
                     Toast.makeText(context, R.string.rs_scanner_preparing_scans, Toast.LENGTH_SHORT).show()
                 }
-                if (vm.pages.isNotEmpty()) onOpenReview()
             },
         )
     }

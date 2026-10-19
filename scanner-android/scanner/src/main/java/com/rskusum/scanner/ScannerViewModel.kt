@@ -133,6 +133,21 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val pages = mutableStateListOf<Page>()
     var documentName by mutableStateOf(defaultName())
     var processingCaptures by mutableStateOf(0)
+
+    /** Photos the camera is still taking (shutter fired, picture not delivered yet). */
+    var shutterShots by mutableStateOf(0)
+
+    /**
+     * Thumbnail straight from the live preview [snapshot] at the shutter, cut out with [quad]
+     * (normalized, same frame as the outline drawn on the preview). [snapshot] is recycled.
+     */
+    fun showShutterPreview(snapshot: Bitmap, quad: Quad?) {
+        viewModelScope.launch {
+            withContext(Dispatchers.Default) {
+                runCatching { previewOf(snapshot, quad) }.getOrNull().also { snapshot.recycle() }
+            }?.let { pendingPreview = it }
+        }
+    }
         private set
     var importing by mutableStateOf(false)
         private set
@@ -140,7 +155,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     var importRemaining by mutableIntStateOf(0)
         private set
     /** Pages still on their way: picked / captured but not processed, or still rendering. */
-    val pendingPages: Int get() = importRemaining + processingCaptures + pages.count { it.rendering }
+    /** Pages not visible yet (a page whose screen-size version is shown no longer counts). */
+    val pendingPages: Int get() = importRemaining + processingCaptures + pages.count { it.rendering && !it.refining }
 
     var documents by mutableStateOf<List<SavedDocument>>(emptyList())
         private set
@@ -153,6 +169,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     /** Full-resolution rendering is memory heavy: one page at a time. */
     // Two renders at a time: phones have several cores; more would only cost memory.
     private val renderGate = Semaphore(2)
+
+    /** Full-resolution renders run one at a time, so they never hold up the quick ones. */
+    private val fullRenderGate = Semaphore(1)
     // At most two photos are analysed at a time; more captures wait their turn (bounded memory).
     private val createGate = Semaphore(2)
 
@@ -728,43 +747,58 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         return out
     }
 
+    /**
+     * Prepares a page in two steps so it appears fast:
+     *  1. a screen-size render (~1600 px, a fraction of the work): the page shows in the editor
+     *     and the thumbnail within moments, the filter / Smart pick and upright turn are decided;
+     *  2. the full-resolution render for the PDF, in the background.
+     * A newer render of the same page (filter changed, crop edited...) makes older ones stop.
+     */
     private fun launchRender(page: Page, pickSmartFilter: Boolean = false) {
         page.rendering = true
+        val gen = ++page.renderGen
         viewModelScope.launch {
             try {
-                // A quick small preview first, so the thumbnail shows up at once (camera pages
-                // already have one from the shutter)...
+                // Gallery / book pages have no shutter preview: a quick flat thumbnail first.
                 if (page.thumbnail == null) {
                     withContext(Dispatchers.Default) { runCatching { quickThumbnail(page, decideUpright = false) }.getOrNull() }
                         ?.let { if (page.thumbnail == null) page.thumbnail = it }
                 }
-                // ...then the page is turned upright (text orientation) and the preview follows.
-                if (page.uprightPending) {
-                    withContext(Dispatchers.Default) { runCatching { quickThumbnail(page, decideUpright = true) }.getOrNull() }
-                        ?.let { page.thumbnail = it }
+                // Step 1: screen-size page (also turns it upright and picks the Smart filter).
+                val quick = withContext(Dispatchers.Default) {
+                    renderGate.withPermit { if (gen == page.renderGen) render(page, pickSmartFilter, QUICK_RENDER_SIDE) else null }
                 }
-                val result = withContext(Dispatchers.Default) {
-                    renderGate.withPermit { render(page, pickSmartFilter) }
+                if (gen != page.renderGen) { quick?.first?.delete(); return@launch }
+                if (quick != null) {
+                    applyRender(page, quick, pickSmartFilter)
+                    page.refining = true // shown and editable now; full resolution follows
                 }
-                if (result != null) {
-                    val (file, thumb, pick) = result
-                    page.processedFile?.takeIf { it != file }?.delete()
-                    page.filter = pick.filter
-                    page.removeShadow = pick.removeShadow
-                    if (pickSmartFilter) {
-                        page.smartLabel = pick.label(getApplication())
-                        _messages.tryEmit(str(R.string.rs_scanner_smart_message, page.smartLabel!!))
-                    }
-                    page.processedFile = file
-                    page.thumbnail = thumb
-                    page.version++
+                // Step 2: full resolution for the PDF (same filter, now decided).
+                val full = withContext(Dispatchers.Default) {
+                    fullRenderGate.withPermit { if (gen == page.renderGen) render(page, false) else null }
                 }
+                if (gen != page.renderGen) { full?.first?.delete(); return@launch }
+                if (full != null) applyRender(page, full, announce = false)
             } catch (t: Throwable) {
                 Log.e(TAG, "render failed", t)
             } finally {
-                page.rendering = false
+                if (gen == page.renderGen) { page.rendering = false; page.refining = false }
             }
         }
+    }
+
+    private fun applyRender(page: Page, result: Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>, announce: Boolean) {
+        val (file, thumb, pick) = result
+        page.processedFile?.takeIf { it != file }?.delete()
+        page.filter = pick.filter
+        page.removeShadow = pick.removeShadow
+        if (announce) {
+            page.smartLabel = pick.label(getApplication())
+            _messages.tryEmit(str(R.string.rs_scanner_smart_message, page.smartLabel!!))
+        }
+        page.processedFile = file
+        page.thumbnail = thumb
+        page.version++
     }
 
     /**
@@ -794,11 +828,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
-    private fun render(page: Page, pickSmartFilter: Boolean): Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>? {
-        val bmp = Images.decodeFile(page.originalFile, if (page.hd) HD_PHOTO_SIDE else MAX_PHOTO_SIDE) ?: return null
+    /** @param maxSide null = full print resolution; otherwise a smaller, much faster render. */
+    private fun render(page: Page, pickSmartFilter: Boolean, maxSide: Int? = null): Triple<File, ImageBitmap, com.rskusum.scanner.vision.SmartPick>? {
+        val decodeSide = if (maxSide != null) (maxSide * 5 / 4) else if (page.hd) HD_PHOTO_SIDE else MAX_PHOTO_SIDE
+        val bmp = Images.decodeFile(page.originalFile, decodeSide) ?: return null
         val rgb = Images.toRgbMat(bmp)
         bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = if (page.hd) HD_RENDER_MAX_SIDE else RENDER_MAX_SIDE, forcedOrientation = page.forcedOrientation)
+        val outSide = maxSide ?: if (page.hd) HD_RENDER_MAX_SIDE else RENDER_MAX_SIDE
+        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = outSide, forcedOrientation = page.forcedOrientation)
         rgb.release()
         if (page.uprightPending) {
             page.uprightPending = false
@@ -819,7 +856,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val out = Images.toBitmap(enhanced)
         enhanced.release()
         val file = File(renderDir, "${page.id}_${System.nanoTime()}.jpg")
-        Images.saveJpeg(out, file, 95)
+        Images.saveJpeg(out, file, if (maxSide != null) 90 else 95)
         val thumb = Images.thumbnail(out).asImageBitmap() // recycles out
 
         return Triple(file, thumb, pick)
@@ -1133,6 +1170,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         const val HD_LIMIT = 5
         /** Rendered page size: the largest PDF quality (HIGH) uses 3300 px, the viewer 3000 px. */
         private const val RENDER_MAX_SIDE = 3300
+        /** First, screen-size render of a new or edited page (see launchRender). */
+        private const val QUICK_RENDER_SIDE = 1600
         /** Fingerprint correlation above which a capture counts as the same page (tested: same >= 0.976, different <= 0.75). */
         const val DUPLICATE_SIMILARITY = 0.88
     }

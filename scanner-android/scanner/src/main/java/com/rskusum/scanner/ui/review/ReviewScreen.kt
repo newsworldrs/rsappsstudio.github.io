@@ -412,7 +412,8 @@ private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        image?.let {
+        // Until the page itself is decoded, its thumbnail stands in (no empty "please wait").
+        (image ?: page.thumbnail)?.let {
             Image(
                 it,
                 contentDescription = stringResource(R.string.rs_scanner_page),
@@ -426,7 +427,7 @@ private fun PageView(page: Page, onZoomed: (Boolean) -> Unit = {}) {
                     .background(Color.White),
             )
         }
-        if (page.rendering || image == null) CircularProgressIndicator(color = ScanColors.Accent)
+        if ((page.rendering && !page.refining) || image == null) CircularProgressIndicator(color = ScanColors.Accent)
         if (page.idSide >= 0) {
             Text(
                 stringResource(if (page.idSide == 0) R.string.rs_scanner_id_front else R.string.rs_scanner_id_back),

@@ -42,6 +42,8 @@ class Page(
     var rotation by mutableIntStateOf(0)
     /** Text orientation still to be checked (done by the first render, on the page it flattens anyway). */
     @Volatile var uprightPending = false
+    /** Increases with every render request; older renders of this page are dropped. */
+    @Volatile var renderGen = 0
     /** HD page: higher capture / render resolution and PDF quality. */
     var hd = false
     /** Layout + feature signature of the page at capture, for "same page again?" checks. */
@@ -49,6 +51,8 @@ class Page(
     var processedFile by mutableStateOf<File?>(null)
     var thumbnail by mutableStateOf<ImageBitmap?>(null)
     var rendering by mutableStateOf(true)
+    /** The screen-size page is shown; only the full-resolution version (for the PDF) is still being made. */
+    var refining by mutableStateOf(false)
     /** Bumped every time the rendered output changes, to invalidate cached images in the UI. */
     var version by mutableIntStateOf(0)
     /** Eraser strokes, in the coordinates of the finished (rotated) page. */
