@@ -6,11 +6,7 @@ import org.opencv.core.Mat
 import org.opencv.core.Rect
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
-import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.channels.FileChannel
+import org.opencv.dnn.Net
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -23,11 +19,10 @@ import kotlin.math.roundToInt
  * Input: RGB, ImageNet-normalised, NHWC 1x224x224x3. Output: softmax over [0, 90, 180, 270]
  * where "90" means the content is turned 90 degrees clockwise.
  */
-class OrientationModel private constructor(private val interpreter: Interpreter) {
+class OrientationModel private constructor(private val net: Net) {
 
-    private val input = ByteBuffer.allocateDirect(SIZE * SIZE * 3 * 4).order(ByteOrder.nativeOrder())
-    private val output = ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder())
     private val pixels = ByteArray(SIZE * SIZE * 3)
+    private val values = FloatArray(SIZE * SIZE * 3)
 
     /**
      * @param rgb flattened page, 8UC3 RGB.
@@ -79,20 +74,15 @@ class OrientationModel private constructor(private val interpreter: Interpreter)
 
     private fun classify(crop: Mat): FloatArray {
         crop.get(0, 0, pixels)
-        input.rewind()
-        val fb = input.asFloatBuffer()
         var i = 0
         while (i < pixels.size) {
             for (c in 0..2) {
                 val v = (pixels[i + c].toInt() and 0xFF) / 255f
-                fb.put((v - MEAN[c]) / STD[c])
+                values[i + c] = (v - MEAN[c]) / STD[c]
             }
             i += 3
         }
-        output.rewind()
-        interpreter.run(input, output)
-        output.rewind()
-        return FloatArray(4).also { output.asFloatBuffer().get(it) }
+        return OnnxNet.forward(net, OnnxNet.nhwc(SIZE, SIZE, 3, values), FloatArray(4))
     }
 
     companion object {
@@ -100,7 +90,7 @@ class OrientationModel private constructor(private val interpreter: Interpreter)
         private const val MIN_CONFIDENCE = 0.6f
         private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val STD = floatArrayOf(0.229f, 0.224f, 0.225f)
-        private const val ASSET = "models/doc_orientation.tflite"
+        private const val ASSET = "models/doc_orientation.onnx"
 
         @Volatile private var instance: OrientationModel? = null
         @Volatile private var failed = false
@@ -112,11 +102,7 @@ class OrientationModel private constructor(private val interpreter: Interpreter)
                 instance?.let { return it }
                 if (failed) return null
                 return try {
-                    val fd = context.assets.openFd(ASSET)
-                    val buffer = FileInputStream(fd.fileDescriptor).channel
-                        .map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
-                    OrientationModel(Interpreter(buffer, Interpreter.Options().setNumThreads(2)))
-                        .also { instance = it }
+                    OrientationModel(OnnxNet.load(context, ASSET)).also { instance = it }
                 } catch (t: Throwable) {
                     failed = true
                     Log.e("OrientationModel", "load failed", t)

@@ -6,11 +6,7 @@ import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
-import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.channels.FileChannel
+import org.opencv.dnn.Net
 
 /**
  * On-device learned edge detector (HED-lite, 256x256). Unlike Canny it responds to object
@@ -19,11 +15,10 @@ import java.nio.channels.FileChannel
  *
  * Input: RGB 0..255 float, 256x256 (stretched, not letterboxed). Output: 256x256 edge strength.
  */
-class EdgeModel private constructor(private val interpreter: Interpreter) {
+class EdgeModel private constructor(private val net: Net) {
 
-    private val input = ByteBuffer.allocateDirect(SIZE * SIZE * 3 * 4).order(ByteOrder.nativeOrder())
-    private val output = ByteBuffer.allocateDirect(SIZE * SIZE * 4).order(ByteOrder.nativeOrder())
     private val pixels = ByteArray(SIZE * SIZE * 3)
+    private val values = FloatArray(SIZE * SIZE * 3)
     private val result = FloatArray(SIZE * SIZE)
 
     /**
@@ -36,13 +31,8 @@ class EdgeModel private constructor(private val interpreter: Interpreter) {
         Imgproc.resize(rgb, small, Size(SIZE.toDouble(), SIZE.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
         small.get(0, 0, pixels)
         small.release()
-        input.rewind()
-        val fb = input.asFloatBuffer()
-        for (b in pixels) fb.put((b.toInt() and 0xFF).toFloat())
-        output.rewind()
-        interpreter.run(input, output)
-        output.rewind()
-        output.asFloatBuffer().get(result)
+        for (i in pixels.indices) values[i] = (pixels[i].toInt() and 0xFF).toFloat()
+        OnnxNet.forward(net, OnnxNet.nhwc(SIZE, SIZE, 3, values), result)
         val map = Mat(SIZE, SIZE, CvType.CV_32F)
         map.put(0, 0, result)
         return map
@@ -50,7 +40,7 @@ class EdgeModel private constructor(private val interpreter: Interpreter) {
 
     companion object {
         const val SIZE = 256
-        private const val ASSET = "models/doc_edges_hed_lite.tflite"
+        private const val ASSET = "models/doc_edges_hed_lite.onnx"
 
         @Volatile private var instance: EdgeModel? = null
         @Volatile var loadError: String? = null
@@ -63,11 +53,7 @@ class EdgeModel private constructor(private val interpreter: Interpreter) {
                 instance?.let { return it }
                 if (loadError != null) return null
                 return try {
-                    val fd = context.assets.openFd(ASSET)
-                    val buffer = FileInputStream(fd.fileDescriptor).channel
-                        .map(FileChannel.MapMode.READ_ONLY, fd.startOffset, fd.declaredLength)
-                    val options = Interpreter.Options().setNumThreads(2)
-                    EdgeModel(Interpreter(buffer, options)).also { instance = it }
+                    EdgeModel(OnnxNet.load(context, ASSET)).also { instance = it }
                 } catch (t: Throwable) {
                     loadError = "Edge model: ${t.javaClass.simpleName}: ${t.message}"
                     Log.e("EdgeModel", "load failed", t)

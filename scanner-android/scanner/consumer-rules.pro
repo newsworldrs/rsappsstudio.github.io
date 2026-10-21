@@ -5,8 +5,6 @@
 -dontwarn org.opencv.**
 
 # TensorFlow Lite JNI
--keep class org.tensorflow.lite.** { *; }
--dontwarn org.tensorflow.lite.**
 
 # Tesseract OCR JNI
 -keep class com.googlecode.tesseract.android.** { *; }

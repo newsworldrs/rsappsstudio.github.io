@@ -1,17 +1,20 @@
-doc_edges_hed_lite.tflite
+doc_edges_hed_lite.onnx
 
 Document edge detection model (HED-lite, quantized) from SmartCropper
 https://github.com/pqpo/SmartCropper (smartcropperlib/src/main/assets/models/hed_lite_model_quantize.tflite)
+Converted from TensorFlow Lite to ONNX (tf2onnx) with the 8-bit weights expanded to float,
+to run on OpenCV's DNN module.
 Copyright 2017 pqpo. Licensed under the Apache License, Version 2.0
 http://www.apache.org/licenses/LICENSE-2.0
 
 Model architecture and training approach: https://github.com/fengjian0106/hed-tutorial-for-document-scanning
 
-doc_orientation.tflite
+doc_orientation.onnx
 
 Document / text orientation classifier (0, 90, 180, 270 degrees), PP-LCNet from PaddleClas
 (PULC text_image_orientation), packaged by RapidOrientation
 https://github.com/RapidAI/RapidOrientation (rapid_orientation/models/rapid_orientation.onnx),
-converted to TensorFlow Lite with onnx2tf, weights quantized to 8 bit.
+converted to TensorFlow Lite with onnx2tf (weights quantized to 8 bit), then back to ONNX
+(tf2onnx) with the weights expanded to float, to run on OpenCV's DNN module.
 Copyright RapidAI / PaddlePaddle Authors. Licensed under the Apache License, Version 2.0
 http://www.apache.org/licenses/LICENSE-2.0

@@ -38,10 +38,6 @@ android {
     buildFeatures {
         compose = true
     }
-    androidResources {
-        // The models are memory-mapped straight from the APK.
-        noCompress += "tflite"
-    }
     publishing {
         singleVariant("release") {
             withSourcesJar()
@@ -76,8 +72,8 @@ dependencies {
     // Exposed as api: the advanced API (DocumentDetector, ImageEnhancer) takes OpenCV Mats.
     api("org.opencv:opencv:4.12.0")
 
-    // On-device models (document edges, text orientation). Plain TFLite interpreter, no ML Kit.
-    implementation("org.tensorflow:tensorflow-lite:2.17.0")
+    // On-device models (document edges, text orientation) run on OpenCV's DNN module (ONNX):
+    // no TensorFlow Lite, whose native library is not 16 KB page aligned (Android 15+ / Play).
 
     // On-device OCR (Tesseract LSTM, Apache 2.0) - published on JitPack.
     implementation("cz.adaptech.tesseract4android:tesseract4android:4.9.0")

@@ -50,7 +50,6 @@ android {
     }
     androidResources {
         // The models are memory-mapped straight from the APK.
-        noCompress += "tflite"
     }
 }
 

@@ -13,6 +13,11 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Faster capture: auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
 - Thumbnails show instantly: the preview taken at the shutter becomes the page's first thumbnail, the page is turned upright afterwards, and the page photo is written in the background while the outline is found.
 ### Fixed
+- **16 KB memory pages (Android 15+, Google Play requirement):**
+  - TensorFlow Lite is removed; its native library (`libtensorflowlite_jni.so`) is only 4 KB aligned.
+  - The two on-device models (page edges, text orientation) now run on OpenCV's DNN module, as ONNX. OpenCV is already in the library and 16 KB aligned.
+  - Every native library the scanner ships is now 16 KB aligned: OpenCV, Tesseract, Leptonica, libjpeg, libpng and CameraX.
+  - Checked against TensorFlow Lite on real photos: edge maps correlate at 0.9997, and the orientation decisions are identical wherever the scanner acts on them.
 - **Book pages upside down or in the wrong order:**
   - How the phone is held is now read from gravity directly. It works down to about 7° of tilt, where Android's orientation listener gave up below about 25° and the scanner fell back to a guess.
   - All four ways of holding the phone are handled: sideways either way, upright, and upside down. Each gives the right turn and puts the book's left page first.
