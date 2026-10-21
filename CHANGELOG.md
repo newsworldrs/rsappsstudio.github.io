@@ -13,6 +13,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Faster capture: auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
 - Thumbnails show instantly: the preview taken at the shutter becomes the page's first thumbnail, the page is turned upright afterwards, and the page photo is written in the background while the outline is found.
 ### Fixed
+- **Book mode kept the open book as one page:** with the book frame on screen, an outline that fills the frame or has an open book's shape is always split into two pages. The text-line test no longer overrules it, since pictures, tables or short text could fool it.
 - **Book mode didn't split the pages with the phone held upright:** now that the camera screen stays portrait, the book guide follows how the phone is held. Upright: wide frame, vertical spine line, pages left / right. Sideways: tall frame, horizontal spine line, pages top / bottom (as before). The spread is split the matching way.
 - **Slow thumbnail and slow editor:**
   - The thumbnail appears the instant the shutter fires (cut from the live preview), and the shutter is free for the next page as soon as the photo is taken.

@@ -515,6 +515,16 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     // The book is lined up with the frame but the edges found belong to one page.
                     spread = frame; twoPages = true
                 }
+                if (twoPages == false && frame != null) {
+                    // Book frame on screen: the user lined up an open book with it. When the outline
+                    // fills the frame, or has the open book's shape (wider than tall along the
+                    // frame, about two pages side by side), it IS the spread - split it, whatever
+                    // the text-line test said (pictures, tables or short text can fool it).
+                    val (sw0, sh0) = DocumentDetector.naiveSize(spread, photoW, photoH)
+                    val frameTall = DocumentDetector.isTallSpread(frame, photoW, photoH)
+                    val bookShaped = if (frameTall) sh0 > sw0 * 1.15 else sw0 > sh0 * 1.15
+                    if (spread.area() >= frame.area() * 0.7f || bookShaped) twoPages = true
+                }
                 if (twoPages == false) {
                     // Only one page is in the picture: keep it whole instead of cutting it in half.
                     _messages.tryEmit(str(R.string.rs_scanner_book_single_page))
