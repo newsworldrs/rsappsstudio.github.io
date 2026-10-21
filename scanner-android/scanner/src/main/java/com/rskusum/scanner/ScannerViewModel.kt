@@ -119,14 +119,25 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val sessionSignatures: List<com.rskusum.scanner.vision.PageSignature>
         get() = (pages.reversed().mapNotNull { it.signature } + listOfNotNull(idFront?.signature)).distinct()
 
+    /**
+     * The phone is held upright (not sideways) - set by the camera from the phone's orientation.
+     * The scanner screen itself always stays portrait, so an open book is framed to match how the
+     * phone is held: phone upright = the spread lies across the screen (wide frame, spine
+     * vertical, pages left / right); phone sideways = along it (tall frame, spine horizontal).
+     */
+    var phoneUpright by mutableStateOf(false)
+
+    /** Open book framed across the screen (phone upright): spine vertical, pages left / right. */
+    val bookAcross: Boolean get() = mode == ScanMode.BOOK && phoneUpright
+
     /** The on-screen guide frame (normalized), or null in free-detection mode. */
     val guideFrame: Quad?
-        get() = when (orientation) {
-            com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> DocumentDetector.guideFrame(1 / mode.frameRatio)
-            // An open book is always framed along the phone's long side (spread split top/bottom).
-            com.rskusum.scanner.data.FrameOrientation.LANDSCAPE ->
-                if (mode == ScanMode.BOOK) DocumentDetector.guideFrame(1 / mode.frameRatio) else DocumentDetector.guideFrame(mode.frameRatio)
-            com.rskusum.scanner.data.FrameOrientation.FREE -> null
+        get() = when {
+            orientation == com.rskusum.scanner.data.FrameOrientation.FREE -> null
+            mode == ScanMode.BOOK ->
+                DocumentDetector.guideFrame(if (phoneUpright) mode.frameRatio else 1 / mode.frameRatio)
+            orientation == com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> DocumentDetector.guideFrame(1 / mode.frameRatio)
+            else -> DocumentDetector.guideFrame(mode.frameRatio)
         }
 
     // --- Current scan session --------------------------------------------------------------

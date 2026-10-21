@@ -262,6 +262,13 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     in 45 until 135 -> deviceRotation.set(90)
                     in 225 until 315 -> deviceRotation.set(270)
                 }
+                // Upright vs sideways, with a margin so it doesn't flip near 45 degrees.
+                val upright = when (o) {
+                    in 0..30, in 330..359, in 150..210 -> true
+                    in 60..120, in 240..300 -> false
+                    else -> return
+                }
+                if (upright != vm.phoneUpright) mainExecutor.execute { vm.phoneUpright = upright }
             }
         }
         if (listener.canDetectOrientation()) listener.enable()
@@ -499,7 +506,8 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
                         if (guide != null) {
-                            BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap)
+                            if (vm.bookAcross) BookOverlayAcross((guide.tl.x + guide.br.x) / 2f, vm.bookSwap)
+                            else BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap)
                         } else {
                             // Free mode: the spine line follows the book the camera actually sees.
                             state.spine?.let { FreeSpineOverlay(it, vm.bookSwap) }
@@ -980,6 +988,31 @@ private fun BookOverlay(dividerY: Float, swapped: Boolean) {
             // Page badges, turned sideways so they read correctly with the phone held across the book.
             PageBadge(top, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 14.dp).rotate(90f))
             PageBadge(bottom, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 14.dp).rotate(90f))
+        }
+    }
+}
+
+/**
+ * Book guide with the phone held upright: the open book lies across the screen, so the spine is
+ * a vertical line and page 1 / page 2 are left and right of it.
+ */
+@Composable
+private fun BookOverlayAcross(dividerX: Float, swapped: Boolean) {
+    val guide = ScanColors.Marigold
+    Box(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize()) {
+            val x = dividerX * size.width
+            drawLine(guide.copy(alpha = 0.25f), Offset(x, 0f), Offset(x, size.height), 12.dp.toPx())
+            drawLine(guide, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())
+            drawCircle(guide, 5.dp.toPx(), Offset(x, 10.dp.toPx()))
+            drawCircle(guide, 5.dp.toPx(), Offset(x, size.height - 10.dp.toPx()))
+        }
+        val left = stringResource(if (swapped) R.string.rs_scanner_page_2 else R.string.rs_scanner_page_1)
+        val right = stringResource(if (swapped) R.string.rs_scanner_page_1 else R.string.rs_scanner_page_2)
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+            val w = maxWidth
+            PageBadge(left, Modifier.align(Alignment.CenterStart).offset(x = w * dividerX / 2 - 30.dp))
+            PageBadge(right, Modifier.align(Alignment.CenterStart).offset(x = w * dividerX + w * (1 - dividerX) / 2 - 30.dp))
         }
     }
 }
