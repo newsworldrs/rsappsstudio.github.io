@@ -127,6 +127,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      */
     var phoneUpright by mutableStateOf(false)
 
+    /**
+     * How the phone is held: 0 upright, 90 turned clockwise (top pointing right), 180 upside
+     * down, 270 turned counter-clockwise (top pointing left). Set by the camera.
+     */
+    var phoneTurn by mutableIntStateOf(270)
+
     /** Open book framed across the screen (phone upright): spine vertical, pages left / right. */
     val bookAcross: Boolean get() = mode == ScanMode.BOOK && phoneUpright
 
@@ -286,6 +292,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun addPhoto(
         photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false,
+        rotationSure: Boolean = false,
         manual: Boolean = false,
     ): kotlinx.coroutines.Job? {
         if (!captureAllowed) {
@@ -317,7 +324,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val idSide = if (isId) (if (front == null) 0 else 1) else -1
                 val created = createGate.withPermit {
                     withContext(Dispatchers.Default) {
-                        createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, imported, checkRepeat = !manual && !imported)
+                        createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, rotationSure, imported, checkRepeat = !manual && !imported)
                     }
                 }
                 created.forEach { it.hd = hd }
@@ -382,7 +389,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun createPages(
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
-        idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false,
+        idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false, rotationSure: Boolean = false,
         imported: Boolean = false, checkRepeat: Boolean = true,
     ): List<Page> {
         val photoW = photo.width
@@ -541,13 +548,31 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val (a, b) = DocumentDetector.splitSpread(spread, photoW, photoH, spine)
                 val (sw, sh) = DocumentDetector.naiveSize(spread, photoW, photoH)
                 val acrossBook = sh > sw
-                // Page 1 = top (or left) half as shown on screen, unless the user swapped the order.
-                val first = if (swap) b else a
-                val second = if (swap) a else b
-                // Phone held across the book: halves are sideways - turn them upright. Default is
-                // the phone's top pointing left (matching the sideways page labels); a wrong guess
-                // is upside down, which the orientation model fixes.
-                val turn = if (!acrossBook) 0 else if (deviceRotation == 90) 90 else 270
+                // How the phone was held decides both the turn that makes the pages upright and
+                // which half is the book's left page (page 1):
+                //  - sideways, top pointing left (270): top half = left page, turn 270;
+                //  - sideways, top pointing right (90): top half = RIGHT page, turn 90;
+                //  - upright (0): left half = left page, no turn;
+                //  - upside down (180): left half = RIGHT page, turn 180.
+                val turn: Int
+                val reversed: Boolean
+                val held: Boolean // the phone's position fits the spread's shape
+                if (acrossBook) {
+                    reversed = deviceRotation == 90
+                    turn = if (deviceRotation == 90) 90 else 270
+                    held = deviceRotation == 90 || deviceRotation == 270
+                } else {
+                    reversed = deviceRotation == 180
+                    turn = if (deviceRotation == 180) 180 else 0
+                    held = deviceRotation == 0 || deviceRotation == 180
+                }
+                // Page 1 = the book's left page, unless the user swapped the order.
+                val firstIsA = reversed == swap
+                val first = if (firstIsA) a else b
+                val second = if (firstIsA) b else a
+                // A reliable reading of the phone's position is trusted for the page orientation
+                // (the text check is unreliable on handwriting); otherwise the text check decides.
+                val trustTurn = rotationSure && held
                 // Detach the pages: each gets its OWN upright image cut at the spine, so crop,
                 // filters and eraser only ever see that one page. Book pages are always portrait.
                 val pagesOut = listOf(first, second).mapIndexed { i, q ->
@@ -559,7 +584,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     Page(
                         pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
                         forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
-                    ).also { it.signature = sig; it.uprightPending = true }
+                    ).also { it.signature = sig; it.uprightPending = !trustTurn }
                 }
                 runCatching { saving.get() }
                 file.delete() // the full spread photo is no longer needed
@@ -656,8 +681,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         if (turn % 360 != 0) {
             crop = Images.rotate(crop, turn)
             pts = pts.map { p ->
-                if (turn == 90) com.rskusum.scanner.vision.NPoint(1f - p.y, p.x) // clockwise
-                else com.rskusum.scanner.vision.NPoint(p.y, 1f - p.x)          // 270 = counter-clockwise
+                when (turn) {
+                    90 -> com.rskusum.scanner.vision.NPoint(1f - p.y, p.x)        // clockwise
+                    180 -> com.rskusum.scanner.vision.NPoint(1f - p.x, 1f - p.y)  // upside down
+                    else -> com.rskusum.scanner.vision.NPoint(p.y, 1f - p.x)      // 270 = counter-clockwise
+                }
             }
         }
         val file = File(sessionDir, "book_${System.currentTimeMillis()}_$index.jpg")

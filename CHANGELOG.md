@@ -13,6 +13,11 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Faster capture: auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
 - Thumbnails show instantly: the preview taken at the shutter becomes the page's first thumbnail, the page is turned upright afterwards, and the page photo is written in the background while the outline is found.
 ### Fixed
+- **Book pages upside down or in the wrong order:**
+  - How the phone is held is now read from gravity directly. It works down to about 7° of tilt, where Android's orientation listener gave up below about 25° and the scanner fell back to a guess.
+  - All four ways of holding the phone are handled: sideways either way, upright, and upside down. Each gives the right turn and puts the book's left page first.
+  - When the phone's position is known, it decides the page orientation. The text-orientation check, which is unreliable on handwriting, only decides when the position is unknown.
+  - The Page 1 / Page 2 labels on the camera follow how the phone is held.
 - **Book mode kept the open book as one page:** with the book frame on screen, an outline that fills the frame or has an open book's shape is always split into two pages. The text-line test no longer overrules it, since pictures, tables or short text could fool it.
 - **Book mode didn't split the pages with the phone held upright:** now that the camera screen stays portrait, the book guide follows how the phone is held. Upright: wide frame, vertical spine line, pages left / right. Sideways: tall frame, horizontal spine line, pages top / bottom (as before). The spread is split the matching way.
 - **Slow thumbnail and slow editor:**

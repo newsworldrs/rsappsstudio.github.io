@@ -251,28 +251,45 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
 
     lateinit var analyzer: DocumentAnalyzer
 
-    // Physical phone orientation (the app UI stays portrait). Used to turn book pages upright when
-    // the phone is held across an open book. Flat phones report "unknown": keep the last value.
+    // Physical phone orientation (the app UI stays portrait): 0 upright, 90 top pointing right,
+    // 180 upside down, 270 top pointing left. Used to turn book pages upright and to know which
+    // half of an open book is page 1. Read from gravity directly: Android's orientation listener
+    // gives up below ~25 degrees of tilt, but a phone over a book on a table is often held much
+    // flatter. Only a phone lying really flat (< ~7 degrees) keeps the last value.
     val deviceRotation = remember { java.util.concurrent.atomic.AtomicInteger(270) }
+    val lastTiltAt = remember { java.util.concurrent.atomic.AtomicLong(0L) }
     DisposableEffect(Unit) {
-        val listener = object : android.view.OrientationEventListener(context) {
-            override fun onOrientationChanged(o: Int) {
-                if (o == ORIENTATION_UNKNOWN) return
-                when (o) {
-                    in 45 until 135 -> deviceRotation.set(90)
-                    in 225 until 315 -> deviceRotation.set(270)
+        val sm = context.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager
+        val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_GRAVITY)
+            ?: sm?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+        var gx = 0f
+        var gy = 0f
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(e: android.hardware.SensorEvent) {
+                gx = gx * 0.7f + e.values[0] * 0.3f
+                gy = gy * 0.7f + e.values[1] * 0.3f
+                if (kotlin.math.hypot(gx, gy) < 1.2f) return // lying flat: no direction
+                // Same convention as OrientationEventListener (0 = upright, 90 = left side up).
+                val angle = Math.toDegrees(kotlin.math.atan2(gy.toDouble(), -gx.toDouble()))
+                val o = ((90 - Math.round(angle).toInt()) % 360 + 360) % 360
+                val snapped = when (o) {
+                    in 0..30, in 330..359 -> 0
+                    in 60..120 -> 90
+                    in 150..210 -> 180
+                    in 240..300 -> 270
+                    else -> return // near a diagonal: keep the last value
                 }
-                // Upright vs sideways, with a margin so it doesn't flip near 45 degrees.
-                val upright = when (o) {
-                    in 0..30, in 330..359, in 150..210 -> true
-                    in 60..120, in 240..300 -> false
-                    else -> return
+                deviceRotation.set(snapped)
+                lastTiltAt.set(SystemClock.elapsedRealtime())
+                if (snapped != vm.phoneTurn) mainExecutor.execute {
+                    vm.phoneTurn = snapped
+                    vm.phoneUpright = snapped == 0 || snapped == 180
                 }
-                if (upright != vm.phoneUpright) mainExecutor.execute { vm.phoneUpright = upright }
             }
+            override fun onAccuracyChanged(s: android.hardware.Sensor?, a: Int) = Unit
         }
-        if (listener.canDetectOrientation()) listener.enable()
-        onDispose { listener.disable() }
+        if (sensor != null) sm.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_UI)
+        onDispose { sm?.unregisterListener(listener) }
     }
 
     // Hand shake (gyroscope, rad/s x 1000, smoothed): the shutter waits for a steady moment so the
@@ -326,7 +343,9 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 mainExecutor.execute {
                     vm.shutterShots = (vm.shutterShots - 1).coerceAtLeast(0)
                     vm.tracker.onCaptured(bmp != null)
-                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), manual = manual)
+                    // The phone's position counts as known when it was read in the last 2 s.
+                    val sure = SystemClock.elapsedRealtime() - lastTiltAt.get() < 2000
+                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), rotationSure = sure, manual = manual)
                     else toast = context.getString(R.string.rs_scanner_capture_failed)
                 }
             }
@@ -506,8 +525,10 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
                         if (guide != null) {
-                            if (vm.bookAcross) BookOverlayAcross((guide.tl.x + guide.br.x) / 2f, vm.bookSwap)
-                            else BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap)
+                            // Page 1 is the book's left page: which half of the screen that is
+                            // depends on how the phone is held.
+                            if (vm.bookAcross) BookOverlayAcross((guide.tl.x + guide.br.x) / 2f, vm.bookSwap != (vm.phoneTurn == 180))
+                            else BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap != (vm.phoneTurn == 90), labelTurn = if (vm.phoneTurn == 90) -90f else 90f)
                         } else {
                             // Free mode: the spine line follows the book the camera actually sees.
                             state.spine?.let { FreeSpineOverlay(it, vm.bookSwap) }
@@ -970,7 +991,7 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = fa
  * "2" (bottom). Numbers are drawn sideways so they read correctly with the phone turned.
  */
 @Composable
-private fun BookOverlay(dividerY: Float, swapped: Boolean) {
+private fun BookOverlay(dividerY: Float, swapped: Boolean, labelTurn: Float = 90f) {
     val guide = ScanColors.Marigold
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
@@ -986,8 +1007,8 @@ private fun BookOverlay(dividerY: Float, swapped: Boolean) {
         androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
             val h = maxHeight
             // Page badges, turned sideways so they read correctly with the phone held across the book.
-            PageBadge(top, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 14.dp).rotate(90f))
-            PageBadge(bottom, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 14.dp).rotate(90f))
+            PageBadge(top, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY / 2 - 14.dp).rotate(labelTurn))
+            PageBadge(bottom, Modifier.align(Alignment.TopCenter).offset(y = h * dividerY + h * (1 - dividerY) / 2 - 14.dp).rotate(labelTurn))
         }
     }
 }
