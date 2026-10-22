@@ -10,6 +10,10 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - `ScannerOptions(startWithGallery = true)`: opens the system photo picker instead of the camera (for an "image to PDF" button). Picked pictures go through the same edge detection, cropping, straightening and filters as camera pages and open in the editor. Cancelling the picker closes the scanner.
 - `ScannerOptions(startHd = true)`: opens the camera with HD already ticked.
 ### Changed
+- **Play Console recommendations:**
+  - The scanner screen sets up edge-to-edge itself instead of calling androidx's `enableEdgeToEdge()`, which still uses the cutout mode `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES` (deprecated in Android 15). On Android 11+ it uses `ALWAYS`.
+  - `androidx.activity` 1.10.1.
+  - Consumer R8 rules: the leftover TensorFlow Lite entry is removed, and `ScanFilter` names stay readable for batch recovery, so apps no longer need a blanket keep of `com.rskusum.scanner.**`.
 - Faster capture: auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
 - Thumbnails show instantly: the preview taken at the shutter becomes the page's first thumbnail, the page is turned upright afterwards, and the page photo is written in the background while the outline is found.
 ### Fixed

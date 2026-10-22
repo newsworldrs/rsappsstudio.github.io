@@ -2,14 +2,11 @@ package com.rskusum.scanner
 
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,13 +35,30 @@ import com.rskusum.scanner.ui.review.ReviewScreen
 
 /** Full-screen scanner. Open it with [ScanDocument] (or [RsScanner.createIntent]). */
 class ScannerActivity : ComponentActivity() {
+    /**
+     * Edge-to-edge without androidx's enableEdgeToEdge(), which still sets the display-cutout
+     * mode SHORT_EDGES (deprecated in Android 15 and reported by Google Play). The content draws
+     * behind the system bars (the screens pad themselves with the window insets), the bars stay
+     * black with light icons, and on Android 11+ the cutout area is used in every orientation
+     * (ALWAYS, the Android 15 behaviour). Android 8-10 keep the system's default cutout mode.
+     */
+    private fun drawEdgeToEdge() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            }
+        }
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+    }
+
     @android.annotation.SuppressLint("SourceLockedOrientationActivity") // deliberate: see below
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(Color.BLACK),
-            navigationBarStyle = SystemBarStyle.dark(Color.BLACK),
-        )
         super.onCreate(savedInstanceState)
+        drawEdgeToEdge()
         // Portrait only, also when the manifest lock is overridden: the scanner layout never
         // rotates; its icons turn with the phone instead (see rememberIconTurn).
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
