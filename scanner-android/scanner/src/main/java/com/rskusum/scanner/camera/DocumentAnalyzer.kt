@@ -23,7 +23,8 @@ import org.opencv.objdetect.QRCodeDetector
  */
 class DocumentAnalyzer(
     private val tracker: AutoCaptureTracker,
-    private val edgeModel: EdgeModel?,
+    /** The learned edge model once it is loaded (loads in the background; null = not ready / off). */
+    private val edgeModel: () -> EdgeModel?,
     private val onState: (TrackerState) -> Unit,
     private val onAutoCapture: () -> Unit,
     private val onQr: (String) -> Unit,
@@ -97,8 +98,9 @@ class DocumentAnalyzer(
                 // In frame mode, while the page sits in the frame, the frame search below does the
                 // work: skip the (slow) whole-image detectors to keep the preview analysis fast.
                 val needGlobal = guide == null || snappedQuad == null
-                if (needGlobal && edgeModel != null) {
-                    val prob = edgeModel.run(rgb)
+                val model = edgeModel()
+                if (needGlobal && model != null) {
+                    val prob = model.run(rgb)
                     quad = DocumentDetector.detectFromEdgeMap(prob, prev)
                     prob.release()
                     if (quad != null) lastSource = "ml"

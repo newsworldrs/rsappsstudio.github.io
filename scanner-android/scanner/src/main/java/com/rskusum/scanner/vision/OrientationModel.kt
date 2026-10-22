@@ -47,9 +47,10 @@ class OrientationModel private constructor(private val net: Net) {
     fun probabilities(rgb: Mat): FloatArray? {
         val sum = FloatArray(4)
         var votes = 0
-        // Two scales x three positions along the page's long side: small text and big headings
-        // both get looked at, and a blank middle of the page doesn't decide on its own.
-        for (short in intArrayOf(256, 400)) {
+        // Three positions along the page's long side at one scale (between small text and big
+        // headings): a blank middle of the page doesn't decide on its own. Three crops instead of
+        // six keep the page preparation fast.
+        for (short in intArrayOf(320)) {
             val s = short.toDouble() / min(rgb.cols(), rgb.rows())
             val w = max(SIZE, (rgb.cols() * s).roundToInt())
             val h = max(SIZE, (rgb.rows() * s).roundToInt())
@@ -85,8 +86,20 @@ class OrientationModel private constructor(private val net: Net) {
         return OnnxNet.forward(net, OnnxNet.nhwc(SIZE, SIZE, 3, values), FloatArray(4))
     }
 
+    /** Runs the fixed test picture and compares with the original TensorFlow Lite model's output. */
+    private fun selfTest(): Boolean {
+        val raw = OnnxNet.testPattern(SIZE * SIZE * 3)
+        val v = FloatArray(raw.size) { i -> (raw[i] / 255f - MEAN[i % 3]) / STD[i % 3] }
+        val p = OnnxNet.forward(net, OnnxNet.nhwc(SIZE, SIZE, 3, v), FloatArray(4))
+        val ok = p.indices.all { kotlin.math.abs(p[it] - TEST_PROBS[it]) < 0.08f }
+        if (!ok) Log.e("OrientationModel", "self-test mismatch: ${p.toList()}")
+        return ok
+    }
+
     companion object {
         const val SIZE = 224
+        // Original model's output for OnnxNet.testPattern (computed with TensorFlow Lite).
+        private val TEST_PROBS = floatArrayOf(0.4623f, 0.0274f, 0.4800f, 0.0304f)
         private const val MIN_CONFIDENCE = 0.6f
         private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
         private val STD = floatArrayOf(0.229f, 0.224f, 0.225f)
@@ -102,7 +115,10 @@ class OrientationModel private constructor(private val net: Net) {
                 instance?.let { return it }
                 if (failed) return null
                 return try {
-                    OrientationModel(OnnxNet.load(context, ASSET)).also { instance = it }
+                    val model = OrientationModel(OnnxNet.load(context, ASSET))
+                    // Self-check on this phone (see EdgeModel): off when it doesn't match.
+                    check(model.selfTest()) { "self-test failed" }
+                    model.also { instance = it }
                 } catch (t: Throwable) {
                     failed = true
                     Log.e("OrientationModel", "load failed", t)

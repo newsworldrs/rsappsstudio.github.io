@@ -413,7 +413,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     analyzer = remember {
         DocumentAnalyzer(
             tracker = vm.tracker,
-            edgeModel = com.rskusum.scanner.vision.EdgeModel.get(context),
+            edgeModel = { com.rskusum.scanner.vision.EdgeModel.ready() },
             onState = vm::postCameraState,
             onAutoCapture = { mainExecutor.execute { capture(manual = false) } },
             onQr = { text -> mainExecutor.execute { if (qrText == null) qrText = text } },

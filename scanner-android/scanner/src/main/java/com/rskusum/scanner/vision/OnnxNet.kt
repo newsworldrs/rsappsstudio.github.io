@@ -28,6 +28,9 @@ internal object OnnxNet {
         }
     }
 
+    /** Fixed test picture (bytes 0..255, any length); the same formula is used to compute the expected outputs. */
+    fun testPattern(n: Int): FloatArray = FloatArray(n) { i -> ((i.toLong() * 7 + (i / 3).toLong() * 13) % 256).toFloat() }
+
     /** NHWC float input blob of shape (1, h, w, c) filled from [data]. */
     fun nhwc(h: Int, w: Int, c: Int, data: FloatArray): Mat =
         Mat(intArrayOf(1, h, w, c), CvType.CV_32F).apply { put(intArrayOf(0, 0, 0, 0), data) }

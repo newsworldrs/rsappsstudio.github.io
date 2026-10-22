@@ -219,6 +219,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val photoSide: Int get() = if (hdMode) HD_PHOTO_SIDE else MAX_PHOTO_SIDE
 
     init {
+        // Load (and self-check) both on-device models in the background right away, so neither
+        // the camera nor the first page waits for them.
+        viewModelScope.launch(Dispatchers.Default) {
+            com.rskusum.scanner.vision.EdgeModel.get(getApplication())
+            com.rskusum.scanner.vision.OrientationModel.get(getApplication())
+        }
         refreshDocuments()
         restoreSession()
         // Keep the on-disk manifest of the batch up to date (paths and edit settings only).
@@ -433,7 +439,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                         val fy0 = frame.points.minOf { it.y } - 0.1f; val fy1 = frame.points.maxOf { it.y } + 0.1f
                         val cands = listOfNotNull(hint?.let { DocumentDetector.refine(gray, it) }, alt).filter { c ->
                             val cx = c.points.map { it.x }.average().toFloat(); val cy = c.points.map { it.y }.average().toFloat()
-                            cx in fx0..fx1 && cy in fy0..fy1 && c.area() > frame.area() * 0.2f
+                            // Only outlines about the size of the frame: an inner box, table or
+                            // picture on the page must never replace the page the user framed.
+                            cx in fx0..fx1 && cy in fy0..fy1 && c.area() > frame.area() * 0.5f
                         }
                         // Sides that fell back to the frame have no edge under them: no bonus then.
                         var best = snapped
@@ -592,7 +600,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             }
             return listOf(
                 Page(
-                    file, quad, mode.defaultFilter, aspect, forcedOrientation = if (aspect == null) DocumentDetector.ORIENT_AUTO else mode.pageOrientation,
+                    file, quad, mode.defaultFilter, aspect, forcedOrientation = pageOrientationFor(mode, aspect, frame, imported),
                     frame = frame, fingerprint = fp, idGroup = idGroup, idSide = idSide,
                 ).also { it.signature = sig; it.uprightPending = true }
             )
@@ -606,6 +614,23 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             gray.release()
             photo.recycle()
         }
+    }
+
+    /**
+     * Page shape for a new page. With the guide frame on screen the user has framed the page
+     * upright or across, so the frame decides (an upright frame never gives a sideways page, and
+     * the text check may then only fix upside down). Free mode and gallery pictures keep the
+     * automatic choice, including quarter turns.
+     */
+    private fun pageOrientationFor(mode: ScanMode, aspect: Double?, frame: Quad?, imported: Boolean): Int = when {
+        aspect == null -> DocumentDetector.ORIENT_AUTO
+        mode.pageOrientation != DocumentDetector.ORIENT_AUTO -> mode.pageOrientation
+        frame != null && !imported -> {
+            val w = (frame.tr.x - frame.tl.x) * 3f // guide frames live in a 3:4 portrait preview
+            val h = (frame.bl.y - frame.tl.y) * 4f
+            if (h >= w) DocumentDetector.ORIENT_PORTRAIT else DocumentDetector.ORIENT_LANDSCAPE
+        }
+        else -> mode.pageOrientation
     }
 
     /** Small flattened preview (~300 px) of [photo] cut out with [quad] (the whole photo when null). */

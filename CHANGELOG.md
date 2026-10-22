@@ -13,6 +13,12 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Faster capture: auto capture shoots at once (the page is already steady and in focus); the manual shutter waits at most 0.7 s for focus.
 - Thumbnails show instantly: the preview taken at the shutter becomes the page's first thumbnail, the page is turned upright afterwards, and the page photo is written in the background while the outline is found.
 ### Fixed
+- **Pages came out sideways ("stretched") in Document mode:** with the guide frame on screen, the frame's shape now decides upright or across. An upright frame always gives an upright page, and the text check may then only fix upside down. Quarter turns remain for Free mode and gallery pictures.
+- **Crop didn't match the frame:** only outlines about the size of the frame (at least half its area) can replace the frame, so an inner box, table or picture is never taken as the page.
+- **Model self-check:** each on-device model is checked on the phone against the original model's answer for a fixed test picture. If it doesn't match, it stays off and classic detection is used.
+- **Faster:**
+  - Both models load in the background when the scanner starts, no longer on the main thread when the camera opens.
+  - The text-orientation check looks at 3 crops instead of 6.
 - **16 KB memory pages (Android 15+, Google Play requirement):**
   - TensorFlow Lite is removed; its native library (`libtensorflowlite_jni.so`) is only 4 KB aligned.
   - The two on-device models (page edges, text orientation) now run on OpenCV's DNN module, as ONNX. OpenCV is already in the library and 16 KB aligned.
