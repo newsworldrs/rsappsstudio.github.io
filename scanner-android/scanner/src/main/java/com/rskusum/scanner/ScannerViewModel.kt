@@ -3,6 +3,7 @@ package com.rskusum.scanner
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -98,26 +99,65 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     // --- ID card: front, then back, both on one page ---------------------------------------
     enum class IdStep { FRONT, BACK, DONE }
 
-    /** Front side captured in ID-card mode, waiting for the back. */
-    private var idFront: Page? = null
+    /**
+     * ID card being scanned: its group and the sides already taken (0 front, 1 back). A side is
+     * claimed the moment its photo is taken, not when its processing ends, so a back captured
+     * while the front is still being processed still joins the same card (one A4 page).
+     */
+    private var idGroup: String? = null
+    private val idSides = HashSet<Int>()
     var idStep by mutableStateOf(IdStep.FRONT)
         private set
 
     private fun resetIdCard() {
-        idFront = null
+        idGroup = null
+        idSides.clear()
         idStep = IdStep.FRONT
     }
 
+    private fun updateIdStep() {
+        idStep = when {
+            idSides.size >= 2 -> IdStep.DONE
+            idSides.isEmpty() -> IdStep.FRONT
+            else -> IdStep.BACK
+        }
+    }
+
     /** False when the current mode must not take more photos (ID card already has both sides). */
-    val captureAllowed: Boolean get() = !(mode == ScanMode.ID_CARD && idStep == IdStep.DONE) && !pageLimitReached
+    val captureAllowed: Boolean get() = !(mode == ScanMode.ID_CARD && idStep == IdStep.DONE) && !limitReachedWithPending
+
+    /** The page limit counts photos still being processed too, so no extra photo is taken meanwhile. */
+    private val limitReachedWithPending: Boolean
+        get() = options.pageLimit > 0 && pages.size + processingCaptures + shutterShots >= options.pageLimit
 
     /** Fingerprints of all pages in this session, for live duplicate prevention in the camera. */
     val sessionFingerprints: List<FloatArray>
-        get() = pages.mapNotNull { it.fingerprint } + listOfNotNull(idFront?.fingerprint)
+        get() = pages.mapNotNull { it.fingerprint }
 
     /** Signatures of every page in this session (newest first), for duplicate prevention. */
     val sessionSignatures: List<com.rskusum.scanner.vision.PageSignature>
-        get() = (pages.reversed().mapNotNull { it.signature } + listOfNotNull(idFront?.signature)).distinct()
+        get() = pages.reversed().mapNotNull { it.signature }.distinct()
+
+    /**
+     * Live signatures of photos taken but still being processed. Without them the camera would not
+     * know the page is already scanned until its processing ends, and auto capture would take the
+     * same page again meanwhile.
+     */
+    private val pendingSignatures = java.util.concurrent.CopyOnWriteArrayList<com.rskusum.scanner.vision.PageSignature>()
+
+    /** Pages the camera must not auto-capture again: scanned ones and ones still being processed. */
+    val knownSignatures: List<com.rskusum.scanner.vision.PageSignature>
+        get() = sessionSignatures + pendingSignatures
+
+    /**
+     * True while the user is leaving the camera (gallery import, opening the editor): auto capture
+     * stops at once, so no photo is taken in the background.
+     */
+    var captureHold by mutableStateOf(false)
+
+    /** How long the last photo took to become a page (ms), shown in the camera's status line. */
+    var lastCaptureMs by mutableStateOf(0L)
+        private set
 
     /**
      * The phone is held upright (not sideways) - set by the camera from the phone's orientation.
@@ -300,6 +340,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         photo: Bitmap, hint: Quad?, frame: Quad? = null, deviceRotation: Int = 0, imported: Boolean = false,
         rotationSure: Boolean = false,
         manual: Boolean = false,
+        liveSignature: com.rskusum.scanner.vision.PageSignature? = null,
     ): kotlinx.coroutines.Job? {
         if (!captureAllowed) {
             photo.recycle()
@@ -318,19 +359,32 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         processingCaptures++
         val mode = mode
         val smart = aiAssist
+        val started = SystemClock.elapsedRealtime()
+        // Same page as a photo still being processed? Compared against those, not against itself.
+        val othersPending = pendingSignatures.toList()
+        liveSignature?.let { pendingSignatures.add(it) }
+        // ID card: claim the side now (see idSides).
+        val isId = mode == ScanMode.ID_CARD
+        val idSide = if (isId) (if (0 !in idSides) 0 else 1) else -1
+        val cardGroup = if (isId) (idGroup ?: java.util.UUID.randomUUID().toString().also { idGroup = it }) else null
+        if (isId) {
+            idSides += idSide
+            updateIdStep()
+            _messages.tryEmit(str(if (idStep == IdStep.DONE) R.string.rs_scanner_id_complete else R.string.rs_scanner_id_front_captured))
+        }
+        var idKept = false
         return viewModelScope.launch {
             try {
                 // Instant feedback: a small flattened preview, ready in a few milliseconds. It is
                 // also the new page's first thumbnail, so the strip never waits on a spinner.
                 val preview = withContext(Dispatchers.Default) { runCatching { previewOf(photo, hint ?: frame) }.getOrNull() }
                 preview?.let { pendingPreview = it }
-                val isId = mode == ScanMode.ID_CARD
-                val front = idFront
-                val idGroup = if (isId) front?.idGroup ?: java.util.UUID.randomUUID().toString() else null
-                val idSide = if (isId) (if (front == null) 0 else 1) else -1
                 val created = createGate.withPermit {
                     withContext(Dispatchers.Default) {
-                        createPages(photo, hint, mode, frame, idGroup, idSide, deviceRotation, bookSwap, rotationSure, imported, checkRepeat = !manual && !imported)
+                        createPages(
+                            photo, hint, mode, frame, cardGroup, idSide, deviceRotation, bookSwap, rotationSure, imported,
+                            checkRepeat = !manual && !imported, othersPending = othersPending,
+                        )
                     }
                 }
                 created.forEach { it.hd = hd }
@@ -338,17 +392,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
-                    pages.add(created[0])
+                    // Front before back, whichever finished processing first.
+                    val at = if (idSide == 0) pages.indexOfFirst { it.idGroup == cardGroup && it.idSide == 1 } else -1
+                    if (at >= 0) pages.add(at, created[0]) else pages.add(created[0])
+                    idKept = true
                     launchRender(created[0])
-                    if (front == null) {
-                        idFront = created[0]
-                        idStep = IdStep.BACK
-                        _messages.tryEmit(str(R.string.rs_scanner_id_front_captured))
-                    } else {
-                        idFront = null
-                        idStep = IdStep.DONE
-                        _messages.tryEmit(str(R.string.rs_scanner_id_complete))
-                    }
                     return@launch
                 }
                 // Respect the caller's page limit (a book spread may bring two pages at once).
@@ -364,6 +412,13 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             } catch (t: Throwable) {
                 Log.e(TAG, "capture processing failed", t)
             } finally {
+                liveSignature?.let { pendingSignatures.remove(it) }
+                if (isId && !idKept && cardGroup == idGroup) {
+                    // That side was not kept (no card found): it can be taken again.
+                    idSides -= idSide
+                    updateIdStep()
+                }
+                lastCaptureMs = SystemClock.elapsedRealtime() - started
                 processingCaptures--
                 if (processingCaptures == 0) pendingPreview = null
             }
@@ -397,6 +452,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         photo: Bitmap, hint: Quad?, mode: ScanMode, frame: Quad?,
         idGroup: String? = null, idSide: Int = -1, deviceRotation: Int = 0, swap: Boolean = false, rotationSure: Boolean = false,
         imported: Boolean = false, checkRepeat: Boolean = true,
+        othersPending: List<com.rskusum.scanner.vision.PageSignature> = emptyList(),
     ): List<Page> {
         val photoW = photo.width
         val photoH = photo.height
@@ -404,7 +460,17 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         // encode no longer delays the thumbnail); it is complete before this function returns.
         val file = newPhotoFile()
         val saving = photoSaver.submit { Images.saveJpeg(photo, file, 95) }
-        val gray = Images.toGrayMat(photo)
+        // Page finding works on one shrunken copy: every step below works at 1600 px or less
+        // anyway, and shrinking the full photo once (instead of in each of ~20 steps) saves
+        // seconds per capture on mid-range phones. Outlines are fractions of the image, so they
+        // fit the full photo unchanged.
+        val gray = Images.toGrayMat(photo).let { full ->
+            val f = DETECT_SIDE.toDouble() / maxOf(full.cols(), full.rows())
+            if (f >= 1.0) full else Mat().also { small ->
+                Imgproc.resize(full, small, org.opencv.core.Size(full.cols() * f, full.rows() * f), 0.0, 0.0, Imgproc.INTER_AREA)
+                full.release()
+            }
+        }
         try {
             var sidesFound = 4
             var aspect = mode.forcedAspect
@@ -502,7 +568,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             } else if (sig == null) {
                 sessionFingerprints.any { DocumentDetector.fingerprintSimilarity(fp, it) >= DUPLICATE_SIMILARITY }
             } else {
-                sessionSignatures.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }
+                (sessionSignatures + othersPending).any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }
             }
             if (duplicate) {
                 throw Rejected(str(R.string.rs_scanner_already_scanned))
@@ -777,14 +843,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * PDF page for an ID card: the edited (rendered) front and back placed on one A4 page at
      * 300 dpi, front above back, each 10% larger than the real 85.6 x 54 mm card.
      */
-    private fun composeIdPage(sides: List<Page>): File? {
+    private fun composeIdPage(sides: List<Page>, keepOrder: Boolean = false): File? {
         val a4w = 2480; val a4h = 3508
         val cardW = (1011 * 1.1).toInt(); val cardH = (638 * 1.1).toInt()
         val gap = 260
         val canvas = Mat(a4h, a4w, org.opencv.core.CvType.CV_8UC3, org.opencv.core.Scalar(255.0, 255.0, 255.0))
         var top = (a4h - (cardH * 2 + gap)) / 3 // a little above centre, like a photocopy
         var placed = 0
-        for (page in sides.sortedBy { it.idSide }) {
+        for (page in if (keepOrder) sides else sides.sortedBy { it.idSide }) {
             val f = page.processedFile ?: continue
             val bmp = Images.decodeFile(f, MAX_PHOTO_SIDE) ?: continue
             var card = Images.toRgbMat(bmp)
@@ -812,11 +878,22 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private fun pdfPageFiles(): List<Pair<File, Boolean>> {
         val out = ArrayList<Pair<File, Boolean>>()
         val doneGroups = HashSet<String>()
+        // A card with only one side, followed by another lone side: front and back of the same
+        // card (from older sessions), so they share one page too.
+        val lone = pages.filter { p -> p.idGroup != null && pages.count { it.idGroup == p.idGroup } == 1 }
+        val partner = HashMap<Page, Page>()
+        lone.chunked(2).filter { it.size == 2 }.forEach { (a, b) -> partner[a] = b; partner[b] = a }
         for (p in pages) {
             val g = p.idGroup
             if (g == null) { p.processedFile?.let { out += it to p.hd }; continue }
             if (!doneGroups.add(g)) continue
-            composeIdPage(pages.filter { it.idGroup == g })?.let { out += it to false }
+            val mate = partner[p]
+            if (mate != null) {
+                mate.idGroup?.let { doneGroups += it }
+                composeIdPage(listOf(p, mate), keepOrder = true)?.let { out += it to false }
+            } else {
+                composeIdPage(pages.filter { it.idGroup == g })?.let { out += it to false }
+            }
         }
         return out
     }
@@ -1152,6 +1229,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deletePage(page: Page) {
+        if (page.idGroup != null && page.idGroup == idGroup && page in pages) {
+            // That side of the card can be scanned again.
+            idSides -= page.idSide
+            updateIdStep()
+        }
         displayed.remove(page); page.display = null
         pages.remove(page)
         page.processedFile?.delete()
@@ -1262,6 +1344,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         const val TAG = "ScannerVM"
         const val MAX_PHOTO_SIDE = 4000
+        /** Longest side of the gray copy used to find the page in a photo. */
+        private const val DETECT_SIDE = 1600
         /** HD: photos up to 6000 px (a 108 MB bitmap at most, never the full 50-200 MP). */
         const val HD_PHOTO_SIDE = 6000
         private const val HD_RENDER_MAX_SIDE = 5000

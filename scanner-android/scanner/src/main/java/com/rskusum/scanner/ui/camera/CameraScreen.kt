@@ -225,8 +225,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         if (uris.isNotEmpty()) {
             vm.importFromGallery(uris)
             onOpenReview()
+        } else {
+            vm.captureHold = false // picker closed without pictures: back to scanning
         }
     }
+    // Back on the camera (from the editor or the gallery): auto capture may run again.
+    LaunchedEffect(Unit) { vm.captureHold = false }
 
     val state by vm.camera.collectAsStateWithLifecycle()
     val holder = remember { CameraHolder() }
@@ -310,7 +314,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         onDispose { sm?.unregisterListener(listener) }
     }
 
-    fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?, manual: Boolean) {
+    fun takePhoto(ic: ImageCapture, hint: Quad?, frame: Quad?, manual: Boolean, liveSignature: com.rskusum.scanner.vision.PageSignature?) {
         // Instant thumbnail: what the preview shows right now, cut out with the live outline.
         // It appears in the thumbnail the moment the shutter fires; the real photo replaces it.
         vm.shutterShots++
@@ -345,7 +349,9 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     vm.tracker.onCaptured(bmp != null)
                     // The phone's position counts as known when it was read in the last 2 s.
                     val sure = SystemClock.elapsedRealtime() - lastTiltAt.get() < 2000
-                    if (bmp != null) vm.addPhoto(bmp, hint, frame, deviceRotation.get(), rotationSure = sure, manual = manual)
+                    if (bmp != null) {
+                        vm.addPhoto(bmp, hint, frame, deviceRotation.get(), rotationSure = sure, manual = manual, liveSignature = liveSignature)
+                    }
                     else toast = context.getString(R.string.rs_scanner_capture_failed)
                 }
             }
@@ -361,9 +367,11 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         })
     }
 
-    fun capture(manual: Boolean) {
+    fun capture(manual: Boolean, liveSignature: com.rskusum.scanner.vision.PageSignature? = null) {
         val ic = holder.capture ?: return
         if (capturing) return
+        // The user is leaving the camera (gallery, editor): no more auto captures.
+        if (!manual && (vm.captureHold || !vm.captureAllowed)) return
         // Long batches: never more than a few photos waiting to be processed (bounded memory).
         if (vm.processingCaptures + vm.shutterShots >= MAX_QUEUED_CAPTURES) {
             if (manual) toast = context.getString(R.string.rs_scanner_preparing_scans)
@@ -384,7 +392,11 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             scope.launch {
                 val until = SystemClock.elapsedRealtime() + 800
                 while (shake.get() > STEADY_SHAKE && SystemClock.elapsedRealtime() < until) kotlinx.coroutines.delay(30)
-                takePhoto(ic, hint, frame, manual)
+                if (!manual && vm.captureHold) {
+                    capturing = false // the user tapped Import / the thumbnail meanwhile
+                    return@launch
+                }
+                takePhoto(ic, hint, frame, manual, liveSignature)
             }
         }
         if (!manual) {
@@ -415,18 +427,20 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             tracker = vm.tracker,
             edgeModel = { com.rskusum.scanner.vision.EdgeModel.ready() },
             onState = vm::postCameraState,
-            onAutoCapture = { mainExecutor.execute { capture(manual = false) } },
+            onAutoCapture = { sig -> mainExecutor.execute { capture(manual = false, liveSignature = sig) } },
             onQr = { text -> mainExecutor.execute { if (qrText == null) qrText = text } },
         )
     }
     SideEffect {
-        analyzer.autoCapture = vm.autoCapture
+        analyzer.autoCapture = vm.autoCapture && !vm.captureHold
+        analyzer.busy = vm.processingCaptures > 0
+        analyzer.lastCaptureMs = vm.lastCaptureMs
         analyzer.qrMode = qrMode
         analyzer.textMode = vm.mode.extractText && !qrMode
         analyzer.bookMode = vm.mode == ScanMode.BOOK && !qrMode
         analyzer.paused = qrText != null
         analyzer.frame = if (qrMode) null else vm.guideFrame
-        analyzer.knownPages = vm.sessionSignatures
+        analyzer.knownPages = vm.knownSignatures
         analyzer.captureAllowed = vm.captureAllowed
         holder.capture?.flashMode = flash.mode
     }
@@ -691,6 +705,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
             pageCount = vm.pages.size + vm.processingCaptures + vm.shutterShots,
             processing = vm.processingCaptures > 0 || vm.shutterShots > 0,
             onGallery = if (vm.options.galleryImport) ({
+                vm.captureHold = true // stop auto capture before the picker opens
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }) else null,
             onShutter = {
@@ -701,10 +716,16 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 }
             },
             onThumbnail = {
-                // The editor opens at once: pages show their thumbnail until the page is ready.
-                if (vm.pages.isNotEmpty()) onOpenReview()
-                else if (vm.pendingPages > 0 || vm.shutterShots > 0) {
-                    Toast.makeText(context, R.string.rs_scanner_preparing_scans, Toast.LENGTH_SHORT).show()
+                // The editor opens at once, also while photos are still being processed: it shows
+                // each page as soon as it is ready. Auto capture stops first; a photo whose
+                // shutter already fired is waited for (under a second) so it is not lost.
+                if (vm.pages.isNotEmpty() || vm.pendingPages > 0 || vm.shutterShots > 0) {
+                    vm.captureHold = true
+                    scope.launch {
+                        val until = SystemClock.elapsedRealtime() + 3000
+                        while (vm.shutterShots > 0 && SystemClock.elapsedRealtime() < until) kotlinx.coroutines.delay(40)
+                        onOpenReview()
+                    }
                 }
             },
         )
@@ -1152,7 +1173,8 @@ private fun Diagnostics(analyzer: DocumentAnalyzer, modifier: Modifier = Modifie
             text = when {
                 err != null -> context.getString(R.string.rs_scanner_detector_error, err)
                 isError -> context.getString(R.string.rs_scanner_no_frames)
-                else -> "$fps fps · ${analyzer.frameSize} · ${analyzer.lastSource}"
+                else -> "$fps fps · ${analyzer.frameSize} · ${analyzer.lastSource}" +
+                    (analyzer.lastCaptureMs.takeIf { it > 0 }?.let { " · %.1f s".format(it / 1000f) } ?: "")
             }
         }
     }

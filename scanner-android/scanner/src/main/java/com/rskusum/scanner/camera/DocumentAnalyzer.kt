@@ -26,13 +26,22 @@ class DocumentAnalyzer(
     /** The learned edge model once it is loaded (loads in the background; null = not ready / off). */
     private val edgeModel: () -> EdgeModel?,
     private val onState: (TrackerState) -> Unit,
-    private val onAutoCapture: () -> Unit,
+    /** Fires an auto capture, with the live signature of the page (null if none could be made). */
+    private val onAutoCapture: (com.rskusum.scanner.vision.PageSignature?) -> Unit,
     private val onQr: (String) -> Unit,
 ) : ImageAnalysis.Analyzer {
 
     @Volatile var autoCapture = true
     @Volatile var qrMode = false
     @Volatile var paused = false
+    /**
+     * Photos are being turned into pages: only every third frame is analysed meanwhile, leaving
+     * the processor to them (the live outline stays smooth enough, and pages appear sooner).
+     */
+    @Volatile var busy = false
+    private var skipped = 0L
+    /** How long the last photo took to become a page (ms), for the status line. */
+    @Volatile var lastCaptureMs = 0L
     /** Book mode: find the spine live (used in Free mode, where there is no guide line). */
     @Volatile var bookMode = false
     private var spine: SpineGuide? = null
@@ -71,6 +80,7 @@ class DocumentAnalyzer(
     override fun analyze(image: ImageProxy) {
         try {
             if (paused) return
+            if (busy && ++skipped % 3L != 0L) return
             frameCount++
             frameSize = "${image.width}x${image.height}"
             val src = upright(image)
@@ -195,11 +205,16 @@ class DocumentAnalyzer(
                     allowFallback = guidance == null && guide != null && frameSides >= 2,
                 )
                 var fire = fire0
+                var pageSig: com.rskusum.scanner.vision.PageSignature? = null
                 if (fire) {
-                    // Never auto-capture a page that is already in this session.
+                    // Never auto-capture a page that is already in this session or still being
+                    // processed. The signature also goes with the photo, so this page counts as
+                    // known from now on, not only once its processing ends.
                     val known = knownPages
-                    val sig = if (known.isEmpty()) null
-                    else com.rskusum.scanner.vision.PageMatcher.signature(gray, trackQuad ?: guide ?: Quad.inset(0.05f))
+                    val sig = runCatching {
+                        com.rskusum.scanner.vision.PageMatcher.signature(gray, trackQuad ?: guide ?: Quad.inset(0.05f))
+                    }.getOrNull()
+                    pageSig = sig
                     if (sig != null && known.any { com.rskusum.scanner.vision.PageMatcher.isSamePage(sig, it) }) {
                         fire = false
                         tracker.onCaptured(true) // mark this scene as done; re-arms when it changes
@@ -210,7 +225,7 @@ class DocumentAnalyzer(
                 onState(state.copy(rawQuad = quad, aligned = guide != null && trackQuad != null, guidance = guidance, textBoxes = textBoxes, spine = spine))
                 framesAnalyzed++
                 lastError = null
-                if (fire) onAutoCapture()
+                if (fire) onAutoCapture(pageSig)
             } finally {
                 src.release(); gray.release(); rgb.release()
             }
