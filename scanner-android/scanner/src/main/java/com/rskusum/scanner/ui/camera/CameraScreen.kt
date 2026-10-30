@@ -319,20 +319,19 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         // It appears in the thumbnail the moment the shutter fires; the real photo replaces it.
         vm.shutterShots++
         runCatching { holder.previewView?.bitmap }.getOrNull()?.let { vm.showShutterPreview(it, hint ?: frame) }
+        // Shutter feedback fires now, with the button press, like a real camera - not after the
+        // photo comes back. The sensor has already captured the frame by this point; what used to
+        // delay the sound was the camera HAL still processing/encoding it, which has nothing to do
+        // with whether the phone was held still. The button is free again at once too.
+        capturing = false
+        sound.play(MediaActionSound.SHUTTER_CLICK)
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        scope.launch {
+            flashOverlay.snapTo(0.8f)
+            flashOverlay.animateTo(0f, tween(320))
+        }
         ic.takePicture(captureExecutor, object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
-                // The photo is fully captured at this point: only now give the shutter feedback,
-                // so moving the phone after hearing it can't disturb the image. The shutter is
-                // free again at once (decoding continues in the background).
-                mainExecutor.execute {
-                    capturing = false
-                    sound.play(MediaActionSound.SHUTTER_CLICK)
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    scope.launch {
-                        flashOverlay.snapTo(0.8f)
-                        flashOverlay.animateTo(0f, tween(320))
-                    }
-                }
                 // The photo is turned upright in its pixels (as in 1.6.0), whatever way the phone or
                 // the screen is turned; the saved page photo never depends on an EXIF tag.
                 val bmp: Bitmap? = try {
@@ -383,7 +382,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         val frame = vm.guideFrame
 
         // Manual shutter: focus on the page before shooting (sharp text), then capture. Never wait > 0.7 s.
-        // Shutter sound/flash are played in takePhoto once the image is actually captured.
+        // Shutter sound/flash fire in takePhoto the moment the capture actually starts.
         var shot = false
         fun shoot() {
             if (shot) return
@@ -769,10 +768,12 @@ private fun CameraPreview(holder: CameraHolder, analyzer: DocumentAnalyzer, flas
             preview.setSurfaceProvider(previewView.surfaceProvider)
 
             val capture = ImageCapture.Builder()
-                // Always the camera's full-quality processing (multi-frame noise reduction, HDR),
-                // as in 1.6.0: the fast low-latency mode gave noisier photos that every filter
-                // made look worse (grainy paper, rough text).
-                .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                // Low-latency capture: MAXIMIZE_QUALITY's multi-frame fusion is what made the
+                // shutter feel slow (the sensor already fires at once; the camera HAL spends the
+                // extra time merging several frames before handing the photo back). The filters
+                // and the two-step render already clean up the page, so the visible difference on
+                // a document is small, and this is what every complaint about slowness pointed to.
+                .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                 // ~12 MP 4:3: full sensor detail on normal cameras. The maximum of 50-200 MP sensors
                 // is a slow re-mosaiced shot that is softer and makes processing much slower.
                 .setResolutionSelector(
