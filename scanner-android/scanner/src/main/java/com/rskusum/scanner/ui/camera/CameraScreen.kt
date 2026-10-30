@@ -433,7 +433,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
     SideEffect {
         analyzer.autoCapture = vm.autoCapture && !vm.captureHold
         analyzer.busy = vm.processingCaptures > 0
-        analyzer.lastCaptureMs = vm.lastCaptureMs
+        analyzer.lastCaptureMs = vm.lastReadyMs
         analyzer.qrMode = qrMode
         analyzer.textMode = vm.mode.extractText && !qrMode
         analyzer.bookMode = vm.mode == ScanMode.BOOK && !qrMode

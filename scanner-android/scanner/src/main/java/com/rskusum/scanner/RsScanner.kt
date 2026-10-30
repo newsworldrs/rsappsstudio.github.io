@@ -59,6 +59,12 @@ object RsScanner {
                     "OpenCV: ${t.javaClass.simpleName}: ${t.message}"
                 }
                 openCvError?.let { Log.e("RsScanner", it) }
+                // Use every core: detection, the enhancer and the two ONNX models (edge, orientation)
+                // all run through OpenCV, and some Android builds default this lower than the
+                // device actually has.
+                if (openCvError == null) {
+                    runCatching { org.opencv.core.Core.setNumThreads(Runtime.getRuntime().availableProcessors()) }
+                }
                 initialized = true
             }
         }

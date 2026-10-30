@@ -155,8 +155,17 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      */
     var captureHold by mutableStateOf(false)
 
-    /** How long the last photo took to become a page (ms), shown in the camera's status line. */
+    /** How long finding the page in the last photo took (ms): one part of [lastReadyMs]. */
     var lastCaptureMs by mutableStateOf(0L)
+        private set
+
+    /**
+     * How long the last photo took, start to finish, until it was ready to view and save: from
+     * the shutter to the page's editor image and thumbnail both being in hand (detection, then
+     * the quick render - orientation, filter and enhancement). Shown in the camera's status line;
+     * this is the number that matches what the user is waiting for when they tap the thumbnail.
+     */
+    var lastReadyMs by mutableStateOf(0L)
         private set
 
     /**
@@ -396,7 +405,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     val at = if (idSide == 0) pages.indexOfFirst { it.idGroup == cardGroup && it.idSide == 1 } else -1
                     if (at >= 0) pages.add(at, created[0]) else pages.add(created[0])
                     idKept = true
-                    launchRender(created[0])
+                    launchRender(created[0], startedAt = started)
                     return@launch
                 }
                 // Respect the caller's page limit (a book spread may bring two pages at once).
@@ -404,7 +413,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val kept = created.take(room)
                 created.drop(room).forEach { deletePage(it) }
                 pages.addAll(kept)
-                kept.forEach { p -> launchRender(p, pickSmartFilter = smart) }
+                kept.forEach { p -> launchRender(p, pickSmartFilter = smart, startedAt = started) }
                 // AI Text: read the new page and open it in the AI Text screen.
                 if (mode.extractText) kept.firstOrNull()?.let { openAiText(it) }
             } catch (r: Rejected) {
@@ -905,7 +914,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      *  2. the full-resolution render for the PDF, in the background.
      * A newer render of the same page (filter changed, crop edited...) makes older ones stop.
      */
-    private fun launchRender(page: Page, pickSmartFilter: Boolean = false) {
+    private fun launchRender(page: Page, pickSmartFilter: Boolean = false, startedAt: Long = SystemClock.elapsedRealtime()) {
         page.rendering = true
         val gen = ++page.renderGen
         viewModelScope.launch {
@@ -923,6 +932,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 if (quick != null) {
                     applyRender(page, quick, pickSmartFilter)
                     page.refining = true // shown and editable now; full resolution follows
+                    // This is the moment the user's tap on the thumbnail stops waiting (the editor
+                    // has an image and a file to save): the real end-to-end number to chase.
+                    if (gen == page.renderGen) lastReadyMs = SystemClock.elapsedRealtime() - startedAt
                 }
                 // Step 2: full resolution for the PDF (same filter, now decided).
                 val full = withContext(Dispatchers.Default) {

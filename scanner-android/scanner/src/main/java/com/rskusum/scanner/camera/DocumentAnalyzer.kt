@@ -40,7 +40,7 @@ class DocumentAnalyzer(
      */
     @Volatile var busy = false
     private var skipped = 0L
-    /** How long the last photo took to become a page (ms), for the status line. */
+    /** How long the last photo took, start to finish, to become a ready page (ms), for the status line. */
     @Volatile var lastCaptureMs = 0L
     /** Book mode: find the spine live (used in Free mode, where there is no guide line). */
     @Volatile var bookMode = false

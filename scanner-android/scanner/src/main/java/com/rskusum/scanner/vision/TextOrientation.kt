@@ -87,10 +87,15 @@ object TextOrientation {
 
     /**
      * Upside down? Asked twice (the page as is and turned 180 degrees) so a bias of the model
-     * towards one answer cancels out; only a clear result flips the page.
+     * towards one answer cancels out; only a clear result flips the page. Skipped when the first
+     * look is already clearly one way or the other (the same bar used below when only one look is
+     * possible): most pages are already upright, and this halves the model's work for them - a
+     * strong p[0] can only push the combined two-look "up" score higher, never flip the result.
      */
     private fun upsideDown(rgb: Mat, model: OrientationModel): Boolean {
         val p = model.probabilities(rgb) ?: return false
+        if (p[0] >= 0.6f && p[0] > p[2] * 2) return false
+        if (p[2] >= 0.6f && p[2] > p[0] * 2) return true
         val r = Mat(); Core.rotate(rgb, r, Core.ROTATE_180)
         val q = model.probabilities(r)
         r.release()
