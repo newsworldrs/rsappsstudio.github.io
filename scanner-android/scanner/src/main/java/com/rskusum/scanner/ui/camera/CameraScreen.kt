@@ -1491,7 +1491,10 @@ private fun ThumbnailStack(page: com.rskusum.scanner.data.Page?, preview: androi
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center,
         ) {
-            // The photo just taken shows at once; the finished page replaces it.
+            // `preview` is a brief flash of the shot itself while it is still being read off the
+            // sensor; `page?.thumbnail` stays null (spinner shown below) until the page is
+            // genuinely processed, so what appears here is never a thumbnail that looks finished
+            // before it is - like Google ML Kit, nothing changes here until it is really done.
             val thumb = preview ?: page?.thumbnail
             if (thumb != null) {
                 Image(thumb, contentDescription = stringResource(R.string.rs_scanner_scanned_pages), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())

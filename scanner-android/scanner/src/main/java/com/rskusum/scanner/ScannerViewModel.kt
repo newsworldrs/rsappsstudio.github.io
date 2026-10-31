@@ -384,8 +384,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         var idKept = false
         return viewModelScope.launch {
             try {
-                // Instant feedback: a small flattened preview, ready in a few milliseconds. It is
-                // also the new page's first thumbnail, so the strip never waits on a spinner.
+                // Instant feedback in the camera's own thumbnail slot while the shutter is still
+                // closing, ready in a few milliseconds - not the page's thumbnail: that one stays
+                // null (shown as a spinner) until the page is genuinely processed, so it never
+                // looks finished before the editor actually is.
                 val preview = withContext(Dispatchers.Default) { runCatching { previewOf(photo, hint ?: frame) }.getOrNull() }
                 preview?.let { pendingPreview = it }
                 val created = createGate.withPermit {
@@ -397,7 +399,6 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
                 created.forEach { it.hd = hd }
-                if (created.size == 1 && created[0].thumbnail == null) created[0].thumbnail = preview
                 if (isId && created.size == 1) {
                     // Front and back stay separate pages (each can be cropped/edited); they are
                     // placed together on one A4 page only when the PDF is created.
@@ -919,11 +920,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val gen = ++page.renderGen
         viewModelScope.launch {
             try {
-                // Gallery / book pages have no shutter preview: a quick flat thumbnail first.
-                if (page.thumbnail == null) {
-                    withContext(Dispatchers.Default) { runCatching { quickThumbnail(page, decideUpright = false) }.getOrNull() }
-                        ?.let { if (page.thumbnail == null) page.thumbnail = it }
-                }
+                // No preliminary thumbnail: the page's thumbnail stays null (shown as "still
+                // processing") until this step below actually finishes, so a thumbnail never looks
+                // ready before it is - the same moment the editor itself stops waiting.
                 // Step 1: screen-size page (also turns it upright and picks the Smart filter).
                 val quick = withContext(Dispatchers.Default) {
                     renderGate.withPermit { if (gen == page.renderGen) render(page, pickSmartFilter, QUICK_RENDER_SIDE) else null }
@@ -984,32 +983,6 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         page.processedFile = file
         page.thumbnail = thumb
         page.version++
-    }
-
-    /**
-     * Flattened page at thumbnail size, without filters (shown until the full render is done).
-     * A new page's text orientation is decided here, so even the first thumbnail is upright.
-     */
-    private fun quickThumbnail(page: Page, decideUpright: Boolean): ImageBitmap? {
-        val pending = decideUpright && page.uprightPending
-        val bmp = Images.decodeFile(page.originalFile, if (pending) 2000 else 1000) ?: return null
-        val rgb = Images.toRgbMat(bmp)
-        bmp.recycle()
-        var flat = DocumentDetector.warp(rgb, page.quad, page.forcedAspect, maxSide = if (pending) 1600 else 360, forcedOrientation = page.forcedOrientation)
-        rgb.release()
-        if (pending) {
-            page.uprightPending = false
-            uprightTurn(page, flat)?.let { page.rotation = it }
-            val f = 360.0 / maxOf(flat.cols(), flat.rows())
-            val small = Mat()
-            Imgproc.resize(flat, small, org.opencv.core.Size(flat.cols() * f, flat.rows() * f), 0.0, 0.0, Imgproc.INTER_AREA)
-            flat.release()
-            flat = small
-        }
-        rotate(flat, page.rotation)?.let { flat.release(); flat = it }
-        val out = Images.toBitmap(flat)
-        flat.release()
-        return Images.thumbnail(out).asImageBitmap()
     }
 
     /** Warps + enhances the original. Returns (file, thumbnail, filter + shadow setting used). */
