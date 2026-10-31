@@ -466,10 +466,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     ): List<Page> {
         val photoW = photo.width
         val photoH = photo.height
-        // The page photo is written in the background while the page is being found (the JPEG
-        // encode no longer delays the thumbnail); it is complete before this function returns.
+        // The page photo is written in the background while the page is being found, but this
+        // function still waits for that write before returning (see the finally block below) -
+        // the quick render reads this same file moments later, so the real wait is unavoidable.
+        // Quality 90 instead of 95: a real cut to the encode time (and to the two later decodes
+        // of this same file, for the quick and full renders) for a difference invisible on a
+        // document; this file is never the exported page image, only the source re-rendered
+        // through the enhancer, which is saved at its own quality.
         val file = newPhotoFile()
-        val saving = photoSaver.submit { Images.saveJpeg(photo, file, 95) }
+        val saving = photoSaver.submit { Images.saveJpeg(photo, file, 90) }
         // Page finding works on one shrunken copy: every step below works at 1600 px or less
         // anyway, and shrinking the full photo once (instead of in each of ~20 steps) saves
         // seconds per capture on mid-range phones. Outlines are fractions of the image, so they
