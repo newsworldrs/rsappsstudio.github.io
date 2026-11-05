@@ -13,6 +13,7 @@ import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import com.rskusum.scanner.R
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -40,7 +41,10 @@ data class SavedDocument(
 class DocumentStore(private val context: Context) {
 
     val dir: File = File(context.filesDir, "documents").apply { mkdirs() }
-    private val publicFolder = "RS Apps Studio Scan"
+    // From a string resource (translatable="false"): the user's saved files must always land in
+    // the SAME folder, in every language, so a locale or Play auto-translation change can never
+    // split them across two differently-named folders.
+    private val publicFolder = context.getString(R.string.rs_scanner_public_folder_name)
 
     fun list(): List<SavedDocument> =
         (dir.listFiles { f -> f.extension.equals("pdf", true) } ?: emptyArray())
@@ -73,7 +77,7 @@ class DocumentStore(private val context: Context) {
     private fun compressPage(file: File, quality: PdfQuality, hd: Boolean = false): Triple<ByteArray, Int, Int> {
         val maxSide = if (hd) maxOf(quality.maxSide, 5000) else quality.maxSide
         val jpegQuality = if (hd) maxOf(quality.jpegQuality, 92) else quality.jpegQuality
-        val bmp = Images.decodeFile(file, maxSide) ?: error("Cannot decode $file")
+        val bmp = Images.decodeFile(file, maxSide) ?: error(context.getString(R.string.rs_scanner_cannot_decode_file, file))
         val bytes = ByteArrayOutputStream().use { bos ->
             bmp.compress(Bitmap.CompressFormat.JPEG, jpegQuality, bos); bos.toByteArray()
         }
@@ -159,8 +163,8 @@ class DocumentStore(private val context: Context) {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val resolver = context.contentResolver
-            val uri = resolver.insert(collection(), values) ?: error("MediaStore insert failed")
-            resolver.openOutputStream(uri)?.use(write) ?: error("Cannot open $uri")
+            val uri = resolver.insert(collection(), values) ?: error(context.getString(R.string.rs_scanner_mediastore_insert_failed))
+            resolver.openOutputStream(uri)?.use(write) ?: error(context.getString(R.string.rs_scanner_cannot_open_uri, uri))
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
             resolver.update(uri, values, null, null)

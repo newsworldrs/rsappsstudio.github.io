@@ -132,7 +132,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rskusum.scanner.R
 import com.rskusum.scanner.ScannerViewModel
-import com.rskusum.scanner.BRAND_LINE
 import com.rskusum.scanner.camera.CapturePhase
 import com.rskusum.scanner.camera.DocumentAnalyzer
 import com.rskusum.scanner.data.Images
@@ -1218,10 +1217,14 @@ private fun TopBar(qrMode: Boolean, onHome: (() -> Unit)?, onQr: (() -> Unit)?) 
             .padding(start = 16.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Brand (fixed, deliberately not a string resource so it can't be overridden).
+        // Brand: the company name (rs_scanner_company_name) is not translatable, but the words
+        // around it are, so Play Console's automatic translation can still translate this line.
         Column {
-            Text("Scan", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text(BRAND_LINE, color = ScanColors.AccentBright, fontSize = 11.sp)
+            Text(stringResource(R.string.rs_scanner_brand_scan), color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.rs_scanner_powered_by, stringResource(R.string.rs_scanner_company_name)),
+                color = ScanColors.AccentBright, fontSize = 11.sp,
+            )
         }
         Spacer(Modifier.weight(1f))
         if (onQr != null) {
@@ -1279,7 +1282,7 @@ private fun ToolRail(
             )
         }
         RailButton(selected = autoCapture, label = stringResource(R.string.rs_scanner_auto), onClick = onToggleAuto) {
-            Text("A", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black)
+            Text(stringResource(R.string.rs_scanner_auto_short), color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black)
         }
         // HD: a check box, ticked when on (normal quality has no label of its own).
         RailButton(selected = hd, label = null, onClick = onToggleHd) {
@@ -1550,6 +1553,6 @@ private fun QrResultDialog(text: String, onDismiss: () -> Unit) {
 
 private fun copy(context: Context, text: String) {
     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    cm.setPrimaryClip(ClipData.newPlainText("QR", text))
+    cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.rs_scanner_qr_code), text))
     Toast.makeText(context, context.getString(R.string.rs_scanner_copied), Toast.LENGTH_SHORT).show()
 }

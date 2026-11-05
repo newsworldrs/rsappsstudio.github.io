@@ -16,6 +16,7 @@
     <string name="rs_scanner_auto_capture_off">Auto capture off - tap the shutter</string>
     <string name="rs_scanner_auto_capture_on">Auto capture on</string>
     <string name="rs_scanner_auto_detect">Auto detect</string>
+    <string name="rs_scanner_auto_short">A</string>
     <string name="rs_scanner_back">Back</string>
     <string name="rs_scanner_back_to_camera">Back to camera</string>
     <string name="rs_scanner_bcard_looking">Looking for a business card</string>
@@ -79,9 +80,14 @@
     <string name="rs_scanner_hd_limit">HD limit reached (%1$d pages). Turn off HD to keep scanning.</string>
     <string name="rs_scanner_press_back_exit">Press back again to exit</string>
     <string name="rs_scanner_exit_unsaved">Scan not saved. Press back again to exit</string>
+    <string name="rs_scanner_brand_scan">Scan</string>
+    <string name="rs_scanner_powered_by">powered by %1$s</string>
     <string name="rs_scanner_brush">Brush</string>
     <string name="rs_scanner_camera_needed">Camera access is needed to scan documents.</string>
     <string name="rs_scanner_cancel">Cancel</string>
+    <string name="rs_scanner_cannot_decode_file">Couldn\'t read %1$s</string>
+    <string name="rs_scanner_cannot_open_uri">Couldn\'t open %1$s</string>
+    <string name="rs_scanner_cannot_read_image">Couldn\'t read the image</string>
     <string name="rs_scanner_capture">Capture</string>
     <string name="rs_scanner_capture_complete">Capturing is complete - tap the pages to review</string>
     <string name="rs_scanner_capture_failed">Capture failed, try again</string>
@@ -90,6 +96,7 @@
     <string name="rs_scanner_capturing">Capturing…</string>
     <string name="rs_scanner_clear">Clear</string>
     <string name="rs_scanner_close">Close</string>
+    <string name="rs_scanner_company_name" translatable="false">RS Apps Studio</string>
     <string name="rs_scanner_copied">Copied</string>
     <string name="rs_scanner_copy">Copy</string>
     <string name="rs_scanner_cover_looking">Looking for the book cover</string>
@@ -174,6 +181,7 @@
     <string name="rs_scanner_insight_pincode">PIN code</string>
     <string name="rs_scanner_key_details">Key details</string>
     <string name="rs_scanner_looks_like">Looks like</string>
+    <string name="rs_scanner_mediastore_insert_failed">Couldn\'t create the file</string>
     <string name="rs_scanner_mode_ai_text">AI Text</string>
     <string name="rs_scanner_mode_book">Book</string>
     <string name="rs_scanner_mode_book_cover">Book cover</string>
@@ -196,6 +204,7 @@
     <string name="rs_scanner_no_text_found">No text found on this page</string>
     <string name="rs_scanner_nothing_to_save">Nothing to save</string>
     <string name="rs_scanner_ocr_failed">Text recognition failed</string>
+    <string name="rs_scanner_opencv_load_failed">OpenCV native library failed to load</string>
     <string name="rs_scanner_off">Off</string>
     <string name="rs_scanner_ok">OK</string>
     <string name="rs_scanner_on">On</string>
@@ -216,6 +225,7 @@
     <string name="rs_scanner_pinch_zoom">Pinch with two fingers to zoom.</string>
     <string name="rs_scanner_point_at_qr">Point at a QR code</string>
     <string name="rs_scanner_processing">Processing…</string>
+    <string name="rs_scanner_public_folder_name" translatable="false">RS Apps Studio Scan</string>
     <string name="rs_scanner_qr_code">QR code</string>
     <string name="rs_scanner_qr_scanner">QR code scanner</string>
     <string name="rs_scanner_read_again">Read again</string>

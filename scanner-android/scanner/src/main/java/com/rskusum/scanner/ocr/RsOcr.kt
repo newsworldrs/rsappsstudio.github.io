@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.net.Uri
 import android.util.Log
 import com.googlecode.tesseract.android.TessBaseAPI
+import com.rskusum.scanner.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -101,7 +102,7 @@ object RsOcr {
         languages: String = "eng",
         model: OcrModel = OcrModel.BEST,
     ): OcrResult {
-        val bitmap = withContext(Dispatchers.IO) { decode(context, image) } ?: error("Cannot read image $image")
+        val bitmap = withContext(Dispatchers.IO) { decode(context, image) } ?: error(context.getString(R.string.rs_scanner_cannot_read_image))
         return try {
             recognize(context, bitmap, languages, model)
         } finally {

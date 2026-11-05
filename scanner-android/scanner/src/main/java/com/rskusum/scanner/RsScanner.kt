@@ -27,9 +27,6 @@ import org.opencv.android.OpenCVLoader
  * Java: `registerForActivityResult(new ScanDocument(), result -> { ... })`, then
  * `launcher.launch(new ScannerOptions())`.
  */
-/** Brand line shown in the scanner. Kept in code on purpose: string resources can be overridden by apps. */
-internal const val BRAND_LINE = "powered by RS Apps Studio"
-
 object RsScanner {
     const val EXTRA_OPTIONS = "com.rskusum.scanner.OPTIONS"
     const val EXTRA_RESULT = "com.rskusum.scanner.RESULT"
@@ -54,7 +51,7 @@ object RsScanner {
         synchronized(this) {
             if (!initialized) {
                 openCvError = try {
-                    if (OpenCVLoader.initLocal()) null else "OpenCV native library failed to load"
+                    if (OpenCVLoader.initLocal()) null else context.getString(R.string.rs_scanner_opencv_load_failed)
                 } catch (t: Throwable) {
                     "OpenCV: ${t.javaClass.simpleName}: ${t.message}"
                 }
