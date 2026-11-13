@@ -475,21 +475,22 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         // through the enhancer, which is saved at its own quality.
         val file = newPhotoFile()
         val saving = photoSaver.submit { Images.saveJpeg(photo, file, 90) }
-        // Page finding works on one shrunken copy: every step below works at 1600 px or less
-        // anyway, and shrinking the full photo once (instead of in each of ~20 steps) saves
-        // seconds per capture on mid-range phones. Outlines are fractions of the image, so they
-        // fit the full photo unchanged.
-        val gray = Images.toGrayMat(photo).let { full ->
-            val f = DETECT_SIDE.toDouble() / maxOf(full.cols(), full.rows())
-            if (f >= 1.0) full else Mat().also { small ->
-                Imgproc.resize(full, small, org.opencv.core.Size(full.cols() * f, full.rows() * f), 0.0, 0.0, Imgproc.INTER_AREA)
-                full.release()
-            }
-        }
+        // Two resolutions, from one decode: the wide search (every candidate outline, scored many
+        // times over) works on a 1600 px copy - shrinking once instead of in each of ~20 steps is
+        // what makes this fast. But at 1600 px a corner is only placed to within a few px of its
+        // true position (worse once that fraction is scaled back up to the full photo), which is
+        // what made auto crop - and book mode's split, which cuts exactly on the spread's edges -
+        // land a little off. grayHi is a second, sharper copy used only for the one or two final
+        // refine() calls once the search above has already picked the outline, so the real cost
+        // (the search itself) doesn't change.
+        val fullGray = Images.toGrayMat(photo)
+        val gray = shrinkTo(fullGray, DETECT_SIDE)
+        val grayHi = shrinkTo(fullGray, REFINE_SIDE)
+        fullGray.release()
         try {
             var sidesFound = 4
             var aspect = mode.forcedAspect
-            val quad = when {
+            val rawQuad = when {
                 imported -> {
                     // Gallery picture: usually already cropped - the picture borders are the page
                     // unless a real page lying on a surface is found (see detectImported).
@@ -567,6 +568,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     }
                 }
             }
+            // Second pass on the sharper copy: the search above only had to land close, this one
+            // places the corners precisely - without it the crop was off by a visible margin,
+            // worst on a page that fills most of the frame (where a 1600 px search misses the most).
+            val quad = if (!imported && sidesFound > 0) DocumentDetector.refine(grayHi, rawQuad, maxDim = REFINE_SIDE) else rawQuad
 
             // Duplicate / empty-surface check against the most recent page.
             val fp = DocumentDetector.fingerprint(gray, quad)
@@ -629,11 +634,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                             .also { it.signature = sig; it.uprightPending = true }
                     )
                 }
+                // Whichever path found it, the spread's own outer edges are re-fit on the sharper
+                // copy before the cut: splitSpread works purely from these four corners, so a
+                // corner a few px off on the 1600 px search copy skewed the whole spine line.
+                spread = DocumentDetector.refine(grayHi, spread, maxDim = REFINE_SIDE)
                 // Open book: two independent A4 pages, each with its own crop outline so they can be
                 // cropped/edited separately. With the phone held across the book (spread taller than
                 // wide in the photo) each half is turned upright using the phone's orientation.
                 // Cut at the real spine (gutter shadow / blank band), not just the geometric middle.
-                val spine = DocumentDetector.findSpine(gray, spread)
+                val spine = DocumentDetector.findSpine(grayHi, spread)
                 val (a, b) = DocumentDetector.splitSpread(spread, photoW, photoH, spine)
                 val (sw, sh) = DocumentDetector.naiveSize(spread, photoW, photoH)
                 val acrossBook = sh > sw
@@ -668,7 +677,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     // Second pass: this page's own outer edges, searched again around its half
                     // (the spine side stays on the cut).
                     val spineAt = if (acrossBook) (if (q === a) 2 else 0) else (if (q === a) 1 else 3)
-                    val cropped = autoCropBookPage(gray, q, spineAt)
+                    val cropped = autoCropBookPage(grayHi, q, spineAt)
                     val (pageFile, pageQuad) = detachBookPage(photo, cropped, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
                     Page(
                         pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
@@ -693,7 +702,16 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             // The photo must be fully written before it is recycled (and before the page renders).
             runCatching { saving.get() }
             gray.release()
+            grayHi.release()
             photo.recycle()
+        }
+    }
+
+    /** [full] resized so its longer side is at most [side] (a clone, never the same Mat as [full]). */
+    private fun shrinkTo(full: Mat, side: Int): Mat {
+        val f = side.toDouble() / maxOf(full.cols(), full.rows())
+        return if (f >= 1.0) full.clone() else Mat().also { small ->
+            Imgproc.resize(full, small, org.opencv.core.Size(full.cols() * f, full.rows() * f), 0.0, 0.0, Imgproc.INTER_AREA)
         }
     }
 
@@ -811,9 +829,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
             var best = q
             var bestScore = DocumentDetector.scoreQuad(gray, q)
             for (bf in doubleArrayOf(0.06, 0.12)) {
-                val snap = DocumentDetector.snapToQuad(gray, q, bandFraction = bf)
+                val snap = DocumentDetector.snapToQuad(gray, q, maxDim = REFINE_SIDE, bandFraction = bf)
                 if (snap.sidesFound < 2) continue
-                val c = keepSpine(DocumentDetector.refine(gray, snap.quad), q, spine)
+                val c = keepSpine(DocumentDetector.refine(gray, snap.quad, maxDim = REFINE_SIDE), q, spine)
                 if (c.distanceTo(q) > 0.25f || c.area() < q.area() * 0.5f) continue
                 val sc = DocumentDetector.scoreQuad(gray, c)
                 if (sc > bestScore + 0.02) { best = c; bestScore = sc }
@@ -1336,6 +1354,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         const val MAX_PHOTO_SIDE = 4000
         /** Longest side of the gray copy used to find the page in a photo. */
         private const val DETECT_SIDE = 1600
+        /** Longest side of the sharper gray copy used only for the final corner refine() passes. */
+        private const val REFINE_SIDE = 3000
         /** HD: photos up to 6000 px (a 108 MB bitmap at most, never the full 50-200 MP). */
         const val HD_PHOTO_SIDE = 6000
         private const val HD_RENDER_MAX_SIDE = 5000
