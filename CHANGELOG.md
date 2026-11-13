@@ -4,7 +4,7 @@ All notable changes to the **RS Kusum Scanner** Android library (`scanner-androi
 Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPack:
 `implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")`.
 
-## [Unreleased]
+## [1.7.0] - 2026-11-13
 ### Added
 - **Color filter** (`ScanFilter.COLOR`): pure white paper with vivid ink, stamp, logo and photo colours. Lighting is evened out from brightness only, so large colour areas stay clean and even. Shown second in the filter list.
 - `ScannerOptions(startWithGallery = true)`: opens the system photo picker instead of the camera (for an "image to PDF" button). Picked pictures go through the same edge detection, cropping, straightening and filters as camera pages and open in the editor. Cancelling the picker closes the scanner.
@@ -163,6 +163,7 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 - Compressed PDF output with PDFBox, and JPEG pages.
 - Apache 2.0 licence and a full third-party licence audit.
 
+[1.7.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.7.0
 [1.6.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.6.0
 [1.5.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.5.0
 [1.4.0]: https://github.com/newsworldrs/rsappsstudio.github.io/releases/tag/1.4.0
