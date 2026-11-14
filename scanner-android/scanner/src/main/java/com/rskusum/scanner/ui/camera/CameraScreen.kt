@@ -528,6 +528,12 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     val book = vm.mode == ScanMode.BOOK && !qrMode
                     when {
                         qrMode -> QrFrame()
+                        // Book mode: like a real scanner app, two edge lines (the spread's own
+                        // outer sides) instead of a frame box - nothing should dim or box in the
+                        // spine itself, which is drawn separately below (BookOverlay(Across) /
+                        // FreeSpineOverlay already give the centre line and page 1/2 badges).
+                        book && guide != null -> BookEdgeLinesOverlay(guide, state.aligned)
+                        book -> state.quad?.let { BookEdgeLinesOverlay(it, state.aligned) }
                         guide != null -> GuideFrameOverlay(guide, state.aligned)
                         else -> QuadOverlay(state.quad, state.phase)
                     }
@@ -1003,6 +1009,24 @@ private fun GuideFrameOverlay(frame: Quad, aligned: Boolean, spine: Boolean = fa
             drawCircle(color, 5.dp.toPx(), p1)
             drawCircle(color, 5.dp.toPx(), p2)
         }
+    }
+}
+
+/**
+ * Book mode's live guide, drawn instead of [GuideFrameOverlay]/[QuadOverlay]'s box: just the
+ * spread's own two outer sides as solid lines - left page's left edge, right page's right edge -
+ * with nothing dimmed or boxed in between, since that would sit right over the spine the other
+ * book overlays ([BookOverlay], [BookOverlayAcross], [FreeSpineOverlay]) already draw their own
+ * line for. Matches how dedicated scanner apps guide a book capture.
+ */
+@Composable
+private fun BookEdgeLinesOverlay(quad: Quad, aligned: Boolean) {
+    val color = if (aligned) Color(0xFF34C759) else Color.White
+    Canvas(Modifier.fillMaxSize()) {
+        fun pt(p: com.rskusum.scanner.vision.NPoint) = Offset(p.x * size.width, p.y * size.height)
+        val sw = 3.dp.toPx()
+        drawLine(color, pt(quad.tl), pt(quad.bl), sw, cap = StrokeCap.Round)
+        drawLine(color, pt(quad.tr), pt(quad.br), sw, cap = StrokeCap.Round)
     }
 }
 
