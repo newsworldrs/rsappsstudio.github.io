@@ -643,6 +643,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // wide in the photo) each half is turned upright using the phone's orientation.
                 // Cut at the real spine (gutter shadow / blank band), not just the geometric middle.
                 val spine = DocumentDetector.findSpine(grayHi, spread)
+                // How strongly the pages curve away from flat near the spine (measured once for
+                // the whole spread, from the same gutter-shadow depth/width as the split above) -
+                // see detachBookPage, where it un-compresses each page's content near the binding.
+                val curvature = DocumentDetector.findSpineCurvature(grayHi, spread)
                 val (a, b) = DocumentDetector.splitSpread(spread, photoW, photoH, spine)
                 val (sw, sh) = DocumentDetector.naiveSize(spread, photoW, photoH)
                 val acrossBook = sh > sw
@@ -678,7 +682,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     // (the spine side stays on the cut).
                     val spineAt = if (acrossBook) (if (q === a) 2 else 0) else (if (q === a) 1 else 3)
                     val cropped = autoCropBookPage(grayHi, q, spineAt)
-                    val (pageFile, pageQuad) = detachBookPage(photo, cropped, tall = acrossBook, firstHalf = q === a, turn = turn, index = i)
+                    val (pageFile, pageQuad) = detachBookPage(photo, cropped, tall = acrossBook, firstHalf = q === a, turn = turn, index = i, spine = spineAt, curvature = curvature)
                     Page(
                         pageFile, pageQuad, mode.defaultFilter, mode.forcedAspect,
                         forcedOrientation = DocumentDetector.ORIENT_PORTRAIT, fingerprint = fp,
@@ -784,7 +788,10 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      * margin on the outer sides, but nothing beyond the spine, turned upright by [turn] degrees
      * (clockwise). Returns the new image file and the page outline in its coordinates.
      */
-    private fun detachBookPage(photo: Bitmap, q: Quad, tall: Boolean, firstHalf: Boolean, turn: Int, index: Int): Pair<File, Quad> {
+    private fun detachBookPage(
+        photo: Bitmap, q: Quad, tall: Boolean, firstHalf: Boolean, turn: Int, index: Int,
+        spine: Int = -1, curvature: DocumentDetector.SpineCurvature? = null,
+    ): Pair<File, Quad> {
         val w = photo.width.toFloat(); val h = photo.height.toFloat()
         val xs = q.points.map { it.x * w }; val ys = q.points.map { it.y * h }
         val mx = 0.03f * w; val my = 0.03f * h
@@ -800,6 +807,21 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val x1 = r.coerceIn(x0 + 1f, w).toInt(); val y1 = b.coerceIn(y0 + 1f, h).toInt()
         var crop = Bitmap.createBitmap(photo, x0, y0, x1 - x0, y1 - y0)
         if (crop === photo) crop = photo.copy(Bitmap.Config.ARGB_8888, false) // never recycle the source
+        // Un-compress the page's own content near the spine (its physical curve made text there
+        // look squeezed toward the binding) before it's rotated upright - done here, on just this
+        // page's own crop, with the spine side still in its original (pre-rotation) position, so
+        // rotation afterward carries the correction along without needing to track which side the
+        // spine ends up on once the page is turned.
+        if (curvature != null && spine in 0..3 && curvature.shift > 0f) {
+            val rgb = Images.toRgbMat(crop)
+            val dewarped = DocumentDetector.dewarpSpine(rgb, curvature, spine)
+            if (dewarped !== rgb) {
+                crop.recycle()
+                crop = Images.toBitmap(dewarped)
+                dewarped.release()
+            }
+            rgb.release()
+        }
         val cw = (x1 - x0).toFloat(); val ch = (y1 - y0).toFloat()
         var pts = q.points.map { com.rskusum.scanner.vision.NPoint(((it.x * w - x0) / cw).coerceIn(0f, 1f), ((it.y * h - y0) / ch).coerceIn(0f, 1f)) }
         if (turn % 360 != 0) {

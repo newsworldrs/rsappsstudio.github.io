@@ -4,6 +4,10 @@ All notable changes to the **RS Kusum Scanner** Android library (`scanner-androi
 Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPack:
 `implementation("com.github.newsworldrs:rsappsstudio.github.io:<version>")`.
 
+## [Unreleased]
+### Added
+- **Book pages near the spine are un-compressed, not just cropped.** A book's pages physically curve away from flat near the binding, so text close to the gutter came out visibly squeezed compared to the rest of the page - a straight perspective crop can't fix that, it only corrects camera tilt. The same gutter-shadow measurement the spine split already uses (its depth and width) now also drives a geometric correction, applied once per page right after it's cut from the spread: content near the spine is pulled back out to its true width, tapering to no effect a short distance away, so the rest of the page is untouched. Calibrated conservatively (checked against a synthetic curved-page test) - a page with little or no visible gutter shadow gets no correction at all rather than risk stretching content that wasn't actually compressed.
+
 ## [1.7.0] - 2026-11-13
 ### Added
 - **Color filter** (`ScanFilter.COLOR`): pure white paper with vivid ink, stamp, logo and photo colours. Lighting is evened out from brightness only, so large colour areas stay clean and even. Shown second in the filter list.

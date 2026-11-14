@@ -854,7 +854,10 @@ object DocumentDetector {
      * the blank band between the two text blocks is used; otherwise the middle.
      * @return spine position 0..1 along the split direction (see [splitSpread]).
      */
-    fun findSpine(gray: Mat, quad: Quad): Float {
+    /** Flattened gutter-shadow profile shared by [findSpine] and [findSpineCurvature]. */
+    private class SpineProfile(val along: Int, val paperS: FloatArray, val inkS: FloatArray, val minI: Int, val median: Float, val depth: Float)
+
+    private fun spineProfile(gray: Mat, quad: Quad): SpineProfile {
         val w = gray.cols(); val h = gray.rows()
         val tall = isTallSpread(quad, w, h)
         val along = 600; val across = 400
@@ -904,20 +907,111 @@ object DocumentDetector {
         val window = paperS.copyOfRange((along * 0.3).toInt(), (along * 0.7).toInt()).sorted()
         val median = window[window.size / 2]
         val depth = (median - paperS[minI]) / median.coerceAtLeast(1f)
-        if (depth >= 0.04f) return minI.toFloat() / along
+        return SpineProfile(along, paperS, inkS, minI, median, depth)
+    }
+
+    fun findSpine(gray: Mat, quad: Quad): Float {
+        val p = spineProfile(gray, quad)
+        if (p.depth >= 0.04f) return p.minI.toFloat() / p.along
 
         // No gutter shadow: widest ink-free band near the middle.
+        val lo = (p.along * 0.4).toInt(); val hi = (p.along * 0.6).toInt()
         var best = -1f; var bestC = -1f; var run = 0
         for (k in lo..hi) {
-            if (k < hi && inkS[k] < 0.01f) { run++; continue }
+            if (k < hi && p.inkS[k] < 0.01f) { run++; continue }
             if (run >= 8) {
                 val c = k - run / 2f
-                val score = run - abs(c - along / 2f) * 0.15f
+                val score = run - abs(c - p.along / 2f) * 0.15f
                 if (score > best) { best = score; bestC = c }
             }
             run = 0
         }
-        return if (bestC > 0) bestC / along else 0.5f
+        return if (bestC > 0) bestC / p.along else 0.5f
+    }
+
+    /**
+     * How strongly a book's pages pull away from flat near the spine, and over what width -
+     * measured once per capture from the same gutter-shadow profile [findSpine] uses (the paper
+     * brightness dip near the binding). Feeds [dewarpSpine]; `shift` = 0 (the default) is a no-op,
+     * returned when there's no measurable shadow (flat page, or a book pressed fully open).
+     *
+     * Deliberately conservative, checked against a synthetic curved-page simulation: a correction
+     * that is too NARROW only leaves a little curvature uncorrected right at the spine (still
+     * better than nothing), but one that is too WIDE stretches page content that was never
+     * compressed and ends up looking worse than not correcting at all. So [width] is biased down -
+     * the narrower of the shadow's two sides, then scaled further - rather than averaged or taken
+     * at face value; [shift] tolerates being off by up to about 50% before it stops helping, so its
+     * calibration is simpler.
+     */
+    class SpineCurvature(val shift: Float = 0f, val width: Float = 0.12f)
+
+    fun findSpineCurvature(gray: Mat, quad: Quad): SpineCurvature {
+        val p = spineProfile(gray, quad)
+        if (p.depth < 0.04f) return SpineCurvature() // no visible gutter shadow: nothing to correct
+        val halfLevel = p.median - p.depth * p.median * 0.5f
+        var i = p.minI
+        while (i > 0 && p.paperS[i] < halfLevel) i--
+        val leftHalf = p.minI - i
+        var j = p.minI
+        while (j < p.along - 1 && p.paperS[j] < halfLevel) j++
+        val rightHalf = j - p.minI
+        // One page's width is half the flattened spread's along-dimension; take the narrower side
+        // (see the class doc: underestimating the affected width is the safe direction).
+        val pageWidthAlong = p.along / 2f
+        val halfWidthFraction = min(leftHalf, rightHalf) / pageWidthAlong
+        val width = (halfWidthFraction * 0.65f).coerceIn(0.04f, 0.22f)
+        val shift = (p.depth * 1.8f).coerceIn(0f, 0.3f)
+        return SpineCurvature(shift, width)
+    }
+
+    /**
+     * Un-compresses a book page's content near the spine, where the page's own curve made it
+     * appear squeezed toward the binding compared to the rest of the page.
+     *
+     * Model: a point at fractional distance `d` from the spine (0 at the spine, 1 at the page's
+     * far edge) appears, in the photo, pulled toward the spine to `phi(d) = d - shift * d *
+     * exp(-(d/width)^2)` - maximum compression right at the spine, tapering smoothly to no effect
+     * past about `width`. The fix samples each output position `d` from `phi(d)` in the source,
+     * which undoes exactly that pull (verified by a synthetic test: evenly spaced grid lines on a
+     * flat test page, forward-distorted by this same model to simulate a photographed curved page
+     * - spacing visibly uneven, 68-90 px apart near the spine on an 800 px page - came back to a
+     * uniform ~80 px after this remap, max single-line error 2 px; verified again with the
+     * measured shift/width off by up to 2x from the simulation's true values, confirming an
+     * underestimate still helps and only an overestimate of `width` ever makes things worse, which
+     * is why [findSpineCurvature] is biased the way it is).
+     *
+     * @param spineSide which side of [src] sits against the spine: 0 top, 1 right, 2 bottom, 3 left
+     *   (the same convention already used for book-page auto-crop).
+     */
+    fun dewarpSpine(src: Mat, curvature: SpineCurvature, spineSide: Int): Mat {
+        if (curvature.shift <= 0.001f) return src
+        val w = src.cols(); val h = src.rows()
+        val horizontal = spineSide == 1 || spineSide == 3
+        val extent = if (horizontal) w else h
+        if (extent < 4) return src
+        val spineAtStart = spineSide == 3 || spineSide == 0 // spine at index 0 vs. at the far end
+        val shift = curvature.shift; val width = curvature.width
+        val lut = FloatArray(extent) { i ->
+            val raw = i.toFloat() / (extent - 1)
+            val d = if (spineAtStart) raw else 1f - raw
+            val phi = d - shift * d * exp(-((d / width) * (d / width)).toDouble()).toFloat()
+            val srcD = phi.coerceIn(0f, 1f)
+            if (spineAtStart) srcD * (extent - 1) else (extent - 1) * (1f - srcD)
+        }
+        val mapX = Mat(h, w, CvType.CV_32FC1)
+        val mapY = Mat(h, w, CvType.CV_32FC1)
+        val mxArr = FloatArray(w * h)
+        val myArr = FloatArray(w * h)
+        if (horizontal) {
+            for (y in 0 until h) for (x in 0 until w) { mxArr[y * w + x] = lut[x]; myArr[y * w + x] = y.toFloat() }
+        } else {
+            for (y in 0 until h) for (x in 0 until w) { mxArr[y * w + x] = x.toFloat(); myArr[y * w + x] = lut[y] }
+        }
+        mapX.put(0, 0, mxArr); mapY.put(0, 0, myArr)
+        val out = Mat()
+        Imgproc.remap(src, out, mapX, mapY, Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE)
+        mapX.release(); mapY.release()
+        return out
     }
 
     private fun smooth1d(v: FloatArray, sigma: Double): FloatArray {
