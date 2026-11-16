@@ -7,8 +7,6 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 ## [Unreleased]
 ### Added
 - **Book pages near the spine are un-compressed, not just cropped.** A book's pages physically curve away from flat near the binding, so text close to the gutter came out visibly squeezed compared to the rest of the page - a straight perspective crop can't fix that, it only corrects camera tilt. The same gutter-shadow measurement the spine split already uses (its depth and width) now also drives a geometric correction, applied once per page right after it's cut from the spread: content near the spine is pulled back out to its true width, tapering to no effect a short distance away, so the rest of the page is untouched. Calibrated conservatively (checked against a synthetic curved-page test) - a page with little or no visible gutter shadow gets no correction at all rather than risk stretching content that wasn't actually compressed.
-### Changed
-- **Book mode's live guide no longer boxes the page in.** It now shows two plain lines - the spread's own left and right outer edges - instead of a dimmed frame/box, so nothing sits on top of or obscures the spine itself, which already gets its own centre line. Matches how dedicated scanner apps guide a book capture.
 
 ## [1.7.0] - 2026-11-13
 ### Added
