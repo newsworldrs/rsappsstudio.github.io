@@ -1098,6 +1098,19 @@ object DocumentDetector {
             y0 += rows
         }
 
+        // Then the lines themselves: the middle of a page can be bent differently from its edges.
+        val straight = if (alongY) {
+            val t = Mat(); Core.transpose(out, t)
+            val st = straightenTextLines(t)
+            if (st === t) { t.release(); out } else {
+                t.release(); val back = Mat(); Core.transpose(st, back); st.release(); out.release(); back
+            }
+        } else {
+            val st = straightenTextLines(out)
+            if (st !== out) out.release()
+            st
+        }
+
         val lo = (margin / (1 + 2 * margin)).toFloat(); val hi = ((1 + margin) / (1 + 2 * margin)).toFloat()
         val e = (1 / (1 + margin)).toFloat()
         val quad = when (s) {
@@ -1106,10 +1119,167 @@ object DocumentDetector {
             2 -> Quad(NPoint(lo, 1 - e), NPoint(hi, 1 - e), NPoint(hi, 1f), NPoint(lo, 1f))
             else -> Quad(NPoint(0f, lo), NPoint(e, lo), NPoint(e, hi), NPoint(0f, hi))
         }
-        return FlatPage(out, quad)
+        return FlatPage(straight, quad)
     }
 
     private fun mid(a: Point, b: Point) = Point((a.x + b.x) / 2, (a.y + b.y) / 2)
+
+    /**
+     * Straightens bent text lines in a page image whose lines run along x (any type). A page that
+     * doesn't lie flat bends its lines differently in the middle than at its top and bottom
+     * edges, which no edge-based flattening can follow; here the lines themselves are found
+     * (ink bands, followed strip by strip across the page), each fitted with a smooth curve, and
+     * the page is shifted vertically, column by column, so every line becomes straight. Pages
+     * with too few clear lines (pictures, little text) are returned unchanged ([src] itself).
+     */
+    fun straightenTextLines(src: Mat): Mat {
+        val w = src.cols(); val h = src.rows()
+        if (w < 200 || h < 200) return src
+        val gray = Mat()
+        when (src.channels()) {
+            3 -> Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGB2GRAY)
+            4 -> Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGBA2GRAY)
+            else -> src.copyTo(gray)
+        }
+        // Work on a copy about 1000 px tall: line finding needs no more.
+        val f = min(1.0, 1000.0 / h)
+        val sm = Mat(); Imgproc.resize(gray, sm, Size(w * f, h * f), 0.0, 0.0, Imgproc.INTER_AREA)
+        gray.release()
+        val sw = sm.cols(); val sh = sm.rows()
+        val ink = Mat()
+        Imgproc.adaptiveThreshold(sm, ink, 255.0, Imgproc.ADAPTIVE_THRESH_MEAN_C, Imgproc.THRESH_BINARY_INV, (sh / 40) or 1, 12.0)
+        sm.release()
+        // Characters -> line bands: close along x only.
+        Imgproc.morphologyEx(ink, ink, Imgproc.MORPH_CLOSE, Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(max(3.0, sw / 60.0), 1.0)))
+        val px = ByteArray(sw * sh); ink.get(0, 0, px); ink.release()
+
+        val strips = 24
+        val stripW = sw / strips
+        // Ink profile per strip, smoothed lightly.
+        val prof = Array(strips) { k ->
+            val p = FloatArray(sh)
+            for (y in 0 until sh) { var c = 0; for (x in k * stripW until (k + 1) * stripW) if (px[y * sw + x].toInt() != 0) c++; p[y] = c.toFloat() / stripW }
+            smooth1d(p, 1.5)
+        }
+        // Line spacing: strongest period of the page's overall profile (8..80 px).
+        val all = FloatArray(sh) { y -> prof.sumOf { it[y].toDouble() }.toFloat() }
+        val mean = all.average().toFloat()
+        var bestLag = -1; var bestR = 0.0
+        for (lag in 8..min(80, sh / 6)) {
+            var r = 0.0
+            for (y in 0 until sh - lag) r += (all[y] - mean) * (all[y + lag] - mean)
+            if (r > bestR) { bestR = r; bestLag = lag }
+        }
+        if (bestLag < 0) return src
+        val spacing = bestLag.toDouble()
+        // Peaks (line centres) in each strip.
+        val peaks = Array(strips) { k ->
+            val p = prof[k]; val top = p.maxOrNull() ?: 0f
+            val out = ArrayList<Double>()
+            if (top > 0.05f) {
+                var y = 1
+                while (y < sh - 1) {
+                    if (p[y] >= 0.3f * top && p[y] >= p[y - 1] && p[y] > p[y + 1]) {
+                        val lo = max(0, y - (spacing * 0.4).toInt()); val hi = min(sh - 1, y + (spacing * 0.4).toInt())
+                        if ((lo..hi).all { p[it] <= p[y] }) out += y.toDouble()
+                    }
+                    y++
+                }
+            }
+            out
+        }
+        // Follow each line from the strip with the most peaks, both ways.
+        val ref = (strips / 4 until strips * 3 / 4).maxBy { peaks[it].size }
+        val tol = spacing * 0.35
+        class Line(val ys: DoubleArray)
+        val lines = ArrayList<Line>()
+        for (y0 in peaks[ref]) {
+            val ys = DoubleArray(strips) { Double.NaN }; ys[ref] = y0
+            for (dir in intArrayOf(-1, 1)) {
+                var last = y0; var prev = y0; var k = ref + dir; var miss = 0
+                while (k in 0 until strips && miss <= 2) {
+                    val pred = last + (last - prev) * 0.5
+                    val hit = peaks[k].minByOrNull { abs(it - pred) }
+                    if (hit != null && abs(hit - pred) <= tol) { ys[k] = hit; prev = last; last = hit; miss = 0 } else miss++
+                    k += dir
+                }
+            }
+            // Only lines running across most of the page: on a page that is half picture, lines
+            // beside the picture can't tell how the picture is bent.
+            if (ys.count { !it.isNaN() } >= strips * 0.75) lines += Line(ys)
+        }
+        debugLog?.invoke("textlines spacing=%.0f ref=%d lines=%d".format(spacing, ref, lines.size))
+        if (lines.size < 8) return src
+
+        // Each line: smooth cubic of its deviation from its own mean height.
+        val xs = DoubleArray(strips) { (it + 0.5) / strips }
+        val fits = ArrayList<Pair<Double, DoubleArray>>() // (mean y in [0,1], deviation per strip in px of the small copy)
+        for (l in lines) {
+            val idx = (0 until strips).filter { !l.ys[it].isNaN() }
+            var use = idx
+            var coef = DoubleArray(4)
+            repeat(2) { iter ->
+                val ata = DoubleArray(16); val atb = DoubleArray(4)
+                for (i in use) { val t = xs[i]; val pw = doubleArrayOf(1.0, t, t * t, t * t * t); for (r in 0 until 4) { atb[r] += pw[r] * l.ys[i]; for (c in 0 until 4) ata[r * 4 + c] += pw[r] * pw[c] } }
+                val a = Mat(4, 4, CvType.CV_64F); a.put(0, 0, *ata); val b = Mat(4, 1, CvType.CV_64F); b.put(0, 0, *atb); val x = Mat()
+                Core.solve(a, b, x, Core.DECOMP_SVD); coef = DoubleArray(4) { x.get(it, 0)[0] }; a.release(); b.release(); x.release()
+                if (iter == 0) {
+                    val res = use.map { i -> abs(coef[0] + coef[1] * xs[i] + coef[2] * xs[i] * xs[i] + coef[3] * xs[i] * xs[i] * xs[i] - l.ys[i]) }
+                    val cut = max(1.5, res.sorted()[(res.size * 0.8).toInt().coerceAtMost(res.size - 1)])
+                    use = use.filterIndexed { k, _ -> res[k] <= cut }
+                }
+            }
+            fun fy(t: Double) = coef[0] + coef[1] * t + coef[2] * t * t + coef[3] * t * t * t
+            val dev = DoubleArray(strips + 1) { fy(it.toDouble() / strips) }
+            val m = dev.average()
+            for (i in dev.indices) dev[i] -= m
+            if (dev.maxOf { abs(it) } > spacing * 3) continue // not a text line
+            fits += m / sh to dev
+        }
+        if (fits.size < 8) return src
+        fits.sortBy { it.first }
+        // Deviation field on a grid: lines nearby in y, weighted; constant beyond the first/last line.
+        val gy = 48
+        val field = Array(gy + 1) { DoubleArray(strips + 1) }
+        val sigma = 2.5 * spacing / sh
+        for (j in 0..gy) {
+            val y = (j.toDouble() / gy).coerceIn(fits.first().first, fits.last().first)
+            for (i in 0..strips) {
+                var sumW = 0.0; var sum = 0.0
+                for ((ly, dev) in fits) { val wgt = exp(-((y - ly) / sigma).let { it * it }); sumW += wgt; sum += wgt * dev[i] }
+                field[j][i] = if (sumW > 1e-6) sum / sumW else 0.0
+            }
+        }
+        val maxDev = field.maxOf { row -> row.maxOf { abs(it) } }
+        debugLog?.invoke("textlines used=%d maxDev=%.1f px".format(fits.size, maxDev))
+        if (maxDev < 1.0) return src // already straight
+
+        // Remap: output (x, y) takes source (x, y + deviation).
+        val out = Mat(h, w, src.type())
+        val scale = 1 / f
+        val band = 256
+        var y0 = 0
+        while (y0 < h) {
+            val rows = min(band, h - y0)
+            val mxArr = FloatArray(rows * w); val myArr = FloatArray(rows * w)
+            for (yy in 0 until rows) {
+                val y = y0 + yy
+                val fj = y.toDouble() / (h - 1) * gy; val j0 = min(fj.toInt(), gy - 1); val dj = fj - j0
+                for (x in 0 until w) {
+                    val fi = x.toDouble() / (w - 1) * strips; val i0 = min(fi.toInt(), strips - 1); val di = fi - i0
+                    val d = (field[j0][i0] * (1 - di) + field[j0][i0 + 1] * di) * (1 - dj) + (field[j0 + 1][i0] * (1 - di) + field[j0 + 1][i0 + 1] * di) * dj
+                    mxArr[yy * w + x] = x.toFloat(); myArr[yy * w + x] = (y + d * scale).toFloat()
+                }
+            }
+            val mapX = Mat(rows, w, CvType.CV_32FC1); val mapY = Mat(rows, w, CvType.CV_32FC1)
+            mapX.put(0, 0, mxArr); mapY.put(0, 0, myArr)
+            val part = out.submat(y0, y0 + rows, 0, w)
+            Imgproc.remap(src, part, mapX, mapY, Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE)
+            part.release(); mapX.release(); mapY.release()
+            y0 += rows
+        }
+        return out
+    }
 
     /** A boundary from (x0,y0) to (x1,y1) with its traced offsets [off] (px along the outward normal). */
     private class TracedEdge(val x0: Double, val y0: Double, val x1: Double, val y1: Double, val nx: Double, val ny: Double, val off: DoubleArray, val traced: Boolean) {
