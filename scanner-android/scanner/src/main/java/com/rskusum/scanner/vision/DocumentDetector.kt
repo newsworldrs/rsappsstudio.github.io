@@ -15,6 +15,7 @@ import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -872,7 +873,7 @@ object DocumentDetector {
      * the blank band between the two text blocks is used; otherwise the middle.
      * @return spine position 0..1 along the split direction (see [splitSpread]).
      */
-    /** Flattened gutter-shadow profile shared by [findSpine] and [findSpineCurvature]. */
+    /** Flattened gutter-shadow profile used by [findSpine]. */
     private class SpineProfile(val along: Int, val paperS: FloatArray, val inkS: FloatArray, val minI: Int, val median: Float, val depth: Float)
 
     private fun spineProfile(gray: Mat, quad: Quad): SpineProfile {
@@ -947,90 +948,221 @@ object DocumentDetector {
         return if (bestC > 0) bestC / p.along else 0.5f
     }
 
-    /**
-     * How strongly a book's pages pull away from flat near the spine, and over what width -
-     * measured once per capture from the same gutter-shadow profile [findSpine] uses (the paper
-     * brightness dip near the binding). Feeds [dewarpSpine]; `shift` = 0 (the default) is a no-op,
-     * returned when there's no measurable shadow (flat page, or a book pressed fully open).
-     *
-     * Deliberately conservative, checked against a synthetic curved-page simulation: a correction
-     * that is too NARROW only leaves a little curvature uncorrected right at the spine (still
-     * better than nothing), but one that is too WIDE stretches page content that was never
-     * compressed and ends up looking worse than not correcting at all. So [width] is biased down -
-     * the narrower of the shadow's two sides, then scaled further - rather than averaged or taken
-     * at face value; [shift] tolerates being off by up to about 50% before it stops helping, so its
-     * calibration is simpler.
-     */
-    class SpineCurvature(val shift: Float = 0f, val width: Float = 0.12f)
+    /** One book page flattened by [flattenBookPage]: the image and the page's outline in it. */
+    class FlatPage(val image: Mat, val quad: Quad)
 
-    fun findSpineCurvature(gray: Mat, quad: Quad): SpineCurvature {
-        val p = spineProfile(gray, quad)
-        if (p.depth < 0.04f) return SpineCurvature() // no visible gutter shadow: nothing to correct
-        val halfLevel = p.median - p.depth * p.median * 0.5f
-        var i = p.minI
-        while (i > 0 && p.paperS[i] < halfLevel) i--
-        val leftHalf = p.minI - i
-        var j = p.minI
-        while (j < p.along - 1 && p.paperS[j] < halfLevel) j++
-        val rightHalf = j - p.minI
-        // One page's width is half the flattened spread's along-dimension; take the narrower side
-        // (see the class doc: underestimating the affected width is the safe direction).
-        val pageWidthAlong = p.along / 2f
-        val halfWidthFraction = min(leftHalf, rightHalf) / pageWidthAlong
-        val width = (halfWidthFraction * 0.65f).coerceIn(0.04f, 0.22f)
-        val shift = (p.depth * 1.8f).coerceIn(0f, 0.3f)
-        return SpineCurvature(shift, width)
+    /**
+     * Cuts one page of an open book out of the photo and flattens it.
+     *
+     * A page of a book that doesn't lie flat is curved across the spine, so the two page edges
+     * that run from the spine to the outer edge are curves in the photo, and so is every text
+     * line between them. A four-corner crop can't follow them: it leaves wedges of background
+     * outside the page and keeps the lines bent. Here both curved edges are traced on the photo
+     * and every output row is taken along the curve interpolated between them, which makes the
+     * edges - and the lines between them - straight.
+     *
+     * The same curves also give the page's height profile (a raised point is pushed away from
+     * the picture centre in proportion to its height), from which the squeeze of the content
+     * near the spine is undone: output positions are spaced by length along the paper's surface.
+     * Where an edge can't be traced with confidence (paper on a surface of the same brightness)
+     * that edge stays straight, which gives the plain four-corner crop.
+     *
+     * @param src the photo (any type); [gray] the same view as 8-bit gray, any size.
+     * @param page the page's outline, normalized; [spineSide] its side on the spine:
+     *   0 top, 1 right, 2 bottom, 3 left.
+     * @param margin extra picture kept around the three outer sides (fraction of the page), so
+     *   the crop can still be widened by hand.
+     */
+    fun flattenBookPage(src: Mat, gray: Mat, page: Quad, spineSide: Int, margin: Double = 0.02): FlatPage {
+        val gw = gray.cols(); val gh = gray.rows()
+        val p = page.points.map { Point(it.x.toDouble() * gw, it.y.toDouble() * gh) }
+        val s = spineSide and 3
+        val cx = p.sumOf { it.x } / 4; val cy = p.sumOf { it.y } / 4
+        // Curve A runs from spine corner p[s+1] to outer corner p[s+2], curve B from p[s] to p[s+3].
+        val a0 = p[(s + 1) % 4]; val a1 = p[(s + 2) % 4]
+        val b0 = p[s]; val b1 = p[(s + 3) % 4]
+        val n = 96
+        val edgeA = traceEdge(gray, a0, a1, cx, cy, n)
+        val edgeB = traceEdge(gray, b0, b1, cx, cy, n)
+
+        // Height profile from the traced edges -> stretch along the paper (see the doc above).
+        val focal = 0.77 * max(gw, gh) // typical phone main camera
+        val stretch = DoubleArray(n) { 1.0 }
+        run {
+            val rho = DoubleArray(n); var weight = 0.0
+            for (e in listOf(edgeA, edgeB)) {
+                if (!e.traced) continue
+                // Deviation from the straight line of the page's flat outer part.
+                var sx = 0.0; var sy = 0.0; var sxx = 0.0; var sxy = 0.0; var m = 0
+                for (j in (n * 0.6).toInt() until n) { val u = j.toDouble() / (n - 1); sx += u; sy += e.off[j]; sxx += u * u; sxy += u * e.off[j]; m++ }
+                val den = m * sxx - sx * sx
+                val slope = if (abs(den) < 1e-9) 0.0 else (m * sxy - sx * sy) / den
+                val icpt = (sy - slope * sx) / m
+                // Distance of the edge from the picture centre, across the edge.
+                val mx = (e.x0 + e.x1) / 2; val my = (e.y0 + e.y1) / 2
+                val r = (mx - gw / 2.0) * e.nx + (my - gh / 2.0) * e.ny
+                if (abs(r) < 0.08 * max(gw, gh)) continue
+                val wgt = abs(r)
+                for (j in 0 until n) rho[j] += wgt * (e.off[j] - (icpt + slope * j / (n - 1.0))) / r
+                weight += wgt
+            }
+            if (weight > 0) {
+                val len = (hypot(a1.x - a0.x, a1.y - a0.y) + hypot(b1.x - b0.x, b1.y - b0.y)) / 2
+                val step = len / (n - 1)
+                for (j in 0 until n) {
+                    val d = (rho[min(j + 1, n - 1)] - rho[max(j - 1, 0)]) / weight / ((min(j + 1, n - 1) - max(j - 1, 0)) * step)
+                    val sl = (focal * d).coerceIn(-1.2, 1.2)
+                    stretch[j] = sqrt(1 + sl * sl)
+                }
+            }
+        }
+        // cum[j]: length along the paper from the spine to sample j, as a fraction of the whole.
+        val cum = DoubleArray(n)
+        for (j in 1 until n) cum[j] = cum[j - 1] + (stretch[j] + stretch[j - 1]) / 2
+        val total = cum[n - 1]
+        for (j in 0 until n) cum[j] /= total
+        val meanStretch = total / (n - 1)
+        debugLog?.invoke("flatten side=%d traced=%b/%b edge max %.1f/%.1f px stretch max %.2f mean %.3f".format(
+            s, edgeA.traced, edgeB.traced, edgeA.off.maxOf { abs(it) }, edgeB.off.maxOf { abs(it) }, stretch.max(), meanStretch))
+
+        // Output size in photo pixels.
+        val k = src.cols().toDouble() / gw
+        val lenU = (hypot(a1.x - a0.x, a1.y - a0.y) + hypot(b1.x - b0.x, b1.y - b0.y)) / 2 * k * meanStretch
+        val lenV = (hypot(a0.x - b0.x, a0.y - b0.y) + hypot(a1.x - b1.x, a1.y - b1.y)) / 2 * k
+        val uPx = max(8, (lenU * (1 + margin)).toInt())
+        val vPx = max(8, (lenV * (1 + 2 * margin)).toInt())
+        val alongY = s == 0 || s == 2 // u (spine -> outer edge) runs along the output's y axis
+        val outW = if (alongY) vPx else uPx
+        val outH = if (alongY) uPx else vPx
+
+        // Photo position of both curves for every output step along u.
+        val ax = FloatArray(uPx); val ay = FloatArray(uPx); val bx = FloatArray(uPx); val by = FloatArray(uPx)
+        var seg = 0
+        for (i in 0 until uPx) {
+            val t = i.toDouble() / (uPx - 1) * (1 + margin) // fraction of the paper length; > 1 in the margin
+            val u = if (t >= 1.0) t else {
+                while (seg < n - 2 && cum[seg + 1] < t) seg++
+                val f = if (cum[seg + 1] > cum[seg]) (t - cum[seg]) / (cum[seg + 1] - cum[seg]) else 0.0
+                (seg + f) / (n - 1)
+            }
+            val pa = edgeA.at(u); val pb = edgeB.at(u)
+            ax[i] = (pa.x * k).toFloat(); ay[i] = (pa.y * k).toFloat()
+            bx[i] = (pb.x * k).toFloat(); by[i] = (pb.y * k).toFloat()
+        }
+        // w: 0 on curve B, 1 on curve A, for every output step across.
+        val wv = FloatArray(vPx) { i -> (i.toDouble() / (vPx - 1) * (1 + 2 * margin) - margin).toFloat() }
+
+        val out = Mat(outH, outW, src.type())
+        val band = 256
+        var y0 = 0
+        while (y0 < outH) {
+            val rows = min(band, outH - y0)
+            val mxArr = FloatArray(rows * outW); val myArr = FloatArray(rows * outW)
+            for (yy in 0 until rows) {
+                val y = y0 + yy
+                for (x in 0 until outW) {
+                    // (iu, iv): index along u and across, per the side the spine is on.
+                    val iu: Int; val iv: Int
+                    when (s) {
+                        0 -> { iu = y; iv = x }
+                        1 -> { iu = outW - 1 - x; iv = y }
+                        2 -> { iu = outH - 1 - y; iv = outW - 1 - x }
+                        else -> { iu = x; iv = outH - 1 - y }
+                    }
+                    val w = wv[iv]
+                    mxArr[yy * outW + x] = bx[iu] + (ax[iu] - bx[iu]) * w
+                    myArr[yy * outW + x] = by[iu] + (ay[iu] - by[iu]) * w
+                }
+            }
+            val mapX = Mat(rows, outW, CvType.CV_32FC1); val mapY = Mat(rows, outW, CvType.CV_32FC1)
+            mapX.put(0, 0, mxArr); mapY.put(0, 0, myArr)
+            val part = out.submat(y0, y0 + rows, 0, outW)
+            Imgproc.remap(src, part, mapX, mapY, Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE)
+            part.release(); mapX.release(); mapY.release()
+            y0 += rows
+        }
+
+        // The page inside the output (the rest is the margin).
+        val lo = (margin / (1 + 2 * margin)).toFloat(); val hi = ((1 + margin) / (1 + 2 * margin)).toFloat()
+        val e = (1 / (1 + margin)).toFloat()
+        val quad = when (s) {
+            0 -> Quad(NPoint(lo, 0f), NPoint(hi, 0f), NPoint(hi, e), NPoint(lo, e))
+            1 -> Quad(NPoint(1 - e, lo), NPoint(1f, lo), NPoint(1f, hi), NPoint(1 - e, hi))
+            2 -> Quad(NPoint(lo, 1 - e), NPoint(hi, 1 - e), NPoint(hi, 1f), NPoint(lo, 1f))
+            else -> Quad(NPoint(0f, lo), NPoint(e, lo), NPoint(e, hi), NPoint(0f, hi))
+        }
+        return FlatPage(out, quad)
+    }
+
+    /** A page edge from (x0,y0) to (x1,y1) with its traced offsets [off] (px along the outward normal). */
+    private class TracedEdge(val x0: Double, val y0: Double, val x1: Double, val y1: Double, val nx: Double, val ny: Double, val off: DoubleArray, val traced: Boolean) {
+        /** Point at fraction [u] of the edge (beyond 1: the edge continued straight). */
+        fun at(u: Double): Point {
+            val n = off.size
+            val f = (u.coerceIn(0.0, 1.0)) * (n - 1)
+            val i = min(f.toInt(), n - 2)
+            val o = off[i] + (off[i + 1] - off[i]) * (f - i)
+            return Point(x0 + (x1 - x0) * u + nx * o, y0 + (y1 - y0) * u + ny * o)
+        }
     }
 
     /**
-     * Un-compresses a book page's content near the spine, where the page's own curve made it
-     * appear squeezed toward the binding compared to the rest of the page.
-     *
-     * Model: a point at fractional distance `d` from the spine (0 at the spine, 1 at the page's
-     * far edge) appears, in the photo, pulled toward the spine to `phi(d) = d - shift * d *
-     * exp(-(d/width)^2)` - maximum compression right at the spine, tapering smoothly to no effect
-     * past about `width`. The fix samples each output position `d` from `phi(d)` in the source,
-     * which undoes exactly that pull (verified by a synthetic test: evenly spaced grid lines on a
-     * flat test page, forward-distorted by this same model to simulate a photographed curved page
-     * - spacing visibly uneven, 68-90 px apart near the spine on an 800 px page - came back to a
-     * uniform ~80 px after this remap, max single-line error 2 px; verified again with the
-     * measured shift/width off by up to 2x from the simulation's true values, confirming an
-     * underestimate still helps and only an overestimate of `width` ever makes things worse, which
-     * is why [findSpineCurvature] is biased the way it is).
-     *
-     * @param spineSide which side of [src] sits against the spine: 0 top, 1 right, 2 bottom, 3 left
-     *   (the same convention already used for book-page auto-crop).
+     * Follows the real (possibly curved) page edge near the straight line a-b: in a strip around
+     * the line, the path of the strongest paper-to-background brightness drop that stays smooth
+     * from one end to the other. Returns [n] offsets from the line; all zero when no convincing
+     * edge is found.
      */
-    fun dewarpSpine(src: Mat, curvature: SpineCurvature, spineSide: Int): Mat {
-        if (curvature.shift <= 0.001f) return src
-        val w = src.cols(); val h = src.rows()
-        val horizontal = spineSide == 1 || spineSide == 3
-        val extent = if (horizontal) w else h
-        if (extent < 4) return src
-        val spineAtStart = spineSide == 3 || spineSide == 0 // spine at index 0 vs. at the far end
-        val shift = curvature.shift; val width = curvature.width
-        val lut = FloatArray(extent) { i ->
-            val raw = i.toFloat() / (extent - 1)
-            val d = if (spineAtStart) raw else 1f - raw
-            val phi = d - shift * d * exp(-((d / width) * (d / width)).toDouble()).toFloat()
-            val srcD = phi.coerceIn(0f, 1f)
-            if (spineAtStart) srcD * (extent - 1) else (extent - 1) * (1f - srcD)
+    private fun traceEdge(gray: Mat, a: Point, b: Point, cx: Double, cy: Double, n: Int): TracedEdge {
+        val len = hypot(b.x - a.x, b.y - a.y)
+        val tx = (b.x - a.x) / len; val ty = (b.y - a.y) / len
+        val (nx, ny) = outwardNormal(a, b, cx, cy)
+        val flat = TracedEdge(a.x, a.y, b.x, b.y, nx, ny, DoubleArray(n), false)
+        val band = (0.07 * len).toInt()
+        if (len < 40 || band < 4) return flat
+        val cols = max(n, (len / 2).toInt())
+        val rows = 2 * band + 1
+        val sxStep = len / (cols - 1)
+        // strip(col, row) = a + t * col * step + n * (row - band); rows grow outward.
+        val m = Mat(2, 3, CvType.CV_64F)
+        m.put(0, 0, tx * sxStep, nx, a.x - nx * band, ty * sxStep, ny, a.y - ny * band)
+        val strip = Mat(); val dy = Mat()
+        try {
+            Imgproc.warpAffine(gray, strip, m, Size(cols.toDouble(), rows.toDouble()), Imgproc.INTER_LINEAR or Imgproc.WARP_INVERSE_MAP, Core.BORDER_REPLICATE)
+            Imgproc.GaussianBlur(strip, strip, Size(9.0, 5.0), 0.0)
+            Imgproc.Sobel(strip, dy, CvType.CV_32F, 0, 1, 3)
+            val g = FloatArray(cols * rows)
+            dy.get(0, 0, g)
+            // Edge strength: brightness falling from the page outward. Scaled by a high percentile.
+            var top = 0f
+            val sorted = FloatArray(g.size) { max(0f, -g[it]) }.also { it.sort() }
+            top = sorted[(sorted.size * 0.98).toInt().coerceAtMost(sorted.size - 1)]
+            if (top < 6f) return flat // no paper-to-background step anywhere in the strip
+            fun e(c: Int, r: Int) = (max(0f, -g[r * cols + c]) / top).coerceAtMost(1f)
+            // Smoothest strongest path, left to right (rows may change by one per column).
+            val jump = 0.35f
+            val cost = Array(cols) { FloatArray(rows) }
+            val from = Array(cols) { IntArray(rows) }
+            for (r in 0 until rows) cost[0][r] = -e(0, r) + 0.004f * abs(r - band)
+            for (c in 1 until cols) for (r in 0 until rows) {
+                var best = cost[c - 1][r]; var bi = r
+                if (r > 0 && cost[c - 1][r - 1] + jump < best) { best = cost[c - 1][r - 1] + jump; bi = r - 1 }
+                if (r < rows - 1 && cost[c - 1][r + 1] + jump < best) { best = cost[c - 1][r + 1] + jump; bi = r + 1 }
+                cost[c][r] = best - e(c, r) + 0.004f * abs(r - band)
+                from[c][r] = bi
+            }
+            var r = (0 until rows).minBy { cost[cols - 1][it] }
+            val path = IntArray(cols)
+            var strength = 0f
+            for (c in cols - 1 downTo 0) { path[c] = r; strength += e(c, r); r = from[c][r] }
+            if (strength / cols < 0.3f) return flat // the path isn't on an edge most of the way
+            val raw = FloatArray(n) { j -> (path[(j.toDouble() / (n - 1) * (cols - 1)).roundToInt()] - band).toFloat() }
+            val sm = smooth1d(raw, n * 0.015)
+            return TracedEdge(a.x, a.y, b.x, b.y, nx, ny, DoubleArray(n) { sm[it].toDouble() }, true)
+        } finally {
+            m.release(); strip.release(); dy.release()
         }
-        val mapX = Mat(h, w, CvType.CV_32FC1)
-        val mapY = Mat(h, w, CvType.CV_32FC1)
-        val mxArr = FloatArray(w * h)
-        val myArr = FloatArray(w * h)
-        if (horizontal) {
-            for (y in 0 until h) for (x in 0 until w) { mxArr[y * w + x] = lut[x]; myArr[y * w + x] = y.toFloat() }
-        } else {
-            for (y in 0 until h) for (x in 0 until w) { mxArr[y * w + x] = x.toFloat(); myArr[y * w + x] = lut[y] }
-        }
-        mapX.put(0, 0, mxArr); mapY.put(0, 0, myArr)
-        val out = Mat()
-        Imgproc.remap(src, out, mapX, mapY, Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE)
-        mapX.release(); mapY.release()
-        return out
     }
+
 
     private fun smooth1d(v: FloatArray, sigma: Double): FloatArray {
         val r = (sigma * 3).toInt()
