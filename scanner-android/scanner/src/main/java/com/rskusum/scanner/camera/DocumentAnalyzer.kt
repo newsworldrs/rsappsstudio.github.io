@@ -188,14 +188,28 @@ class DocumentAnalyzer(
                 } else {
                     spreadCache = null
                 }
-                val spreadQuad = trackQuad ?: quad
-                if (bookMode && guide == null && spreadQuad != null &&
-                    !DocumentDetector.isTallSpread(spreadQuad, gray.cols(), gray.rows())
-                ) {
-                    // Book lying across a portrait screen: small, and split the wrong way. Ask the
-                    // user to turn the phone (the spread must fill the long side), no auto-capture.
-                    trackQuad = null
-                    guidance = R.string.rs_scanner_book_turn_phone
+                var spreadQuad = trackQuad ?: quad
+                if (bookMode && guide == null && spreadQuad != null) {
+                    val sq0 = spreadQuad
+                    // Only one page found (the other isn't fully visible or its edges are faint):
+                    // when its side on the dotted line is the spine, the other page is its mirror
+                    // image across it. The book can then be held close, filling the screen.
+                    if (!DocumentDetector.isTallSpread(sq0, gray.cols(), gray.rows())) {
+                        val m = mirrorAcrossSpine(sq0)
+                        if (m != null) { spreadQuad = m; trackQuad = m; quad = m }
+                    }
+                    // Auto capture only for an open book lined up with the dotted line: two pages
+                    // (taller than wide on screen), big enough, the line through its middle.
+                    val sq = spreadQuad ?: sq0
+                    val top = (sq.tl.y + sq.tr.y) / 2; val bottom = (sq.bl.y + sq.br.y) / 2
+                    val lineAt = if (bottom > top) (0.5f - top) / (bottom - top) else -1f
+                    when {
+                        !DocumentDetector.isTallSpread(sq, gray.cols(), gray.rows()) -> {
+                            trackQuad = null; guidance = R.string.rs_scanner_book_turn_phone
+                        }
+                        sq.area() < 0.2f -> { trackQuad = null; guidance = R.string.rs_scanner_move_closer }
+                        lineAt !in 0.35f..0.65f -> { trackQuad = null; guidance = R.string.rs_scanner_book_place }
+                    }
                 }
                 if (!bookMode || guide != null || spreadQuad == null || guidance == R.string.rs_scanner_book_turn_phone) {
                     spine = null
@@ -251,6 +265,25 @@ class DocumentAnalyzer(
     private var snappedQuad: Quad? = null
     /** Book / Free mode: last (detected page, completed spread), reused while the page doesn't move. */
     private var spreadCache: Pair<Quad, Quad>? = null
+
+    /**
+     * The open book around one found page whose top or bottom side lies on the dotted spine line
+     * (the middle of the screen): that page plus its mirror image across the side. Null when
+     * neither side is near the line.
+     */
+    private fun mirrorAcrossSpine(q: Quad): Quad? {
+        fun p(x: Float, y: Float) = com.rskusum.scanner.vision.NPoint(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+        val top = (q.tl.y + q.tr.y) / 2; val bottom = (q.bl.y + q.br.y) / 2
+        return when {
+            // The top page: its bottom side is the spine.
+            kotlin.math.abs(bottom - 0.5f) < 0.08f && top < 0.5f ->
+                Quad(q.tl, q.tr, p(2 * q.br.x - q.tr.x, 2 * q.br.y - q.tr.y), p(2 * q.bl.x - q.tl.x, 2 * q.bl.y - q.tl.y))
+            // The bottom page: its top side is the spine.
+            kotlin.math.abs(top - 0.5f) < 0.08f && bottom > 0.5f ->
+                Quad(p(2 * q.tl.x - q.bl.x, 2 * q.tl.y - q.bl.y), p(2 * q.tr.x - q.br.x, 2 * q.tr.y - q.br.y), q.br, q.bl)
+            else -> null
+        }
+    }
 
     /** Spine line + centres of the two halves of the spread in [q]. */
     private fun liveSpine(gray: Mat, q: Quad): SpineGuide {

@@ -380,28 +380,26 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
         val hint = analyzer.lastQuad
         val frame = vm.guideFrame
 
-        // Manual shutter: focus on the page before shooting (sharp text), then capture. Never wait > 0.7 s.
+        // Focus on the page before shooting (sharp text), then capture - for the manual shutter and
+        // for auto capture alike (continuous autofocus may still be hunting, above all close up,
+        // which gave soft photos). Never wait more than 0.7 s (manual) / 1.5 s (auto) for focus.
         // Shutter sound/flash fire in takePhoto the moment the capture actually starts.
         var shot = false
         fun shoot() {
             if (shot) return
             shot = true
-            // Wait (at most 0.8 s) until the phone is steady, then shoot.
+            // Wait until the phone is steady, then shoot. Auto capture never shoots a shaking
+            // phone: it gives up and re-arms instead (no motion-blurred photo).
             scope.launch {
-                val until = SystemClock.elapsedRealtime() + 800
+                val until = SystemClock.elapsedRealtime() + if (manual) 800 else 1500
                 while (shake.get() > STEADY_SHAKE && SystemClock.elapsedRealtime() < until) kotlinx.coroutines.delay(30)
-                if (!manual && vm.captureHold) {
-                    capturing = false // the user tapped Import / the thumbnail meanwhile
+                if (!manual && (vm.captureHold || shake.get() > STEADY_SHAKE)) {
+                    capturing = false // the user tapped Import / the thumbnail meanwhile, or still shaking
+                    vm.tracker.onCaptured(false)
                     return@launch
                 }
                 takePhoto(ic, hint, frame, manual, liveSignature)
             }
-        }
-        if (!manual) {
-            // Auto capture: the page has been steady and in focus (continuous autofocus) for a
-            // while already - shoot at once instead of focusing again.
-            shoot()
-            return
         }
         val cam = holder.camera
         val pv = holder.previewView
@@ -414,7 +412,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                 .build()
             runCatching { cam.cameraControl.startFocusAndMetering(action).addListener({ shoot() }, mainExecutor) }
                 .onFailure { shoot() }
-            scope.launch { kotlinx.coroutines.delay(700); shoot() }
+            scope.launch { kotlinx.coroutines.delay(if (manual) 700 else 1500); shoot() }
         } else {
             shoot()
         }
