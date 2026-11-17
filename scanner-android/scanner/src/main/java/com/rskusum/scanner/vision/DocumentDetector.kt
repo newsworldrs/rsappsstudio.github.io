@@ -666,6 +666,41 @@ object DocumentDetector {
     }
 
     /**
+     * Book mode guide: a line across the middle of the picture (at [line], 0..1 of its height)
+     * that the user puts on the spine, one page above it and one below. Is [quad] ONE of those
+     * pages - an outline wider than tall with its top or bottom side on the line?
+     */
+    fun isPageAtLine(quad: Quad, imgW: Int, imgH: Int, line: Float = 0.5f): Boolean {
+        if (isTallSpread(quad, imgW, imgH)) return false
+        val top = (quad.tl.y + quad.tr.y) / 2; val bottom = (quad.bl.y + quad.br.y) / 2
+        return (abs(bottom - line) < 0.1f && top < line) || (abs(top - line) < 0.1f && bottom > line)
+    }
+
+    /**
+     * The open book from one of its pages found against the guide line (see [isPageAtLine]): the
+     * page is mirrored across its side on the line, and the far side of the mirrored page is
+     * moved onto the other page's real edge when one is there. Null when [quad] isn't such a page.
+     */
+    fun completeSpreadAtLine(gray: Mat, quad: Quad, line: Float = 0.5f): Quad? {
+        val w = gray.cols(); val h = gray.rows()
+        if (!isPageAtLine(quad, w, h, line)) return null
+        fun beyond(a: NPoint, b: NPoint) = NPoint(2 * b.x - a.x, 2 * b.y - a.y)
+        val top = (quad.tl.y + quad.tr.y) / 2
+        val below = top < line // the found page is the top one: the other lies below the line
+        val mirrored = clampQuad(
+            if (below) Quad(quad.tl, quad.tr, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl))
+            else Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.br, quad.bl)
+        )
+        // Only the far side moves: the found page's own corners are already right.
+        val snap = snapToQuad(gray, mirrored, maxDim = 1000, bandFraction = 0.06)
+        val s = snap.quad
+        val farOk = snap.sidesFound >= 3
+        val spread = if (!farOk) mirrored else if (below) Quad(quad.tl, quad.tr, s.br, s.bl) else Quad(s.tl, s.tr, quad.br, quad.bl)
+        debugLog?.invoke("spread at line: found page %s, other page edge %s".format(if (below) "above" else "below", if (farOk) "found" else "mirrored"))
+        return spread.takeIf { isTallSpread(it, w, h) }
+    }
+
+    /**
      * Open book seen as ONE page? Completes the spread from that page: the outline is mirrored
      * across each of its four sides (the missing corners are drawn from the found ones), each
      * candidate is snapped to real edges and scored; a candidate wins only when its edges are
@@ -1099,17 +1134,56 @@ object DocumentDetector {
         }
 
         // Then the lines themselves: the middle of a page can be bent differently from its edges.
-        val straight = if (alongY) {
+        val lined: Mat? = if (alongY) {
             val t = Mat(); Core.transpose(out, t)
             val st = straightenTextLines(t)
-            if (st === t) { t.release(); out } else {
-                t.release(); val back = Mat(); Core.transpose(st, back); st.release(); out.release(); back
+            if (st === t) { t.release(); null } else {
+                t.release(); val back = Mat(); Core.transpose(st, back); st.release(); back
             }
         } else {
-            val st = straightenTextLines(out)
-            if (st !== out) out.release()
-            st
+            straightenTextLines(out).takeIf { it !== out }
         }
+
+        // Do no harm: the plain perspective crop of the four corners is the safe result. A
+        // flattened version replaces it only when its lines are measurably straighter, or - on a
+        // page without clear lines - when the page's edges are clearly curved.
+        val plain = Mat()
+        run {
+            val uP = max(8, (lenU / meanStretch * (1 + margin)).toInt())
+            val pw = if (alongY) vPx else uP; val ph = if (alongY) uP else vPx
+            fun at(u: Double, v: Double): Point {
+                val iu = u / (1 + margin) * (uP - 1); val iv = (v + margin) / (1 + 2 * margin) * (vPx - 1)
+                return when (s) {
+                    0 -> Point(iv, iu)
+                    1 -> Point(pw - 1 - iu, iv)
+                    2 -> Point(pw - 1 - iv, ph - 1 - iu)
+                    else -> Point(iu, ph - 1 - iv)
+                }
+            }
+            val from = MatOfPoint2f(Point(s0.x * k, s0.y * k), Point(s1.x * k, s1.y * k), Point(o0.x * k, o0.y * k), Point(o1.x * k, o1.y * k))
+            val to = MatOfPoint2f(at(0.0, 0.0), at(0.0, 1.0), at(1.0, 0.0), at(1.0, 1.0))
+            val m = Imgproc.getPerspectiveTransform(from, to)
+            Imgproc.warpPerspective(src, plain, m, Size(pw.toDouble(), ph.toDouble()), Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE)
+            from.release(); to.release(); m.release()
+        }
+        val bPlain = lineBend(plain, alongY)
+        val bEdges = lineBend(out, alongY)
+        val bLines = lined?.let { lineBend(it, alongY) }
+        val edgesCurved = listOf(sideA, sideB, outer).any { it.traced && it.bend() >= 0.02 * hypot(it.x1 - it.x0, it.y1 - it.y0) }
+        var pick = plain; var best = bPlain; var how = "plain"
+        if (bPlain == null && bEdges == null && bLines == null) {
+            if (edgesCurved) { pick = out; how = "edges" }
+        } else {
+            for ((c, b, name) in listOf(Triple(out, bEdges, "edges"), Triple(lined, bLines, "lines"))) {
+                if (c == null || b == null) continue
+                val bb = best
+                if (bb == null || b < bb - max(0.5, 0.2 * bb)) { pick = c; best = b; how = name }
+            }
+        }
+        debugLog?.invoke("flatten pick=%s bend plain=%s edges=%s lines=%s edgesCurved=%b".format(how,
+            bPlain?.let { "%.2f".format(it) }, bEdges?.let { "%.2f".format(it) }, bLines?.let { "%.2f".format(it) }, edgesCurved))
+        for (m in listOfNotNull(plain, out, lined)) if (m !== pick) m.release()
+        val straight = pick
 
         val lo = (margin / (1 + 2 * margin)).toFloat(); val hi = ((1 + margin) / (1 + 2 * margin)).toFloat()
         val e = (1 / (1 + margin)).toFloat()
@@ -1125,16 +1199,30 @@ object DocumentDetector {
     private fun mid(a: Point, b: Point) = Point((a.x + b.x) / 2, (a.y + b.y) / 2)
 
     /**
-     * Straightens bent text lines in a page image whose lines run along x (any type). A page that
-     * doesn't lie flat bends its lines differently in the middle than at its top and bottom
-     * edges, which no edge-based flattening can follow; here the lines themselves are found
-     * (ink bands, followed strip by strip across the page), each fitted with a smooth curve, and
-     * the page is shifted vertically, column by column, so every line becomes straight. Pages
-     * with too few clear lines (pictures, little text) are returned unchanged ([src] itself).
+     * How bent the text lines of a page image are: median over its lines of the RMS distance from
+     * a straight line (px of a copy about 1000 px tall), or null without enough clear, consistent
+     * lines to tell. [linesAlongY]: the lines run along y.
      */
-    fun straightenTextLines(src: Mat): Mat {
+    private fun lineBend(img: Mat, linesAlongY: Boolean): Double? {
+        val m = if (linesAlongY) Mat().also { Core.transpose(img, it) } else img
+        val tl = try { findTextLines(m) } finally { if (m !== img) m.release() } ?: return null
+        val r = tl.fits.map { (_, d) ->
+            val n = d.size; val xm = (n - 1) / 2.0; val ym = d.average()
+            var sxy = 0.0; var sxx = 0.0
+            for (i in 0 until n) { sxy += (i - xm) * (d[i] - ym); sxx += (i - xm) * (i - xm) }
+            val sl = if (sxx > 0) sxy / sxx else 0.0
+            sqrt((0 until n).sumOf { i -> (d[i] - ym - sl * (i - xm)).let { it * it } } / n)
+        }.sorted()
+        return r[r.size / 2]
+    }
+
+    /** Text lines found on a page: per line its mean height (0..1) and its deviation per strip (px of a copy scaled by [f]). */
+    private class TextLines(val f: Double, val sh: Int, val spacing: Double, val strips: Int, val fits: List<Pair<Double, DoubleArray>>)
+
+    /** Finds the text lines of a page whose lines run along x, or null without enough clear, consistent lines. */
+    private fun findTextLines(src: Mat): TextLines? {
         val w = src.cols(); val h = src.rows()
-        if (w < 200 || h < 200) return src
+        if (w < 200 || h < 200) return null
         val gray = Mat()
         when (src.channels()) {
             3 -> Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGB2GRAY)
@@ -1165,12 +1253,19 @@ object DocumentDetector {
         val all = FloatArray(sh) { y -> prof.sumOf { it[y].toDouble() }.toFloat() }
         val mean = all.average().toFloat()
         var bestLag = -1; var bestR = 0.0
-        for (lag in 8..min(80, sh / 6)) {
+        val maxLag = min(80, sh / 6)
+        val ac = DoubleArray(maxLag + 2) { lag ->
             var r = 0.0
             for (y in 0 until sh - lag) r += (all[y] - mean) * (all[y + lag] - mean)
-            if (r > bestR) { bestR = r; bestLag = lag }
+            r / (sh - lag)
         }
-        if (bestLag < 0) return src
+        // Small lags only see the thickness of a line itself: start after the first dip.
+        var firstDip = 1
+        while (firstDip < maxLag && ac[firstDip + 1] < ac[firstDip]) firstDip++
+        for (lag in max(8, firstDip)..maxLag) {
+            if (ac[lag] > bestR) { bestR = ac[lag]; bestLag = lag }
+        }
+        if (bestLag < 0) return null
         val spacing = bestLag.toDouble()
         // Peaks (line centres) in each strip.
         val peaks = Array(strips) { k ->
@@ -1209,7 +1304,7 @@ object DocumentDetector {
             if (ys.count { !it.isNaN() } >= strips * 0.75) lines += Line(ys)
         }
         debugLog?.invoke("textlines spacing=%.0f ref=%d lines=%d".format(spacing, ref, lines.size))
-        if (lines.size < 8) return src
+        if (lines.size < 8) return null
 
         // Each line: smooth cubic of its deviation from its own mean height.
         val xs = DoubleArray(strips) { (it + 0.5) / strips }
@@ -1236,7 +1331,7 @@ object DocumentDetector {
             if (dev.maxOf { abs(it) } > spacing * 3) continue // not a text line
             fits += m / sh to dev
         }
-        if (fits.size < 8) return src
+        if (fits.size < 8) return null
         fits.sortBy { it.first }
         // A real bend moves neighbouring lines alike. Lines that disagree with their neighbours
         // (handwriting, table rules, stray marks) are dropped; if most disagree, the page is left
@@ -1257,7 +1352,22 @@ object DocumentDetector {
         val inc = fits.indices.map { misfit(it) }.sorted()[fits.size / 2]
         val sig = fits.map { rms(it.second) }.sorted()[fits.size / 2]
         debugLog?.invoke("textlines kept=%d misfit=%.1f bend=%.1f".format(fits.size, inc, sig))
-        if (inc > max(1.5, 0.6 * sig)) return src
+        if (inc > max(1.5, 0.6 * sig)) return null
+        return TextLines(f, sh, spacing, strips, fits)
+    }
+
+    /**
+     * Straightens bent text lines in a page image whose lines run along x (any type). A page that
+     * doesn't lie flat bends its lines differently in the middle than at its top and bottom
+     * edges, which no edge-based flattening can follow; here the lines themselves are found
+     * (ink bands, followed strip by strip across the page), each fitted with a smooth curve, and
+     * the page is shifted vertically, column by column, so every line becomes straight. Pages
+     * with too few clear lines (pictures, little text) are returned unchanged ([src] itself).
+     */
+    fun straightenTextLines(src: Mat): Mat {
+        val w = src.cols(); val h = src.rows()
+        val tl = findTextLines(src) ?: return src
+        val f = tl.f; val sh = tl.sh; val spacing = tl.spacing; val strips = tl.strips; val fits = tl.fits
         // Deviation field on a grid: lines nearby in y, weighted; constant beyond the first/last line.
         val gy = 48
         val field = Array(gy + 1) { DoubleArray(strips + 1) }
@@ -1310,6 +1420,12 @@ object DocumentDetector {
             val i = min(f.toInt(), n - 2)
             val o = off[i] + (off[i + 1] - off[i]) * (f - i)
             return Point(x0 + (x1 - x0) * u + nx * o, y0 + (y1 - y0) * u + ny * o)
+        }
+
+        /** Largest distance (px) of the traced boundary from the straight line between its ends. */
+        fun bend(): Double {
+            val n = off.size
+            return (0 until n).maxOf { i -> abs(off[i] - (off[0] + (off[n - 1] - off[0]) * i / (n - 1.0))) }
         }
     }
 

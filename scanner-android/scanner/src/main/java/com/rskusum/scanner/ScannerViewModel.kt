@@ -603,15 +603,28 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 // Two pages or one? Text lines of an open book run across the spine. When the
                 // outline looks like one page, try to complete the open book from it.
                 var spread = quad
-                var twoPages = DocumentDetector.isTwoPageSpread(gray, quad)
-                if (twoPages != true && hint != null) {
+                // Book mode's guide line runs across the picture: the spine lies along it, one page
+                // above and one below. An outline wider than tall against the line is ONE of those
+                // pages (the other one fainter, e.g. greyer paper): the book is completed across
+                // the line - such an outline is never cut down its middle.
+                val pageAtLine = frame == null && !imported && DocumentDetector.isPageAtLine(quad, photoW, photoH)
+                val completed = if (pageAtLine) DocumentDetector.completeSpreadAtLine(gray, quad) else null
+                if (completed != null) spread = completed
+                var twoPages = if (completed != null) true else if (pageAtLine) false else DocumentDetector.isTwoPageSpread(gray, quad)
+                if (pageAtLine) {
+                    // The live outline held the whole open book (both pages across the line): it wins.
+                    val live = hint?.let { DocumentDetector.refine(gray, it) }
+                    if (live != null && live.area() > quad.area() * 1.4f && DocumentDetector.isTallSpread(live, photoW, photoH)) {
+                        spread = live; twoPages = true
+                    }
+                } else if (twoPages != true && hint != null) {
                     // The live outline showed the whole open book: use it when it really holds two pages.
                     val live = DocumentDetector.refine(gray, hint)
                     if (live.area() > quad.area() * 1.4f && DocumentDetector.isTwoPageSpread(gray, live) == true) {
                         spread = live; twoPages = true
                     }
                 }
-                if (twoPages != true) {
+                if (twoPages != true && !pageAtLine) {
                     val expanded = DocumentDetector.expandToSpread(gray, quad)
                     if (expanded !== quad) { spread = expanded; twoPages = true }
                 }
