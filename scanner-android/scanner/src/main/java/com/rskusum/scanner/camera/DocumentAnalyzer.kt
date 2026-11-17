@@ -105,21 +105,19 @@ class DocumentAnalyzer(
                 val prev = tracker.currentAnchor
                 val guide = frame
                 var quad: Quad? = null
-                // In frame mode, while the page sits in the frame, the frame search below does the
-                // work: skip the (slow) whole-image detectors to keep the preview analysis fast.
-                val needGlobal = guide == null || snappedQuad == null
+                // The page outline itself is looked for in every mode: in frame mode too the
+                // shutter waits for a real outline (see below), not for the frame alone.
                 val model = edgeModel()
-                if (needGlobal && model != null) {
+                if (model != null) {
                     val prob = model.run(rgb)
                     quad = DocumentDetector.detectFromEdgeMap(prob, prev)
                     prob.release()
                     if (quad != null) lastSource = "ml"
                 }
-                if (needGlobal && quad == null) {
+                if (quad == null) {
                     quad = DocumentDetector.detect(gray, prev = prev)
                     lastSource = if (quad != null) "cv" else "-"
                 }
-                if (!needGlobal) lastSource = "frame"
                 var trackQuad = quad
                 var guidance: Int? = null
                 if (guide != null && frameCount % 2 == 0L) {
@@ -136,18 +134,31 @@ class DocumentAnalyzer(
                     }
                     frameSides = snap.sidesFound
                     snappedQuad = when {
-                        snap.sidesFound >= 3 -> snap.quad
-                        // Only two sides: accept when there is real content (not an empty table).
-                        snap.sidesFound == 2 && !DocumentDetector.isBlank(DocumentDetector.fingerprint(gray, snap.quad)) -> snap.quad
+                        // All four sides on real edges near the frame: an outline in its own right.
+                        snap.sidesFound >= 4 -> snap.quad
+                        // Open book: the detectors often see one page only; three real sides near
+                        // the frame are the spread (the capture searches it again on the photo).
+                        bookMode && snap.sidesFound >= 3 -> snap.quad
                         else -> null
                     }
                 }
                 if (guide == null) { frameSides = 0; snappedQuad = null }
                 if (guide != null) {
-                    val snapped = snappedQuad
+                    // Identify the page first, capture second: the page counts as "in the frame"
+                    // only with a real four-sided outline - the detected outline when it sits in
+                    // the frame (about its size, centred in it), else the four-side frame search.
+                    // Two or three edges near the frame used to be enough, and the missing sides
+                    // were filled in from the frame: a capture without a real outline, cropped on
+                    // the frame instead of the page.
+                    val detected = quad?.takeIf { q ->
+                        val cx = q.points.map { it.x }.average().toFloat(); val cy = q.points.map { it.y }.average().toFloat()
+                        cx in guide.points.minOf { it.x }..guide.points.maxOf { it.x } &&
+                            cy in guide.points.minOf { it.y }..guide.points.maxOf { it.y } &&
+                            q.area() in guide.area() * 0.5f..guide.area() * 1.35f
+                    }
+                    val snapped = detected ?: snappedQuad
                     if (snapped != null) {
-                        // Page is in the frame: track the frame-snapped outline (stable from frame
-                        // to frame, so "Hold steady" doesn't keep restarting).
+                        // Page is in the frame: track its outline.
                         trackQuad = snapped
                     } else {
                         trackQuad = null
@@ -200,9 +211,9 @@ class DocumentAnalyzer(
                 val sig = trackQuad?.let { DocumentDetector.signature(gray, it) }
                 val (state, fire0) = tracker.update(
                     trackQuad, sig, SystemClock.elapsedRealtime(), autoCapture && captureAllowed, scene,
-                    // "Hold still" capture only with evidence of a page in the frame (>= 2 real
-                    // edges); never in Free mode. Stops captures of an empty table/bed.
-                    allowFallback = guidance == null && guide != null && frameSides >= 2,
+                    // Auto capture needs a tracked outline in every mode: no "held still, capture
+                    // anyway" without one.
+                    allowFallback = false,
                 )
                 var fire = fire0
                 var pageSig: com.rskusum.scanner.vision.PageSignature? = null

@@ -139,10 +139,17 @@ object DocumentDetector {
     /** Scores candidates by area x per-side edge support; the weakest side dominates. */
     private fun pickBest(candidates: List<Array<Point>>, support: FloatArray, w: Int, h: Int, thr: Double, prev: Quad?): Quad? {
         val area = w.toDouble() * h
+        // Two classes of candidate: outlines whose four sides are all real edges, and outlines
+        // with one side on the picture border (a page running off-screen). The border counts as
+        // a perfect side and adds area, so on equal terms it used to beat the true outline of a
+        // page lying fully in view near the border - and the crop kept a strip of the table.
         var best: Array<Point>? = null
         var bestScore = 0.0
+        var bestBorder: Array<Point>? = null
+        var bestBorderScore = 0.0
         for (q0 in candidates) {
             val q = orderPoints(q0)
+            val onBorder = q.indices.any { i -> isBorderSide(q[i], q[(i + 1) % 4], w, h) }
             val sides = sideSupport(q, support, w, h, thr)
             debugLog?.invoke(
                 "cand area=%.3f sides=%s pts=%s".format(
@@ -161,9 +168,20 @@ object DocumentDetector {
                 val d = q.indices.maxOf { i -> hypot(q[i].x / w - p[i].x, q[i].y / h - p[i].y) }
                 if (d < 0.06) score *= 1.4
             }
-            if (score > bestScore) { bestScore = score; best = q }
+            if (onBorder) {
+                if (score > bestBorderScore) { bestBorderScore = score; bestBorder = q }
+            } else if (score > bestScore) { bestScore = score; best = q }
         }
-        val q = best ?: return null
+        // The off-screen outline wins only when no comparable all-real outline exists (one at
+        // least 60% of its size; a smaller one is something printed on the page, not the page).
+        val clean = best
+        val border = bestBorder
+        val q = when {
+            border == null -> clean
+            clean == null -> border
+            polygonArea(clean) >= 0.6 * polygonArea(border) -> clean
+            else -> border
+        } ?: return null
         fun n(pt: Point) = NPoint((pt.x / w).toFloat().coerceIn(0f, 1f), (pt.y / h).toFloat().coerceIn(0f, 1f))
         return Quad(n(q[0]), n(q[1]), n(q[2]), n(q[3]))
     }
@@ -1256,6 +1274,19 @@ object DocumentDetector {
         // all its real sides are solid edges. Otherwise it is a genuine page stretched to the frame.
         if (borderSides == 1 && (0 until 4).any { !onFrame[it] && out[it] < 0.85 }) return null
         return out
+    }
+
+    /** True when most of the side a-b lies on the picture border. */
+    private fun isBorderSide(a: Point, b: Point, w: Int, h: Int): Boolean {
+        var on = 0
+        val n = 20
+        for (j in 0 until n) {
+            val t = 0.06 + 0.88 * j / (n - 1)
+            val x = a.x + (b.x - a.x) * t
+            val y = a.y + (b.y - a.y) * t
+            if (x < 2.5 || y < 2.5 || x > w - 3.5 || y > h - 3.5) on++
+        }
+        return on > n * 0.7
     }
 
     /** Histogram percentile (quarter-unit bins up to 1024): O(n), no sorting on the camera thread. */

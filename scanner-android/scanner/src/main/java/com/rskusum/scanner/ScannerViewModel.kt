@@ -538,11 +538,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 else -> {
                     // Fast path: the live outline (tracked steadily before the shutter) refined on the
-                    // full photo. Taken when its four sides lie on clear edges - one refine instead
-                    // of the whole detector competition, the bulk of the processing time.
+                    // full photo. Taken only when all four sides lie on clear edges (0.8: one weak
+                    // side - e.g. a side on the table instead of the page edge - scored about 0.65
+                    // and used to slip through at 0.6); otherwise every detector competes below.
                     val fast = hint?.let { h ->
                         val q = DocumentDetector.refine(gray, h)
-                        q.takeIf { it.distanceTo(h) < 0.08f && DocumentDetector.scoreQuad(gray, it) >= 0.6 }
+                        q.takeIf { it.distanceTo(h) < 0.08f && DocumentDetector.scoreQuad(gray, it) >= FAST_PATH_SCORE }
                     }
                     // Otherwise the learned edge model, the classic detector (two scales) and the
                     // live outline all compete; each is refined on the full photo and ranked by how
@@ -1378,6 +1379,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         private const val DETECT_SIDE = 1600
         /** Longest side of the sharper gray copy used only for the final corner refine() passes. */
         private const val REFINE_SIDE = 3000
+        /** Edge score the live outline needs on the photo to be used without the full search. */
+        private const val FAST_PATH_SCORE = 0.8
         /** HD: photos up to 6000 px (a 108 MB bitmap at most, never the full 50-200 MP). */
         const val HD_PHOTO_SIDE = 6000
         private const val HD_RENDER_MAX_SIDE = 5000

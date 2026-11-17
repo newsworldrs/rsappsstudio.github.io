@@ -8,6 +8,11 @@ Versions follow [Semantic Versioning](https://semver.org/). Use them from JitPac
 ### Added
 - **Book pages near the spine are un-compressed, not just cropped.** A book's pages physically curve away from flat near the binding, so text close to the gutter came out visibly squeezed compared to the rest of the page - a straight perspective crop can't fix that, it only corrects camera tilt. The same gutter-shadow measurement the spine split already uses (its depth and width) now also drives a geometric correction, applied once per page right after it's cut from the spread: content near the spine is pulled back out to its true width, tapering to no effect a short distance away, so the rest of the page is untouched. Calibrated conservatively (checked against a synthetic curved-page test) - a page with little or no visible gutter shadow gets no correction at all rather than risk stretching content that wasn't actually compressed.
 
+### Fixed
+- **Auto crop kept a strip of the table (or bedsheet) on one side.** An outline with one side on the picture border was treated as fully supported and, being larger, beat the page's true outline; a shortcut after capture then accepted it without comparing. Outlines whose four sides are all real edges now win over border-hugging ones of similar size, and the shortcut is taken only when all four sides are clearly on edges. Reproduced and checked with the library's own detector on frames of a book on a patterned bedsheet; a page that really runs off the picture still crops to the border.
+### Changed
+- **Auto capture waits for a real page outline in every mode.** In frame mode two or three edges near the frame used to be enough (the missing sides were filled in from the frame), and holding still could capture with no outline at all. The page now counts as "in the frame" only with a four-sided outline: the detected page when it sits in the frame, or all four sides found next to the frame. The manual shutter still works at any time.
+
 ## [1.7.0] - 2026-11-13
 ### Added
 - **Color filter** (`ScanFilter.COLOR`): pure white paper with vivid ink, stamp, logo and photo colours. Lighting is evened out from brightness only, so large colour areas stay clean and even. Shown second in the filter list.
