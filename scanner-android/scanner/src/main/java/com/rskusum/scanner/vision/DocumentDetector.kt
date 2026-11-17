@@ -1238,6 +1238,26 @@ object DocumentDetector {
         }
         if (fits.size < 8) return src
         fits.sortBy { it.first }
+        // A real bend moves neighbouring lines alike. Lines that disagree with their neighbours
+        // (handwriting, table rules, stray marks) are dropped; if most disagree, the page is left
+        // as it is rather than bent to follow noise.
+        fun rms(a: DoubleArray) = sqrt(a.sumOf { it * it } / a.size)
+        fun misfit(k: Int): Double {
+            val nb = listOf(k - 1, k + 1).filter { it in fits.indices }
+            val d = fits[k].second
+            return rms(DoubleArray(d.size) { i -> d[i] - nb.sumOf { fits[it].second[i] } / nb.size })
+        }
+        val minFits = fits.size * 2 / 3
+        while (fits.size > max(8, minFits)) {
+            val bend = fits.map { rms(it.second) }.sorted()[fits.size / 2]
+            val worst = fits.indices.maxBy { misfit(it) }
+            if (misfit(worst) <= max(2.0, 0.6 * bend)) break
+            fits.removeAt(worst)
+        }
+        val inc = fits.indices.map { misfit(it) }.sorted()[fits.size / 2]
+        val sig = fits.map { rms(it.second) }.sorted()[fits.size / 2]
+        debugLog?.invoke("textlines kept=%d misfit=%.1f bend=%.1f".format(fits.size, inc, sig))
+        if (inc > max(1.5, 0.6 * sig)) return src
         // Deviation field on a grid: lines nearby in y, weighted; constant beyond the first/last line.
         val gy = 48
         val field = Array(gy + 1) { DoubleArray(strips + 1) }
