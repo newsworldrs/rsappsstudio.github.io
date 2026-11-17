@@ -15,7 +15,6 @@ import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -954,20 +953,17 @@ object DocumentDetector {
     /**
      * Cuts one page of an open book out of the photo and flattens it.
      *
-     * A page of a book that doesn't lie flat is curved across the spine, so the two page edges
-     * that run from the spine to the outer edge are curves in the photo, and so is every text
-     * line between them. A four-corner crop can't follow them: it leaves wedges of background
-     * outside the page and keeps the lines bent. Here both curved edges are traced on the photo
-     * and every output row is taken along the curve interpolated between them, which makes the
-     * edges - and the lines between them - straight.
+     * A page that doesn't lie flat is curved: its two side edges (spine to outer edge), the
+     * spine itself and every text line are curves in the photo. A four-corner crop leaves
+     * background beside such a page and keeps its lines bent. Here all four boundaries are
+     * traced on the photo - the side and outer edges where paper meets background, the spine
+     * along the gutter shadow - each as a smooth curve fitted with outliers rejected, and the
+     * page is mapped from between the four curves (a Coons patch), which makes them, and the
+     * lines between them, straight. The squeeze of the content near the spine is undone from
+     * the side curves' height profile. A boundary that can't be traced with confidence (paper
+     * on a surface of the same colour, no gutter shadow) stays the straight side of [page].
      *
-     * The same curves also give the page's height profile (a raised point is pushed away from
-     * the picture centre in proportion to its height), from which the squeeze of the content
-     * near the spine is undone: output positions are spaced by length along the paper's surface.
-     * Where an edge can't be traced with confidence (paper on a surface of the same brightness)
-     * that edge stays straight, which gives the plain four-corner crop.
-     *
-     * @param src the photo (any type); [gray] the same view as 8-bit gray, any size.
+     * @param src the photo, 8-bit RGB; [gray] the same view as 8-bit gray, any size.
      * @param page the page's outline, normalized; [spineSide] its side on the spine:
      *   0 top, 1 right, 2 bottom, 3 left.
      * @param margin extra picture kept around the three outer sides (fraction of the page), so
@@ -978,79 +974,97 @@ object DocumentDetector {
         val p = page.points.map { Point(it.x.toDouble() * gw, it.y.toDouble() * gh) }
         val s = spineSide and 3
         val cx = p.sumOf { it.x } / 4; val cy = p.sumOf { it.y } / 4
-        // Curve A runs from spine corner p[s+1] to outer corner p[s+2], curve B from p[s] to p[s+3].
-        val a0 = p[(s + 1) % 4]; val a1 = p[(s + 2) % 4]
-        val b0 = p[s]; val b1 = p[(s + 3) % 4]
+        // Corners: S0, S1 on the spine; O0, O1 on the outer edge. Side B runs S0 -> O0, side A S1 -> O1.
+        val s0 = p[s]; val s1 = p[(s + 1) % 4]; val o1 = p[(s + 2) % 4]; val o0 = p[(s + 3) % 4]
+        val paper = paperMask(src, gray, p)
         val n = 96
-        val edgeA = traceEdge(gray, a0, a1, cx, cy, n)
-        val edgeB = traceEdge(gray, b0, b1, cx, cy, n)
+        val sideB = traceBoundary(paper, gray, s0, o0, cx, cy, n, EDGE_SIDE)
+        val sideA = traceBoundary(paper, gray, s1, o1, cx, cy, n, EDGE_SIDE)
+        val outer = traceBoundary(paper, gray, o0, o1, cx, cy, n, EDGE_OUTER)
+        val spine = traceBoundary(paper, gray, s0, s1, cx, cy, n, EDGE_SPINE)
+        paper.release()
 
-        // Height profile from the traced edges -> stretch along the paper (see the doc above).
+        // Height profile from the side curves -> stretch along the paper near the spine.
         val focal = 0.77 * max(gw, gh) // typical phone main camera
         val stretch = DoubleArray(n) { 1.0 }
         run {
             val rho = DoubleArray(n); var weight = 0.0
-            for (e in listOf(edgeA, edgeB)) {
+            for (e in listOf(sideA, sideB)) {
                 if (!e.traced) continue
-                // Deviation from the straight line of the page's flat outer part.
                 var sx = 0.0; var sy = 0.0; var sxx = 0.0; var sxy = 0.0; var m = 0
                 for (j in (n * 0.6).toInt() until n) { val u = j.toDouble() / (n - 1); sx += u; sy += e.off[j]; sxx += u * u; sxy += u * e.off[j]; m++ }
                 val den = m * sxx - sx * sx
                 val slope = if (abs(den) < 1e-9) 0.0 else (m * sxy - sx * sy) / den
                 val icpt = (sy - slope * sx) / m
-                // Distance of the edge from the picture centre, across the edge.
                 val mx = (e.x0 + e.x1) / 2; val my = (e.y0 + e.y1) / 2
                 val r = (mx - gw / 2.0) * e.nx + (my - gh / 2.0) * e.ny
                 if (abs(r) < 0.08 * max(gw, gh)) continue
+                // Only a real bend counts: a few pixels of wiggle on a flat page are not a curve.
+                val dev = DoubleArray(n) { j -> e.off[j] - (icpt + slope * j / (n - 1.0)) }
+                val elen = hypot(e.x1 - e.x0, e.y1 - e.y0)
+                if (dev.maxOf { abs(it) } < 0.02 * elen) continue
                 val wgt = abs(r)
-                for (j in 0 until n) rho[j] += wgt * (e.off[j] - (icpt + slope * j / (n - 1.0))) / r
+                for (j in 0 until n) rho[j] += wgt * dev[j] / r
                 weight += wgt
             }
             if (weight > 0) {
-                val len = (hypot(a1.x - a0.x, a1.y - a0.y) + hypot(b1.x - b0.x, b1.y - b0.y)) / 2
+                val sm = smooth1d(FloatArray(n) { rho[it].toFloat() }, n / 24.0)
+                for (j in 0 until n) rho[j] = sm[j].toDouble()
+                val len = (hypot(o1.x - s1.x, o1.y - s1.y) + hypot(o0.x - s0.x, o0.y - s0.y)) / 2
                 val step = len / (n - 1)
                 for (j in 0 until n) {
                     val d = (rho[min(j + 1, n - 1)] - rho[max(j - 1, 0)]) / weight / ((min(j + 1, n - 1) - max(j - 1, 0)) * step)
-                    val sl = (focal * d).coerceIn(-1.2, 1.2)
+                    val sl = (focal * d).coerceIn(-0.9, 0.9)
                     stretch[j] = sqrt(1 + sl * sl)
                 }
             }
         }
-        // cum[j]: length along the paper from the spine to sample j, as a fraction of the whole.
         val cum = DoubleArray(n)
         for (j in 1 until n) cum[j] = cum[j - 1] + (stretch[j] + stretch[j - 1]) / 2
         val total = cum[n - 1]
         for (j in 0 until n) cum[j] /= total
         val meanStretch = total / (n - 1)
-        debugLog?.invoke("flatten side=%d traced=%b/%b edge max %.1f/%.1f px stretch max %.2f mean %.3f".format(
-            s, edgeA.traced, edgeB.traced, edgeA.off.maxOf { abs(it) }, edgeB.off.maxOf { abs(it) }, stretch.max(), meanStretch))
+        debugLog?.invoke("flatten side=%d traced A=%b B=%b outer=%b spine=%b max %.0f/%.0f/%.0f/%.0f px stretch %.2f".format(
+            s, sideA.traced, sideB.traced, outer.traced, spine.traced,
+            sideA.off.maxOf { abs(it) }, sideB.off.maxOf { abs(it) }, outer.off.maxOf { abs(it) }, spine.off.maxOf { abs(it) }, stretch.max()))
 
-        // Output size in photo pixels.
+        // Coons patch: (u from spine to outer edge, v from side B to side A) -> photo (gray px).
+        val c00 = mid(sideB.at(0.0), spine.at(0.0)); val c01 = mid(sideA.at(0.0), spine.at(1.0))
+        val c10 = mid(sideB.at(1.0), outer.at(0.0)); val c11 = mid(sideA.at(1.0), outer.at(1.0))
+        fun patch(u: Double, v: Double): Point {
+            val b = sideB.at(u); val a = sideA.at(u); val sp = spine.at(v); val o = outer.at(v)
+            val uu = u.coerceIn(0.0, 1.0); val vv = v.coerceIn(0.0, 1.0)
+            fun c(f: (Point) -> Double) = (1 - v) * f(b) + v * f(a) + (1 - uu) * f(sp) + uu * f(o) -
+                ((1 - uu) * (1 - vv) * f(c00) + (1 - uu) * vv * f(c01) + uu * (1 - vv) * f(c10) + uu * vv * f(c11))
+            return Point(c { it.x }, c { it.y })
+        }
+
         val k = src.cols().toDouble() / gw
-        val lenU = (hypot(a1.x - a0.x, a1.y - a0.y) + hypot(b1.x - b0.x, b1.y - b0.y)) / 2 * k * meanStretch
-        val lenV = (hypot(a0.x - b0.x, a0.y - b0.y) + hypot(a1.x - b1.x, a1.y - b1.y)) / 2 * k
+        val lenU = (hypot(o1.x - s1.x, o1.y - s1.y) + hypot(o0.x - s0.x, o0.y - s0.y)) / 2 * k * meanStretch
+        val lenV = (hypot(s1.x - s0.x, s1.y - s0.y) + hypot(o1.x - o0.x, o1.y - o0.y)) / 2 * k
         val uPx = max(8, (lenU * (1 + margin)).toInt())
         val vPx = max(8, (lenV * (1 + 2 * margin)).toInt())
         val alongY = s == 0 || s == 2 // u (spine -> outer edge) runs along the output's y axis
         val outW = if (alongY) vPx else uPx
         val outH = if (alongY) uPx else vPx
 
-        // Photo position of both curves for every output step along u.
-        val ax = FloatArray(uPx); val ay = FloatArray(uPx); val bx = FloatArray(uPx); val by = FloatArray(uPx)
-        var seg = 0
-        for (i in 0 until uPx) {
-            val t = i.toDouble() / (uPx - 1) * (1 + margin) // fraction of the paper length; > 1 in the margin
-            val u = if (t >= 1.0) t else {
+        // Patch evaluated on a coarse grid, then interpolated per pixel (smooth, and fast).
+        val gu = 64; val gv = 48
+        val uAt = DoubleArray(gu + 1) { i ->
+            val t = i.toDouble() / gu * (1 + margin)
+            if (t >= 1.0) t else {
+                var seg = 0
                 while (seg < n - 2 && cum[seg + 1] < t) seg++
                 val f = if (cum[seg + 1] > cum[seg]) (t - cum[seg]) / (cum[seg + 1] - cum[seg]) else 0.0
                 (seg + f) / (n - 1)
             }
-            val pa = edgeA.at(u); val pb = edgeB.at(u)
-            ax[i] = (pa.x * k).toFloat(); ay[i] = (pa.y * k).toFloat()
-            bx[i] = (pb.x * k).toFloat(); by[i] = (pb.y * k).toFloat()
         }
-        // w: 0 on curve B, 1 on curve A, for every output step across.
-        val wv = FloatArray(vPx) { i -> (i.toDouble() / (vPx - 1) * (1 + 2 * margin) - margin).toFloat() }
+        val gx = Array(gu + 1) { DoubleArray(gv + 1) }; val gy = Array(gu + 1) { DoubleArray(gv + 1) }
+        for (i in 0..gu) for (j in 0..gv) {
+            val v = j.toDouble() / gv * (1 + 2 * margin) - margin
+            val q = patch(uAt[i], v)
+            gx[i][j] = q.x * k; gy[i][j] = q.y * k
+        }
 
         val out = Mat(outH, outW, src.type())
         val band = 256
@@ -1061,7 +1075,6 @@ object DocumentDetector {
             for (yy in 0 until rows) {
                 val y = y0 + yy
                 for (x in 0 until outW) {
-                    // (iu, iv): index along u and across, per the side the spine is on.
                     val iu: Int; val iv: Int
                     when (s) {
                         0 -> { iu = y; iv = x }
@@ -1069,20 +1082,22 @@ object DocumentDetector {
                         2 -> { iu = outH - 1 - y; iv = outW - 1 - x }
                         else -> { iu = x; iv = outH - 1 - y }
                     }
-                    val w = wv[iv]
-                    mxArr[yy * outW + x] = bx[iu] + (ax[iu] - bx[iu]) * w
-                    myArr[yy * outW + x] = by[iu] + (ay[iu] - by[iu]) * w
+                    val fu = iu.toDouble() / (uPx - 1) * gu; val fv = iv.toDouble() / (vPx - 1) * gv
+                    val i0 = min(fu.toInt(), gu - 1); val j0 = min(fv.toInt(), gv - 1)
+                    val du = fu - i0; val dv = fv - j0
+                    val o = yy * outW + x
+                    mxArr[o] = ((gx[i0][j0] * (1 - dv) + gx[i0][j0 + 1] * dv) * (1 - du) + (gx[i0 + 1][j0] * (1 - dv) + gx[i0 + 1][j0 + 1] * dv) * du).toFloat()
+                    myArr[o] = ((gy[i0][j0] * (1 - dv) + gy[i0][j0 + 1] * dv) * (1 - du) + (gy[i0 + 1][j0] * (1 - dv) + gy[i0 + 1][j0 + 1] * dv) * du).toFloat()
                 }
             }
             val mapX = Mat(rows, outW, CvType.CV_32FC1); val mapY = Mat(rows, outW, CvType.CV_32FC1)
             mapX.put(0, 0, mxArr); mapY.put(0, 0, myArr)
             val part = out.submat(y0, y0 + rows, 0, outW)
-            Imgproc.remap(src, part, mapX, mapY, Imgproc.INTER_CUBIC, Core.BORDER_REPLICATE)
+            Imgproc.remap(src, part, mapX, mapY, Imgproc.INTER_LINEAR, Core.BORDER_REPLICATE)
             part.release(); mapX.release(); mapY.release()
             y0 += rows
         }
 
-        // The page inside the output (the rest is the margin).
         val lo = (margin / (1 + 2 * margin)).toFloat(); val hi = ((1 + margin) / (1 + 2 * margin)).toFloat()
         val e = (1 / (1 + margin)).toFloat()
         val quad = when (s) {
@@ -1094,9 +1109,11 @@ object DocumentDetector {
         return FlatPage(out, quad)
     }
 
-    /** A page edge from (x0,y0) to (x1,y1) with its traced offsets [off] (px along the outward normal). */
+    private fun mid(a: Point, b: Point) = Point((a.x + b.x) / 2, (a.y + b.y) / 2)
+
+    /** A boundary from (x0,y0) to (x1,y1) with its traced offsets [off] (px along the outward normal). */
     private class TracedEdge(val x0: Double, val y0: Double, val x1: Double, val y1: Double, val nx: Double, val ny: Double, val off: DoubleArray, val traced: Boolean) {
-        /** Point at fraction [u] of the edge (beyond 1: the edge continued straight). */
+        /** Point at fraction [u] of the edge (outside 0..1: the end continued straight). */
         fun at(u: Double): Point {
             val n = off.size
             val f = (u.coerceIn(0.0, 1.0)) * (n - 1)
@@ -1107,62 +1124,166 @@ object DocumentDetector {
     }
 
     /**
-     * Follows the real (possibly curved) page edge near the straight line a-b: in a strip around
-     * the line, the path of the strongest paper-to-background brightness drop that stays smooth
-     * from one end to the other. Returns [n] offsets from the line; all zero when no convincing
-     * edge is found.
+     * Paper pixels (255) around the page in [gray]'s size: brighter and less coloured than the
+     * page's own paper level allows for background, with text closed over.
      */
-    private fun traceEdge(gray: Mat, a: Point, b: Point, cx: Double, cy: Double, n: Int): TracedEdge {
+    private fun paperMask(src: Mat, gray: Mat, p: List<Point>): Mat {
+        val small = Mat(); val hsv = Mat()
+        Imgproc.resize(src, small, gray.size(), 0.0, 0.0, Imgproc.INTER_AREA)
+        Imgproc.cvtColor(small, hsv, Imgproc.COLOR_RGB2HSV)
+        small.release()
+        // Paper level: inner part of the page, bright pixels only (text is ignored).
+        val cx = p.sumOf { it.x } / 4; val cy = p.sumOf { it.y } / 4
+        val inner = p.map { Point(cx + (it.x - cx) * 0.7, cy + (it.y - cy) * 0.7) }
+        val roiMask = Mat.zeros(gray.size(), CvType.CV_8UC1)
+        Imgproc.fillConvexPoly(roiMask, MatOfPoint(*inner.toTypedArray()), Scalar(255.0))
+        val ch = ArrayList<Mat>(); Core.split(hsv, ch)
+        val vHist = IntArray(256); val sHist = IntArray(256)
+        val w = gray.cols(); val h = gray.rows()
+        val vb = ByteArray(w * h); val sb = ByteArray(w * h); val mb = ByteArray(w * h)
+        ch[2].get(0, 0, vb); ch[1].get(0, 0, sb); roiMask.get(0, 0, mb)
+        var cnt = 0
+        for (i in mb.indices) if (mb[i].toInt() != 0) { vHist[vb[i].toInt() and 0xFF]++; cnt++ }
+        fun pct(hist: IntArray, f: Double): Int { var acc = 0; for (v in 0..255) { acc += hist[v]; if (acc >= cnt * f) return v }; return 255 }
+        val paperV = pct(vHist, 0.8)
+        for (i in mb.indices) if (mb[i].toInt() != 0 && (vb[i].toInt() and 0xFF) >= paperV * 0.85) sHist[sb[i].toInt() and 0xFF]++
+        cnt = sHist.sum()
+        val paperS = if (cnt > 0) pct(sHist, 0.9) else 40
+        val out = Mat()
+        Core.inRange(hsv, Scalar(0.0, 0.0, paperV * 0.72), Scalar(180.0, min(255.0, paperS + 45.0), 255.0), out)
+        val k = max(3, (max(w, h) / 150) or 1)
+        Imgproc.morphologyEx(out, out, Imgproc.MORPH_CLOSE, rect(k))
+        Imgproc.morphologyEx(out, out, Imgproc.MORPH_OPEN, rect(max(3, k / 2 or 1)))
+        hsv.release(); roiMask.release(); ch.forEach { it.release() }
+        return out
+    }
+
+    /**
+     * Traces a page boundary near the straight line a-b: for an edge, where [paper] ends going
+     * outward; for the [spine], the bottom of the gutter shadow in [gray]. Positions found across
+     * the strip are fitted with a smooth cubic, rejecting outliers (a picture on the page, a
+     * pattern on the surface). Returns offsets from the line; untraced (straight) when too few
+     * positions are found or they don't follow a smooth curve.
+     */
+    private fun traceBoundary(paper: Mat, gray: Mat, a: Point, b: Point, cx: Double, cy: Double, n: Int, kind: Int): TracedEdge {
+        val spine = kind == EDGE_SPINE
         val len = hypot(b.x - a.x, b.y - a.y)
         val tx = (b.x - a.x) / len; val ty = (b.y - a.y) / len
         val (nx, ny) = outwardNormal(a, b, cx, cy)
         val flat = TracedEdge(a.x, a.y, b.x, b.y, nx, ny, DoubleArray(n), false)
-        val band = (0.07 * len).toInt()
+        val band = ((if (spine) 0.05 else 0.08) * len).toInt()
         if (len < 40 || band < 4) return flat
-        val cols = max(n, (len / 2).toInt())
+        val cols = max(n, (len / 3).toInt())
         val rows = 2 * band + 1
-        val sxStep = len / (cols - 1)
+        val step = len / (cols - 1)
         // strip(col, row) = a + t * col * step + n * (row - band); rows grow outward.
         val m = Mat(2, 3, CvType.CV_64F)
-        m.put(0, 0, tx * sxStep, nx, a.x - nx * band, ty * sxStep, ny, a.y - ny * band)
-        val strip = Mat(); val dy = Mat()
+        m.put(0, 0, tx * step, nx, a.x - nx * band, ty * step, ny, a.y - ny * band)
+        val strip = Mat()
         try {
-            Imgproc.warpAffine(gray, strip, m, Size(cols.toDouble(), rows.toDouble()), Imgproc.INTER_LINEAR or Imgproc.WARP_INVERSE_MAP, Core.BORDER_REPLICATE)
-            Imgproc.GaussianBlur(strip, strip, Size(9.0, 5.0), 0.0)
-            Imgproc.Sobel(strip, dy, CvType.CV_32F, 0, 1, 3)
-            val g = FloatArray(cols * rows)
-            dy.get(0, 0, g)
-            // Edge strength: brightness falling from the page outward. Scaled by a high percentile.
-            var top = 0f
-            val sorted = FloatArray(g.size) { max(0f, -g[it]) }.also { it.sort() }
-            top = sorted[(sorted.size * 0.98).toInt().coerceAtMost(sorted.size - 1)]
-            if (top < 6f) return flat // no paper-to-background step anywhere in the strip
-            fun e(c: Int, r: Int) = (max(0f, -g[r * cols + c]) / top).coerceAtMost(1f)
-            // Smoothest strongest path, left to right (rows may change by one per column).
-            val jump = 0.35f
-            val cost = Array(cols) { FloatArray(rows) }
-            val from = Array(cols) { IntArray(rows) }
-            for (r in 0 until rows) cost[0][r] = -e(0, r) + 0.004f * abs(r - band)
-            for (c in 1 until cols) for (r in 0 until rows) {
-                var best = cost[c - 1][r]; var bi = r
-                if (r > 0 && cost[c - 1][r - 1] + jump < best) { best = cost[c - 1][r - 1] + jump; bi = r - 1 }
-                if (r < rows - 1 && cost[c - 1][r + 1] + jump < best) { best = cost[c - 1][r + 1] + jump; bi = r + 1 }
-                cost[c][r] = best - e(c, r) + 0.004f * abs(r - band)
-                from[c][r] = bi
+            val img = if (spine) gray else paper
+            Imgproc.warpAffine(img, strip, m, Size(cols.toDouble(), rows.toDouble()), Imgproc.INTER_LINEAR or Imgproc.WARP_INVERSE_MAP, Core.BORDER_REPLICATE)
+            val px = ByteArray(cols * rows)
+            strip.get(0, 0, px)
+            fun at(c: Int, r: Int) = px[r * cols + c].toInt() and 0xFF
+            val pos = DoubleArray(cols) { Double.NaN }
+            if (!spine) {
+                // Outermost paper, scanning outward from inside the page: the first run of
+                // background long enough not to be a gap in the paper.
+                val run = max(3, band / 12)
+                for (c in 0 until cols) {
+                    if (at(c, 0) < 128) continue // no paper deep inside here (picture, shadow)
+                    var r = 0; var bg = 0; var found = -1
+                    while (r < rows) {
+                        if (at(c, r) < 128) { bg++; if (bg >= run) { found = r - bg + 1; break } } else bg = 0
+                        r++
+                    }
+                    if (found > 0 && found < rows - 1) pos[c] = (found - band).toDouble()
+                }
+            } else {
+                // Gutter: darkest paper level across the strip, per stretch of the spine.
+                val chunk = max(4, cols / 24)
+                var c0 = 0
+                val col = IntArray(chunk)
+                while (c0 + chunk <= cols) {
+                    val prof = DoubleArray(rows)
+                    for (r in 0 until rows) {
+                        for (j in 0 until chunk) col[j] = at(c0 + j, r)
+                        col.sort(); prof[r] = col[(chunk * 0.8).toInt().coerceAtMost(chunk - 1)].toDouble()
+                    }
+                    val sm = smooth1d(FloatArray(rows) { prof[it].toFloat() }, max(1.5, band / 15.0))
+                    var mi = 0
+                    for (r in 1 until rows) if (sm[r] < sm[mi]) mi = r
+                    val sorted = sm.sorted()
+                    val level = sorted[(rows * 0.8).toInt()]
+                    if (mi in 2 until rows - 2 && (level - sm[mi]) >= 0.05 * level) {
+                        for (j in 0 until chunk) pos[c0 + j] = (mi - band).toDouble()
+                    }
+                    c0 += chunk
+                }
             }
-            var r = (0 until rows).minBy { cost[cols - 1][it] }
-            val path = IntArray(cols)
-            var strength = 0f
-            for (c in cols - 1 downTo 0) { path[c] = r; strength += e(c, r); r = from[c][r] }
-            if (strength / cols < 0.3f) return flat // the path isn't on an edge most of the way
-            val raw = FloatArray(n) { j -> (path[(j.toDouble() / (n - 1) * (cols - 1)).roundToInt()] - band).toFloat() }
-            val sm = smooth1d(raw, n * 0.015)
-            return TracedEdge(a.x, a.y, b.x, b.y, nx, ny, DoubleArray(n) { sm[it].toDouble() }, true)
+            val found = (0 until cols).filter { !pos[it].isNaN() }
+            if (found.size < cols * (if (spine) 0.4 else 0.5)) return flat
+            // Spikes out (running median), gaps filled, then smoothed: a flexible curve that can
+            // stay straight along most of an edge and bend only near the spine.
+            val win = max(5, cols / 30) or 1
+            val med = DoubleArray(cols) { c ->
+                val vals = (max(0, c - win / 2)..min(cols - 1, c + win / 2)).map { pos[it] }.filter { !it.isNaN() }
+                if (vals.size < 2) Double.NaN else vals.sorted()[vals.size / 2]
+            }
+            val filled = fillGaps(med)
+            val curve = smooth1d(FloatArray(cols) { filled[it].toFloat() }, max(2.0, cols / 60.0))
+            fun fit(t: Double): Double { val f = t.coerceIn(0.0, 1.0) * (cols - 1); val k = min(f.toInt(), cols - 2); return curve[k] + (curve[k + 1] - curve[k]) * (f - k) }
+            // The found positions must agree with the curve (one boundary, not scattered hits).
+            val res = found.map { abs(pos[it] - curve[it]) }.sorted()
+            val agree = res[res.size / 2] <= max(2.0, 0.008 * len)
+            // A page bends near the spine only: the far half of a side edge, and the whole outer
+            // edge, lie on a straight line. A trace that doesn't followed something beside the page
+            // (e.g. a white patch touching it), and that boundary stays straight.
+            fun straight(t0: Double, t1: Double): Boolean {
+                val ix = found.filter { it >= t0 * (cols - 1) && it <= t1 * (cols - 1) }
+                if (ix.size < 8) return false
+                var sx = 0.0; var sy = 0.0; var sxx = 0.0; var sxy = 0.0
+                for (c in ix) { sx += c; sy += pos[c]; sxx += c.toDouble() * c; sxy += c * pos[c] }
+                val m = ix.size; val den = m * sxx - sx * sx
+                val sl = if (abs(den) < 1e-9) 0.0 else (m * sxy - sx * sy) / den
+                val ic = (sy - sl * sx) / m
+                val r = ix.map { abs(pos[it] - (ic + sl * it)) }.sorted()
+                return r[(r.size * 0.75).toInt().coerceAtMost(r.size - 1)] <= max(2.0, 0.006 * len)
+            }
+            val ok = agree && when (kind) {
+                EDGE_SIDE -> straight(0.5, 1.0)
+                EDGE_OUTER -> straight(0.0, 1.0)
+                else -> true
+            } && (0..20).all { abs(fit(it / 20.0)) < band - 1 }
+            debugLog?.invoke("trace kind=%d found=%.0f%% agree=%b ok=%b max=%.0f".format(kind, 100.0 * found.size / cols, agree, ok, curve.maxOf { abs(it) }))
+            if (!ok) return flat
+            return TracedEdge(a.x, a.y, b.x, b.y, nx, ny, DoubleArray(n) { fit(it.toDouble() / (n - 1)) }, true)
         } finally {
-            m.release(); strip.release(); dy.release()
+            m.release(); strip.release()
         }
     }
 
+    private const val EDGE_SIDE = 0
+    private const val EDGE_OUTER = 1
+    private const val EDGE_SPINE = 2
+
+    /** [v] with NaN gaps filled by linear interpolation (ends: nearest value). */
+    private fun fillGaps(v: DoubleArray): DoubleArray {
+        val out = v.copyOf()
+        val idx = v.indices.filter { !v[it].isNaN() }
+        if (idx.isEmpty()) return DoubleArray(v.size)
+        for (i in v.indices) {
+            if (!out[i].isNaN()) continue
+            val r = idx.firstOrNull { it > i }; val l = idx.lastOrNull { it < i }
+            out[i] = when {
+                l == null -> v[r!!]
+                r == null -> v[l]
+                else -> v[l] + (v[r] - v[l]) * (i - l).toDouble() / (r - l)
+            }
+        }
+        return out
+    }
 
     private fun smooth1d(v: FloatArray, sigma: Double): FloatArray {
         val r = (sigma * 3).toInt()
