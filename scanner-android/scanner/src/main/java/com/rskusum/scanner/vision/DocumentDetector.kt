@@ -1156,8 +1156,7 @@ object DocumentDetector {
         }
 
         // Do no harm: the plain perspective crop of the four corners is the safe result. A
-        // flattened version replaces it only when its lines are measurably straighter, or - on a
-        // page without clear lines - when the page's edges are clearly curved.
+        // flattened version replaces it only when its lines are measurably straighter.
         val plain = Mat()
         run {
             val uP = max(8, (lenU / meanStretch * (1 + margin)).toInt())
@@ -1183,10 +1182,15 @@ object DocumentDetector {
         val edgesCurved = listOf(sideA, sideB, outer).any { it.traced && it.bend() >= 0.02 * hypot(it.x1 - it.x0, it.y1 - it.y0) }
         var pick = plain; var best = bPlain; var how = "plain"
         if (bPlain == null && bEdges == null && bLines == null) {
-            if (edgesCurved) { pick = out; how = "edges" }
+            // Nothing to measure (tables full of handwriting, pictures): the plain crop. Edge
+            // tracing alone bent flat registers whose paper lifts a little at the spine.
         } else {
+            // Lines straightened by this very step always measure straight, so that alone proves
+            // nothing: they are taken only when the page measurably bends without them.
+            val bentBefore = listOfNotNull(bPlain, bEdges).maxOrNull()?.let { it >= 0.8 } == true
             for ((c, b, name) in listOf(Triple(out, bEdges, "edges"), Triple(lined, bLines, "lines"))) {
                 if (c == null || b == null) continue
+                if (c === lined && !bentBefore) continue
                 val bb = best
                 if (bb == null || b < bb - max(0.5, 0.2 * bb)) { pick = c; best = b; how = name }
             }
@@ -1379,16 +1383,31 @@ object DocumentDetector {
         val w = src.cols(); val h = src.rows()
         val tl = findTextLines(src) ?: return src
         val f = tl.f; val sh = tl.sh; val spacing = tl.spacing; val strips = tl.strips; val fits = tl.fits
-        // Deviation field on a grid: lines nearby in y, weighted; constant beyond the first/last line.
+        // Deviation field on a grid, smooth down the page: a real curl changes slowly from line to
+        // line, so at each strip the lines' deviations are fitted with one gentle curve (quadratic
+        // in y, stray lines dropped) - neighbouring rows can never be pushed in opposite directions
+        // (which bent flat registers into waves). Constant beyond the first/last line.
         val gy = 48
         val field = Array(gy + 1) { DoubleArray(strips + 1) }
-        val sigma = 2.5 * spacing / sh
-        for (j in 0..gy) {
-            val y = (j.toDouble() / gy).coerceIn(fits.first().first, fits.last().first)
-            for (i in 0..strips) {
-                var sumW = 0.0; var sum = 0.0
-                for ((ly, dev) in fits) { val wgt = exp(-((y - ly) / sigma).let { it * it }); sumW += wgt; sum += wgt * dev[i] }
-                field[j][i] = if (sumW > 1e-6) sum / sumW else 0.0
+        val y0f = fits.first().first; val y1f = fits.last().first
+        val ym = (y0f + y1f) / 2; val ys = max(1e-3, (y1f - y0f) / 2)
+        for (i in 0..strips) {
+            var use = fits.indices.toList()
+            var c = DoubleArray(3)
+            repeat(2) { iter ->
+                val ata = DoubleArray(9); val atb = DoubleArray(3)
+                for (k in use) { val t = (fits[k].first - ym) / ys; val pw = doubleArrayOf(1.0, t, t * t); for (r in 0 until 3) { atb[r] += pw[r] * fits[k].second[i]; for (cc in 0 until 3) ata[r * 3 + cc] += pw[r] * pw[cc] } }
+                val am = Mat(3, 3, CvType.CV_64F); am.put(0, 0, *ata); val bm = Mat(3, 1, CvType.CV_64F); bm.put(0, 0, *atb); val xm = Mat()
+                Core.solve(am, bm, xm, Core.DECOMP_SVD); c = DoubleArray(3) { xm.get(it, 0)[0] }; am.release(); bm.release(); xm.release()
+                if (iter == 0) {
+                    val res = use.map { k -> val t = (fits[k].first - ym) / ys; abs(c[0] + c[1] * t + c[2] * t * t - fits[k].second[i]) }
+                    val cut = max(2.0, 2.5 * res.sorted()[res.size / 2])
+                    use = use.filterIndexed { n, _ -> res[n] <= cut }.takeIf { it.size >= 5 } ?: use
+                }
+            }
+            for (j in 0..gy) {
+                val t = ((j.toDouble() / gy).coerceIn(y0f, y1f) - ym) / ys
+                field[j][i] = c[0] + c[1] * t + c[2] * t * t
             }
         }
         val maxDev = field.maxOf { row -> row.maxOf { abs(it) } }
