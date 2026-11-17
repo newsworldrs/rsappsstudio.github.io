@@ -666,38 +666,49 @@ object DocumentDetector {
     }
 
     /**
-     * Book mode guide: a line across the middle of the picture (at [line], 0..1 of its height)
-     * that the user puts on the spine, one page above it and one below. Is [quad] ONE of those
-     * pages - an outline wider than tall with its top or bottom side on the line?
+     * Book mode (camera, guide line across the picture): the open book lies with its spine
+     * across the picture, one page above and one below, so the whole book is always taller than
+     * wide. An outline wider than tall is therefore ONE page of it - never two side by side.
      */
-    fun isPageAtLine(quad: Quad, imgW: Int, imgH: Int, line: Float = 0.5f): Boolean {
-        if (isTallSpread(quad, imgW, imgH)) return false
-        val top = (quad.tl.y + quad.tr.y) / 2; val bottom = (quad.bl.y + quad.br.y) / 2
-        return (abs(bottom - line) < 0.1f && top < line) || (abs(top - line) < 0.1f && bottom > line)
-    }
+    fun isPageAtLine(quad: Quad, imgW: Int, imgH: Int): Boolean = !isTallSpread(quad, imgW, imgH)
 
     /**
-     * The open book from one of its pages found against the guide line (see [isPageAtLine]): the
-     * page is mirrored across its side on the line, and the far side of the mirrored page is
-     * moved onto the other page's real edge when one is there. Null when [quad] isn't such a page.
+     * The open book from one of its pages (see [isPageAtLine]): the other page lies on the far
+     * side of the spine, toward the guide line at [line]. The page is mirrored across its side
+     * facing the line; the far side is then moved onto the other page's real edge. Taken only
+     * when the other page is really there (its edges found, or paper as bright as this page's);
+     * null otherwise - the page is then kept whole.
      */
     fun completeSpreadAtLine(gray: Mat, quad: Quad, line: Float = 0.5f): Quad? {
         val w = gray.cols(); val h = gray.rows()
-        if (!isPageAtLine(quad, w, h, line)) return null
+        if (!isPageAtLine(quad, w, h)) return null
         fun beyond(a: NPoint, b: NPoint) = NPoint(2 * b.x - a.x, 2 * b.y - a.y)
-        val top = (quad.tl.y + quad.tr.y) / 2
-        val below = top < line // the found page is the top one: the other lies below the line
-        val mirrored = clampQuad(
-            if (below) Quad(quad.tl, quad.tr, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl))
-            else Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.br, quad.bl)
-        )
-        // Only the far side moves: the found page's own corners are already right.
+        val cy = quad.points.map { it.y }.average().toFloat()
+        val otherBelow = cy < line // the found page is the upper one
+        val raw = if (otherBelow) Quad(quad.tl, quad.tr, beyond(quad.tr, quad.br), beyond(quad.tl, quad.bl))
+        else Quad(beyond(quad.bl, quad.tl), beyond(quad.br, quad.tr), quad.br, quad.bl)
+        // The other page must be mostly in the picture.
+        if (raw.points.any { it.y < -0.15f || it.y > 1.15f }) { debugLog?.invoke("spread at line: other page off the picture"); return null }
+        val mirrored = clampQuad(raw)
         val snap = snapToQuad(gray, mirrored, maxDim = 1000, bandFraction = 0.06)
         val s = snap.quad
-        val farOk = snap.sidesFound >= 3
-        val spread = if (!farOk) mirrored else if (below) Quad(quad.tl, quad.tr, s.br, s.bl) else Quad(s.tl, s.tr, quad.br, quad.bl)
-        debugLog?.invoke("spread at line: found page %s, other page edge %s".format(if (below) "above" else "below", if (farOk) "found" else "mirrored"))
-        return spread.takeIf { isTallSpread(it, w, h) }
+        val snapped = if (otherBelow) Quad(quad.tl, quad.tr, s.br, s.bl) else Quad(s.tl, s.tr, quad.br, quad.bl)
+        val farOk = snap.sidesFound >= 3 && isTallSpread(snapped, w, h) && snapped.area() > quad.area() * 1.5f &&
+            scoreQuad(gray, snapped) >= 0.4
+        val spread = if (farOk) snapped else mirrored
+        if (!isTallSpread(spread, w, h)) return null
+        // Paper check: the other page's area is about as bright as the found page.
+        fun meanIn(q: Quad): Double {
+            val mask = Mat.zeros(gray.size(), CvType.CV_8UC1)
+            Imgproc.fillConvexPoly(mask, MatOfPoint(*q.points.map { Point(it.x.toDouble() * w, it.y.toDouble() * h) }.toTypedArray()), Scalar(255.0))
+            val m = Core.mean(gray, mask).`val`[0]; mask.release(); return m
+        }
+        val other = if (otherBelow) Quad(quad.bl, quad.br, spread.br, spread.bl) else Quad(spread.tl, spread.tr, quad.tr, quad.tl)
+        val pageMean = meanIn(quad); val otherMean = meanIn(other)
+        val paperOk = otherMean >= pageMean * 0.75
+        debugLog?.invoke("spread at line: other page %s, edge %s, brightness %.0f vs %.0f".format(
+            if (otherBelow) "below" else "above", if (farOk) "found" else "not found", otherMean, pageMean))
+        return spread.takeIf { farOk || paperOk }
     }
 
     /**
