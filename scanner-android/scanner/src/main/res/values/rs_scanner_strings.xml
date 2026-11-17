@@ -26,9 +26,9 @@
     <string name="rs_scanner_book_first_is_one">Top half is page 1</string>
     <string name="rs_scanner_book_looking">Looking for book</string>
     <string name="rs_scanner_book_next">Turn the page</string>
-    <string name="rs_scanner_book_place">Line up the book\'s spine with the line</string>
+    <string name="rs_scanner_book_place">Line up the book\'s spine with the dotted line</string>
     <string name="rs_scanner_book_second_is_one">Bottom half is page 1</string>
-    <string name="rs_scanner_book_turn_phone">Turn the phone sideways - the open book must fill the long side of the screen</string>
+    <string name="rs_scanner_book_turn_phone">Turn the book so its spine lies along the dotted line, one page above it and one below</string>
     <string name="rs_scanner_book_single_page">Only one page was found, so it was kept whole. Fit both pages of the book in view to scan them as two pages.</string>
     <string name="rs_scanner_intro_title">Quick tour</string>
     <string name="rs_scanner_intro_skip">Skip</string>

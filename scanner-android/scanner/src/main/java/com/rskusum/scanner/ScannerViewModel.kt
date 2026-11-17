@@ -189,8 +189,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val guideFrame: Quad?
         get() = when {
             orientation == com.rskusum.scanner.data.FrameOrientation.FREE -> null
-            mode == ScanMode.BOOK ->
-                DocumentDetector.guideFrame(if (phoneUpright) mode.frameRatio else 1 / mode.frameRatio)
+            // Book mode has no frame: one dotted line across the screen for the spine, and the
+            // open book itself is found and split on the photo.
+            mode == ScanMode.BOOK -> null
             orientation == com.rskusum.scanner.data.FrameOrientation.PORTRAIT -> DocumentDetector.guideFrame(1 / mode.frameRatio)
             else -> DocumentDetector.guideFrame(mode.frameRatio)
         }
@@ -626,6 +627,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     val frameTall = DocumentDetector.isTallSpread(frame, photoW, photoH)
                     val bookShaped = if (frameTall) sh0 > sw0 * 1.15 else sw0 > sh0 * 1.15
                     if (spread.area() >= frame.area() * 0.7f || bookShaped) twoPages = true
+                }
+                if (twoPages == false && frame == null && !imported && DocumentDetector.isTallSpread(spread, photoW, photoH)) {
+                    // Book mode's guide is one line across the middle of the picture, which the
+                    // user lines up with the spine. When that line runs through the middle part
+                    // of the outline, the outline is the open book, whatever the text-line test
+                    // said (pictures, tables or short text can fool it).
+                    val top = (spread.tl.y + spread.tr.y) / 2
+                    val bottom = (spread.br.y + spread.bl.y) / 2
+                    if (bottom > top && (0.5f - top) / (bottom - top) in 0.35f..0.65f) twoPages = true
                 }
                 if (twoPages == false) {
                     // Only one page is in the picture: keep it whole instead of cutting it in half.

@@ -528,6 +528,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     val book = vm.mode == ScanMode.BOOK && !qrMode
                     when {
                         qrMode -> QrFrame()
+                        book -> Unit // only the dotted spine line, drawn below
                         guide != null -> GuideFrameOverlay(guide, state.aligned)
                         else -> QuadOverlay(state.quad, state.phase)
                     }
@@ -536,15 +537,11 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     // Book guide: dashed divider across the whole preview, sideways
                     // page numbers 1 / 2 and a swap button. Same in frame and Free mode.
                     if (book) {
-                        if (guide != null) {
-                            // Page 1 is the book's left page: which half of the screen that is
-                            // depends on how the phone is held.
-                            if (vm.bookAcross) BookOverlayAcross((guide.tl.x + guide.br.x) / 2f, vm.bookSwap != (vm.phoneTurn == 180))
-                            else BookOverlay((guide.tl.y + guide.br.y) / 2f, vm.bookSwap != (vm.phoneTurn == 90), labelTurn = if (vm.phoneTurn == 90) -90f else 90f)
-                        } else {
-                            // Free mode: the spine line follows the book the camera actually sees.
-                            state.spine?.let { FreeSpineOverlay(it, vm.bookSwap) }
-                        }
+                        // One fixed dotted line across the middle of the screen: the user lines
+                        // the book's spine up with it (open book along the phone, one page above
+                        // the line, one below). No frame and no moving outline. Page 1 is the
+                        // book's left page: which half that is depends on how the phone is held.
+                        BookOverlay(0.5f, vm.bookSwap != (vm.phoneTurn == 90), labelTurn = if (vm.phoneTurn == 90) -90f else 90f)
                         BookSwapButton(
                             swapped = vm.bookSwap,
                             onSwap = {
@@ -570,7 +567,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     else -> when (state.phase) {
                         CapturePhase.SEARCHING -> when {
                             vm.autoCapture && state.progress > 0f -> stringResource(R.string.rs_scanner_hold_still_capture)
-                            vm.guideFrame != null -> stringResource(words.place)
+                            vm.guideFrame != null || vm.mode == ScanMode.BOOK -> stringResource(words.place)
                             else -> stringResource(words.looking)
                         }
                         CapturePhase.TOO_SMALL -> stringResource(R.string.rs_scanner_move_closer)
@@ -580,12 +577,7 @@ fun CameraScreen(vm: ScannerViewModel, onOpenReview: () -> Unit, onHome: (() -> 
                     }
                 }
                 if (hint != null) {
-                    if (vm.mode == ScanMode.BOOK && !qrMode) {
-                        // Book mode is used with the phone held sideways: turn the text with it.
-                        HintChip(hint, Modifier.align(Alignment.Center).rotate(90f))
-                    } else {
-                        HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
-                    }
+                    HintChip(hint, Modifier.align(Alignment.TopCenter).padding(top = 14.dp))
                 }
                 if (granted && !qrMode && vm.mode == ScanMode.ID_CARD) {
                     val step = when (vm.idStep) {
@@ -1017,9 +1009,10 @@ private fun BookOverlay(dividerY: Float, swapped: Boolean, labelTurn: Float = 90
     Box(Modifier.fillMaxSize()) {
         Canvas(Modifier.fillMaxSize()) {
             val y = dividerY * size.height
-            // Spine guide: thin solid line with a soft glow band and end caps.
+            // Spine guide: dotted line with a soft glow band and end caps.
+            val dash = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(14.dp.toPx(), 10.dp.toPx()))
             drawLine(guide.copy(alpha = 0.25f), Offset(0f, y), Offset(size.width, y), 12.dp.toPx())
-            drawLine(guide, Offset(0f, y), Offset(size.width, y), 2.dp.toPx())
+            drawLine(guide, Offset(0f, y), Offset(size.width, y), 3.dp.toPx(), pathEffect = dash)
             drawCircle(guide, 5.dp.toPx(), Offset(10.dp.toPx(), y))
             drawCircle(guide, 5.dp.toPx(), Offset(size.width - 10.dp.toPx(), y))
         }
